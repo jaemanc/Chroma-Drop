@@ -6,26 +6,45 @@ color pop! — 칼라 매쳐 퍼즐 게임. HTML 프로토타입 v5에서 확정
 
 ```
 Assets/
+  Scenes/Main.unity       # 메인 씬 (카메라 + GameManager 뿐 — 나머지는 런타임 생성)
   Scripts/
-    ColorMatcherCore.cs   # 게임 규칙 (UnityEngine 비의존). 테스트 완료.
-    GameManager.cs        # Unity 표현 계층. 컴파일만 검증(에디터 실행 미검증).
-Tests/                    # Assets 밖 — Unity가 임포트하지 않음
-  CoreTests.cs            # 코어 검증 테스트 (콘솔 러너)
-  UnityStubs.cs           # GameManager 컴파일 검증용 UnityEngine 스텁
+    ColorMatcherCore.cs   # 게임 규칙 (UnityEngine 비의존). 테스트 23/23.
+    GameManager.cs        # 게임 흐름/입력 (터치+마우스)
+    BoardView.cs          # 보드 렌더링, 아이템 아이콘, 고스트, 파괴/낙하 연출
+    GameUI.cs             # 홈/HUD/결과 화면 (uGUI 런타임 생성, SafeArea 대응)
+    Sfx.cs                # 효과음 (절차 생성 PCM — 오디오 에셋 없음)
+  Editor/ProjectBootstrap.cs  # 씬/빌드 설정/모바일 설정 자동 구성
+  Tests/PlayMode/         # PlayMode 스모크 테스트 (실제 런타임 실행 검증)
+Tests/                    # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
+  CoreTests.cs
 ```
 
 로직/표현 분리 구조. `ColorMatcherCore`는 엔진과 무관하므로 서버 검증·리플레이·엔진 교체에도
-재사용 가능. `Tests/`는 Unity 프로젝트 폴더(`Assets/`) 밖에 있어야 한다 — UnityStubs가
-실제 UnityEngine과 충돌하기 때문.
+재사용 가능. 스프라이트/폰트/사운드/UI 전부 코드에서 런타임 생성이라 **외부 에셋 의존이 0** —
+모바일 빌드에서 에셋 누락 문제가 없다.
 
-## 테스트 실행
+## 실행
 
-Unity 없이 콘솔에서 실행한다:
+Unity Hub → **Add project from disk** 로 저장소 루트 열기 (Unity 6000.5.2f1) →
+`Assets/Scenes/Main.unity` 열고 Play. 씬이 없으면 메뉴 **ChromaDrop > Setup Project** 실행.
+
+## 조작
+
+- **터치(모바일)**: 드래그로 고스트 프리뷰(손가락 위로 띄워 표시), 떼면 스탬프. 회전 버튼.
+- **마우스(에디터)**: 이동으로 프리뷰, 클릭으로 스탬프, R 키 회전.
+
+## 테스트
 
 ```bash
-csc Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:core_tests.exe && mono core_tests.exe
-# GameManager 컴파일 검증:
-csc -target:library Assets/Scripts/ColorMatcherCore.cs Assets/Scripts/GameManager.cs Tests/UnityStubs.cs -out:compile_check.dll
+# 코어 규칙 테스트 (Unity 무관, 어떤 C# 컴파일러든 가능. Unity 내장 mono 예시)
+MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
+"$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mono" /tmp/core_tests.exe
+
+# PlayMode 스모크 테스트 (실제 런타임에서 부팅·스탬프·게임 완주 검증)
+/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode -runTests -testPlatform PlayMode -projectPath . \
+  -testResults /tmp/playmode_results.xml
 ```
 
 ## 검증 상태 (정확히)
@@ -34,25 +53,11 @@ csc -target:library Assets/Scripts/ColorMatcherCore.cs Assets/Scripts/GameManage
   페인트 스탬프, 정사각형 DP 판정, 아이템 5종 효과 범위, 발동 BFS 종결성(아이템 30개 최악배치 100회),
   점수/배수, 초기 보드 무매칭(시드 200개 전수 0건), 무작위 30수 불변식, 회전, 난이도/타이머 규칙.
   테스트 23/23 통과.
-- **컴파일만 검증됨**: `GameManager.cs` — UnityEngine 스텁으로 문법/타입 확인.
-  실제 에디터 실행은 못 했으므로 카메라 배치·HUD 위치·연출 타이밍은 실행 후 조정 필요.
-- **미검증/미구현 (아래 TODO)**: 낙하 애니메이션, 아이템 아이콘, 사운드,
-  화면 전환(홈/게임/랭킹), 랭킹·공유 UI, 저장.
-
-## Unity 셋업
-
-1. Unity Hub → **Add project from disk** 로 이 저장소 루트를 열기 (2D Built-in Render Pipeline,
-   2021 LTS 이상 권장). `ProjectSettings/`·`Packages/`가 없으면 Unity가 기본값으로 생성한다 —
-   생성된 후 커밋할 것.
-2. 빈 GameObject 생성 → `GameManager` 컴포넌트 추가 → Play
-3. 인스펙터에서 `difficulty`(easy/normal/hard), `timeAttack`(체크 시 60초 모드), `seed` 조정
-
-## 조작 (프로토타입 임시)
-
-- 마우스 이동: 조각 위치 프리뷰(고스트가 조각 색으로 표시)
-- 클릭: 스탬프
-- R 키: 회전
-- 모바일 빌드 시 드래그/탭 입력으로 교체 필요 (아래 TODO)
+- **검증됨 (PlayMode 실행)**: 부팅→홈, 게임 시작, 스탬프 연출 완료 후 보드 불변식,
+  경계 밖 배치 거부, 무작위 30수 완주→결과 화면, 타임어택 모드 — 실제 Unity 런타임에서 통과.
+- **에디터/기기에서 육안 확인 필요**: HUD 배치·연출 타이밍·사운드 톤 등 감성 품질.
+  수치는 인스펙터(`GameManager`)에서 조정 가능.
+- **미구현 (아래 TODO)**: 랭킹·공유(백엔드 필요), 화면 회전 대응 외 세부 폴리시.
 
 ## v5 확정 규칙 (Core에 반영됨)
 

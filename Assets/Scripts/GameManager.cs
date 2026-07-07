@@ -1,228 +1,325 @@
-// GameManager.cs — Unity 표현 계층 (v5 규칙)
-// 셋업은 README 참고. ColorMatcherCore.cs가 같은 프로젝트에 있어야 함.
+// GameManager.cs — 게임 흐름/입력 오케스트레이션 (v5 규칙).
+// 씬에는 이 컴포넌트 하나(+카메라)만 있으면 됨 — BoardView/GameUI/Sfx는 런타임 생성.
 //
-// 담당: 보드 렌더링(런타임 스프라이트), 드래그 입력, 고스트 프리뷰,
-//       점수/타임어택 모드 분기, 가변 조각 타이머, 파괴/낙하 연출 훅.
-// 미담당(README의 TODO): 아이템 타일 아이콘, 사운드, 랭킹/공유 UI, 화면 전환 — 별도 구현 필요.
-//
-// 이 파일은 실제 Unity 에디터에서 실행 검증되지 않았다. 컴파일(문법/타입)만 스텁으로 확인했다.
-// 카메라 배치, HUD 위치, 애니메이션 타이밍 등은 에디터 실행 후 조정 대상.
+// 입력: 터치(드래그로 고스트, 떼면 스탬프, 손가락 위로 띄운 프리뷰) + 마우스(호버 프리뷰, 클릭 스탬프).
+// 회전: 화면 버튼 또는 R 키.
 
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using ColorMatcher.Core;
+
+public enum GamePhase { Home, Playing, Result }
 
 public class GameManager : MonoBehaviour
 {
-    [Header("모드/난이도")]
+    [Header("모드/난이도 (홈 화면 초기값)")]
     public string difficulty = "normal";   // easy | normal | hard
-    public bool timeAttack = false;         // true면 타임어택 60초
-    public int seed = 0;                    // 0 = 랜덤
+    public bool timeAttack = false;
+    public int seed = 0;                   // 0 = 랜덤
 
     [Header("연출 시간(초)")]
-    public float stampFlash = 0.16f;
-    public float destroyFlash = 0.22f;
+    public float stampPop = 0.10f;
+    public float destroyFlash = 0.20f;
+    public float fallTime = 0.20f;
+    public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
-    // 3색 랜덤 팔레트: 색상환 균등분할 + 지터 (HSL→RGB)
-    Color[] palette;
+    public GamePhase Phase { get; private set; }
+    public bool Busy { get { return busy; } }
+    public int Score { get { return score; } }
+    public int Goal { get { return goal; } }
+    public int MovesLeft { get { return movesLeft; } }
+    public bool TimeAttackMode { get { return taRunning; } }
+    public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
+    public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((pieceDeadline - Time.time) / pieceTimeTotal); } }
+    public Board BoardRef { get { return board; } }
+    public Piece CurrentPiece { get { return current; } }
 
     Board board;
     Piece current;
     readonly Queue<Piece> queue = new Queue<Piece>();
     System.Random pieceRng;
+    Color[] palette;
 
-    SpriteRenderer[,] tileViews;
-    SpriteRenderer[] ghostPool;
-    Sprite tileSprite;
+    BoardView view;
+    GameUI ui;
+    Sfx sfx;
+    Camera cam;
 
     int score, movesLeft, totalMoves, goal;
-    bool over, busy;
-    float pieceDeadline;      // Time.time 기준
-    float taDeadline;
+    bool busy, taRunning, touchActive;
+    float pieceDeadline, pieceTimeTotal, taDeadline;
+    int lastW, lastH;
 
-    void Start()
+    void Awake()
     {
-        tileSprite = MakeSquareSprite();
-        NewGame();
+        Application.targetFrameRate = Application.isEditor ? -1 : 60;
+
+        cam = Camera.main;
+        if (cam == null)
+        {
+            var go = new GameObject("Main Camera");
+            go.tag = "MainCamera";
+            cam = go.AddComponent<Camera>();
+            go.AddComponent<AudioListener>();
+        }
+        cam.orthographic = true;
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.09f, 0.09f, 0.12f);
+
+        view = new GameObject("BoardView").AddComponent<BoardView>();
+        sfx = gameObject.AddComponent<Sfx>();
+        ui = GameUI.Create(this);
+
         FitCamera();
+        GoHome();
     }
 
-    void NewGame()
+    // ---------- 화면 전환 ----------
+
+    public void GoHome()
     {
-        int s = seed == 0 ? System.Environment.TickCount : seed;
+        StopAllCoroutines();
+        busy = false;
+        Phase = GamePhase.Home;
+        if (view != null) { view.HideGhost(); view.SetVisible(false); }
+        ui.ShowHome();
+    }
+
+    /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
+    public void StartGame() { StartGame(difficulty, timeAttack, seed); }
+
+    public void StartGame(string diff, bool ta, int seedOverride)
+    {
+        StopAllCoroutines();
+        difficulty = Rules.Table.ContainsKey(diff) ? diff : "normal";
+        timeAttack = ta;
+
+        int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         board = new Board(Rules.ColorCount, s);
         pieceRng = new System.Random(s + 1);
         palette = GenPalette(Rules.ColorCount, new System.Random(s + 2));
 
-        var diff = Rules.Table[difficulty];
-        if (timeAttack) { movesLeft = 9999; goal = 0; totalMoves = 9999; }
-        else { movesLeft = diff.Moves; goal = diff.Goal; totalMoves = diff.Moves; }
-
-        score = 0; over = false; busy = false;
+        var d = Rules.Table[difficulty];
+        taRunning = timeAttack;
+        if (timeAttack) { totalMoves = movesLeft = 9999; goal = 0; }
+        else { totalMoves = movesLeft = d.Moves; goal = d.Goal; }
+        score = 0;
+        busy = false;
+        touchActive = false;
 
         queue.Clear();
         current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
 
-        BuildTileViews();
-        RefreshTiles();
+        view.Build();
+        view.SetVisible(true);
+        view.Refresh(board, palette);
+        ui.ShowGame();
+        ui.SetNext(new List<Piece>(queue), palette);
 
+        Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
         else StartPieceTimer();
     }
 
-    void BuildTileViews()
+    void EndGame(bool win)
     {
-        foreach (Transform c in transform) Destroy(c.gameObject);
-        tileViews = new SpriteRenderer[Board.W, Board.H];
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
-            {
-                var go = new GameObject("t_" + x + "_" + y);
-                go.transform.parent = transform;
-                go.transform.position = new Vector3(x, y, 0);
-                go.transform.localScale = Vector3.one * 0.92f;
-                var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = tileSprite;
-                tileViews[x, y] = sr;
-            }
-        ghostPool = new SpriteRenderer[8]; // 최대 조각 6칸 + 여유
-        for (int i = 0; i < ghostPool.Length; i++)
-        {
-            var go = new GameObject("ghost_" + i);
-            go.transform.parent = transform;
-            go.transform.localScale = Vector3.one * 0.6f;
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = tileSprite; sr.sortingOrder = 5; sr.enabled = false;
-            ghostPool[i] = sr;
-        }
+        Phase = GamePhase.Result;
+        busy = false;
+        view.HideGhost();
+
+        string key = BestKey(taRunning, difficulty);
+        int best = PlayerPrefs.GetInt(key, 0);
+        bool newBest = score > best;
+        if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
+
+        if (win || taRunning) sfx.PlayWin(); else sfx.PlayLose();
+        ui.ShowResult(win, taRunning, score, best, newBest);
     }
 
-    void FitCamera()
-    {
-        var cam = Camera.main;
-        cam.orthographic = true;
-        cam.transform.position = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f, -10);
-        cam.orthographicSize = Board.H / 2f + 1.5f;
-        cam.backgroundColor = new Color(0.09f, 0.09f, 0.12f);
-    }
+    public static string BestKey(bool ta, string diff) { return ta ? "best_ta" : "best_score_" + diff; }
+    public int BestForSelection() { return PlayerPrefs.GetInt(BestKey(timeAttack, difficulty), 0); }
+
+    // ---------- 루프 ----------
 
     void Update()
     {
-        if (over) { HideGhosts(); return; }
+        if (Screen.width != lastW || Screen.height != lastH) FitCamera();
+        if (Phase != GamePhase.Playing) return;
 
-        if (timeAttack)
+        if (taRunning)
         {
-            if (!busy && Time.time >= taDeadline) { over = true; return; }
+            if (!busy && Time.time >= taDeadline) { EndGame(false); return; }
         }
         else
         {
             if (!busy && Time.time >= pieceDeadline) { StartCoroutine(ExpirePiece()); return; }
         }
 
-        if (busy) { HideGhosts(); return; }
-        if (Input.GetKeyDown(KeyCode.R)) current = current.Rotated();
+        ui.UpdateHud(this);
+        if (busy) { view.HideGhost(); return; }
+        HandleInput();
+    }
 
-        Vector3 w = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-        int cx = Mathf.RoundToInt(w.x), cy = Mathf.RoundToInt(w.y);
-        int bx = MaxCell(current, 0), by = MaxCell(current, 1);
-        int ax = cx - bx / 2, ay = cy - by / 2;
+    void HandleInput()
+    {
+        if (Input.GetKeyDown(KeyCode.R)) RotateCurrent();
+
+        Vector2 sp;
+        bool stamp = false;
+        float lift = 0;
+
+        if (Input.touchCount > 0)
+        {
+            var t = Input.GetTouch(0);
+            sp = t.position;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId))
+            { view.HideGhost(); touchActive = false; return; }
+            if (t.phase == TouchPhase.Began) touchActive = true;
+            if (!touchActive) { view.HideGhost(); return; }
+            if (t.phase == TouchPhase.Ended) { stamp = true; touchActive = false; }
+            else if (t.phase == TouchPhase.Canceled) { touchActive = false; view.HideGhost(); return; }
+            lift = ghostLiftCells;
+        }
+        else
+        {
+            sp = Input.mousePosition;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            { view.HideGhost(); return; }
+            stamp = Input.GetMouseButtonDown(0);
+        }
+
+        Vector3 w = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
+        int cx = Mathf.RoundToInt(w.x);
+        int cy = Mathf.RoundToInt(w.y + lift);
+        int ax = cx - MaxCell(current, 0) / 2;
+        int ay = cy - MaxCell(current, 1) / 2;
 
         bool can = board.CanPlace(current, ax, ay);
-        ShowGhosts(ax, ay, can);
-        if (Input.GetMouseButtonDown(0) && can) StartCoroutine(DoStamp(ax, ay));
+        view.ShowGhost(current, ax, ay, can, palette[current.Color]);
+        if (stamp && can) StartCoroutine(DoStamp(ax, ay));
+    }
+
+    public void RotateCurrent()
+    {
+        if (Phase != GamePhase.Playing || busy) return;
+        current = current.Rotated();
+    }
+
+    /// <summary>프로그램/테스트용 스탬프 진입점. 성공 시 코루틴 시작.</summary>
+    public bool TryStamp(int ax, int ay)
+    {
+        if (Phase != GamePhase.Playing || busy || board == null) return false;
+        if (!board.CanPlace(current, ax, ay)) return false;
+        StartCoroutine(DoStamp(ax, ay));
+        return true;
     }
 
     IEnumerator DoStamp(int ax, int ay)
     {
-        busy = true; HideGhosts();
-        var result = board.Stamp(current, ax, ay);
-        if (!timeAttack) movesLeft--;
+        busy = true;
+        view.HideGhost();
 
-        // 파괴 연출 (코어는 이미 최종 상태. 여기선 시각 훅만)
-        foreach (var p in result.Destroyed)
-            tileViews[p.X, p.Y].color = Color.white;
-        yield return new WaitForSeconds(destroyFlash);
+        // 연출 diff용: 스탬프 직후(파괴 전) 시각 상태 스냅샷
+        var visual = new int[Board.W, Board.H];
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                visual[x, y] = board.GetTile(x, y);
+        var stamped = new List<Point>();
+        foreach (var c in current.Cells)
+        {
+            var p = new Point(ax + c.X, ay + c.Y);
+            stamped.Add(p);
+            visual[p.X, p.Y] = current.Color;
+        }
+
+        var result = board.Stamp(current, ax, ay);
+        if (!taRunning) movesLeft--;
+
+        // 1) 스탬프
+        sfx.PlayStamp();
+        view.PaintCells(stamped, palette[current.Color]);
+        yield return new WaitForSeconds(stampPop);
+
+        // 2) 파괴 플래시
+        if (result.Destroyed.Count > 0)
+        {
+            sfx.PlayDestroy(result.MaxChain);
+            view.FlashCells(result.Destroyed);
+            yield return new WaitForSeconds(destroyFlash);
+        }
+        if (result.Spawns.Count > 0) sfx.PlayItem();
 
         score += result.ScoreGained;
-        RefreshTiles();
 
+        // 3) 최종 상태 반영 + 바뀐 칸 낙하 연출
+        var changed = new bool[Board.W, Board.H];
+        bool any = false;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (board.GetTile(x, y) != visual[x, y]) { changed[x, y] = true; any = true; }
+        foreach (var p in result.Destroyed) { changed[p.X, p.Y] = true; any = true; }
+        view.Refresh(board, palette);
+        if (any) yield return view.FallIn(changed, fallTime);
+
+        // 다음 조각
         current = queue.Dequeue();
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        ui.SetNext(new List<Piece>(queue), palette);
 
-        // 승패 판정 (점수 모드만; 타임어택은 Update의 시간 종료가 관장)
-        if (!timeAttack)
-        {
-            if (score >= goal) over = true;
-            else if (movesLeft <= 0) over = true;
-        }
         busy = false;
-        if (!over && !timeAttack) StartPieceTimer();
+        if (!taRunning)
+        {
+            if (score >= goal) { EndGame(true); yield break; }
+            if (movesLeft <= 0) { EndGame(false); yield break; }
+            StartPieceTimer();
+        }
     }
 
     IEnumerator ExpirePiece()
     {
-        busy = true; HideGhosts();
-        yield return new WaitForSeconds(0.2f);
+        busy = true;
+        view.HideGhost();
+        sfx.PlayExpire();
+        yield return new WaitForSeconds(0.15f);
         movesLeft--;
         current = queue.Dequeue();
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
-        if (movesLeft <= 0) over = true;
+        ui.SetNext(new List<Piece>(queue), palette);
         busy = false;
-        if (!over) StartPieceTimer();
+        if (movesLeft <= 0) EndGame(false);
+        else StartPieceTimer();
     }
 
     void StartPieceTimer()
     {
-        int ms = Rules.PieceTimeMs(movesLeft, totalMoves);
-        pieceDeadline = Time.time + ms / 1000f;
+        pieceTimeTotal = Rules.PieceTimeMs(movesLeft, totalMoves) / 1000f;
+        pieceDeadline = Time.time + pieceTimeTotal;
     }
 
-    void RefreshTiles()
+    // 세로(모바일)/가로(에디터) 모두 보드 전체 + 상단 HUD 공간이 나오게 카메라 맞춤
+    void FitCamera()
     {
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
-            {
-                int c = board.GetTile(x, y);
-                tileViews[x, y].color = c == Board.Empty ? new Color(0.06f, 0.06f, 0.08f) : palette[c];
-                // TODO: board.GetItem(x,y) != None 이면 아이템 아이콘 오버레이 표시
-            }
+        lastW = Screen.width; lastH = Screen.height;
+        float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
+        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 1.0f) / aspect);
+        cam.orthographicSize = half;
+        cam.transform.position = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.10f, -10);
     }
 
-    void ShowGhosts(int ax, int ay, bool can)
-    {
-        for (int i = 0; i < ghostPool.Length; i++)
-        {
-            if (i < current.Cells.Count)
-            {
-                int gx = ax + current.Cells[i].X, gy = ay + current.Cells[i].Y;
-                ghostPool[i].enabled = true;
-                ghostPool[i].transform.position = new Vector3(gx, gy, -1);
-                ghostPool[i].color = can
-                    ? new Color(palette[current.Color].r, palette[current.Color].g, palette[current.Color].b, 0.95f)
-                    : new Color(1, 1, 1, 0.25f);
-            }
-            else ghostPool[i].enabled = false;
-        }
-    }
-
-    void HideGhosts()
-    {
-        if (ghostPool == null) return;
-        foreach (var g in ghostPool) if (g != null) g.enabled = false;
-    }
-
-    int MaxCell(Piece p, int axis)
+    static int MaxCell(Piece p, int axis)
     {
         int m = 0;
         foreach (var c in p.Cells) { int v = axis == 0 ? c.X : c.Y; if (v > m) m = v; }
         return m;
     }
 
-    // 색상환 균등분할 + 지터로 구분되는 3색 생성
-    Color[] GenPalette(int n, System.Random r)
+    // ---------- 팔레트 (색상환 균등분할 + 지터, HSL→RGB) ----------
+
+    static Color[] GenPalette(int n, System.Random r)
     {
         var outp = new Color[n];
         double baseH = r.NextDouble() * 360;
@@ -250,28 +347,14 @@ public class GameManager : MonoBehaviour
         }
         return new Color((float)r, (float)g, (float)b);
     }
+
     static double Hue(double p, double q, double t)
     {
-        if (t < 0) t += 1; if (t > 1) t -= 1;
+        if (t < 0) t += 1;
+        if (t > 1) t -= 1;
         if (t < 1.0 / 6) return p + (q - p) * 6 * t;
         if (t < 1.0 / 2) return q;
         if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
         return p;
     }
-
-    Sprite MakeSquareSprite()
-    {
-        var tex = new Texture2D(8, 8);
-        var px = new Color[64];
-        for (int i = 0; i < 64; i++) px[i] = Color.white;
-        tex.SetPixels(px); tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, 8, 8), new Vector2(0.5f, 0.5f), 8);
-    }
-
-    // 표현 계층에서 HUD 표시에 쓸 값 (Unity UI/TextMeshPro에 연결)
-    public int Score { get { return score; } }
-    public int Goal { get { return goal; } }
-    public int MovesLeft { get { return movesLeft; } }
-    public bool IsOver { get { return over; } }
-    public float TimeLeftSec { get { return timeAttack ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
 }
