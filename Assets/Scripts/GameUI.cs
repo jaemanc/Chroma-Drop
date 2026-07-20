@@ -3,6 +3,7 @@
 // 한글 표시는 OS 폰트(iOS: Apple SD Gothic Neo, Android: Noto Sans CJK 등)를 동적 로드,
 // 없으면 내장 폰트 + 영문 라벨로 폴백.
 
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
@@ -22,6 +23,8 @@ public class GameUI : MonoBehaviour
 
     GameObject homePanel, gamePanel, resultPanel;
     Text scoreText, subText, rightText, bestHomeText, resultTitle, resultScore, resultBest;
+    Text chainPopup;
+    Coroutine chainCo;
     Image timerFill;
     Image[] modeBtnBgs; Image[] diffBtnBgs;
     RectTransform nextRoot;
@@ -151,6 +154,44 @@ public class GameUI : MonoBehaviour
 
         var home = NewButton("home", safe, L("홈", "HOME"), 40, BtnDim, () => gm.GoHome());
         Place((RectTransform)home.transform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0), new Vector2(36, 44), new Vector2(170, 110));
+
+        // 연쇄/득점 팝업 (보드 중앙 근처에서 튀어오르며 사라짐)
+        chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Accent);
+        Place(chainPopup.rectTransform, new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
+        chainPopup.gameObject.SetActive(false);
+    }
+
+    /// <summary>연쇄/큰 득점 시 튀어오르는 팝업 (타격감). GameManager가 파괴 직후 호출.</summary>
+    public void ShowChainPopup(int chain, int scoreGained)
+    {
+        if (chainPopup == null) return;
+        chainPopup.text = chain >= 2 ? (L("연쇄 ", "CHAIN ") + "x" + chain) : ("+" + scoreGained.ToString("N0"));
+        chainPopup.color = chain >= 3 ? new Color(1f, 0.82f, 0.3f) : Accent;
+        if (chainCo != null) StopCoroutine(chainCo);
+        chainCo = StartCoroutine(ChainPopupCo());
+    }
+
+    IEnumerator ChainPopupCo()
+    {
+        var rt = chainPopup.rectTransform;
+        chainPopup.gameObject.SetActive(true);
+        float dur = 0.7f;
+        float t = 0;
+        Color baseCol = chainPopup.color;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / dur);
+            float scale = Mathf.Lerp(1.45f, 1.0f, Mathf.Clamp01(k * 3f));
+            rt.localScale = Vector3.one * scale;
+            rt.anchoredPosition = new Vector2(0, k * 70f);
+            var c = baseCol; c.a = 1f - Mathf.Clamp01((k - 0.55f) / 0.45f); chainPopup.color = c;
+            yield return null;
+        }
+        chainPopup.gameObject.SetActive(false);
+        rt.anchoredPosition = Vector2.zero;
+        rt.localScale = Vector3.one;
+        chainCo = null;
     }
 
     /// <summary>매 프레임 HUD 갱신 (Playing 중 GameManager가 호출)</summary>
@@ -215,6 +256,10 @@ public class GameUI : MonoBehaviour
 
         var title = NewText("title", safe, "CHROMA DROP", 104, TextAnchor.MiddleCenter, Color.white);
         Place(title.rectTransform, new Vector2(0.5f, 0.80f), new Vector2(0.5f, 0.80f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1000, 130));
+        title.gameObject.AddComponent<UiPulse>();
+
+        var underline = NewImage("titleline", safe, Accent);
+        Place(underline.rectTransform, new Vector2(0.5f, 0.775f), new Vector2(0.5f, 0.775f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(360, 8));
 
         var sub = NewText("subtitle", safe, L("칼라 매쳐", "COLOR MATCHER"), 46, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.55f));
         Place(sub.rectTransform, new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 70));
@@ -244,6 +289,10 @@ public class GameUI : MonoBehaviour
 
         var start = NewButton("start", safe, L("시작", "START"), 62, Accent, () => gm.StartGame());
         Place((RectTransform)start.transform, new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(520, 150));
+        start.gameObject.AddComponent<UiPulse>();
+
+        var footer = NewText("footer", safe, "v1.0.0  ·  jaemanc", 34, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.35f));
+        Place(footer.rectTransform, new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 50));
     }
 
     void RefreshHomeButtons()
@@ -358,5 +407,20 @@ public class SafeAreaFitter : MonoBehaviour
         rt.anchorMin = new Vector2(sa.xMin / Screen.width, sa.yMin / Screen.height);
         rt.anchorMax = new Vector2(sa.xMax / Screen.width, sa.yMax / Screen.height);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
+    }
+}
+
+/// <summary>은은한 맥동 스케일 (홈 타이틀/시작 버튼 등 강조용)</summary>
+public class UiPulse : MonoBehaviour
+{
+    public float amp = 0.04f, speed = 2.2f;
+    float phase;
+
+    void Awake() { phase = Random.value * 6.28318f; }
+
+    void Update()
+    {
+        float s = 1f + Mathf.Sin(Time.unscaledTime * speed + phase) * amp;
+        transform.localScale = new Vector3(s, s, 1f);
     }
 }

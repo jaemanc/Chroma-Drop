@@ -49,3 +49,9 @@ ExportedObj/
 # Local test build outputs
 core_tests.exe
 compile_check.dll
+
+# Signing keys & credentials — NEVER commit
+*.keystore
+*.jks
+keystore.env
+keystore.credentials*

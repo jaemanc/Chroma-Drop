@@ -51,6 +51,8 @@ public class GameManager : MonoBehaviour
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH;
+    Vector3 camBase;
+    Coroutine shakeCo;
 
     void Awake()
     {
@@ -81,6 +83,8 @@ public class GameManager : MonoBehaviour
     public void GoHome()
     {
         StopAllCoroutines();
+        shakeCo = null;
+        if (cam != null) cam.transform.position = camBase;
         busy = false;
         Phase = GamePhase.Home;
         if (view != null) { view.HideGhost(); view.SetVisible(false); }
@@ -93,6 +97,8 @@ public class GameManager : MonoBehaviour
     public void StartGame(string diff, bool ta, int seedOverride)
     {
         StopAllCoroutines();
+        shakeCo = null;
+        if (cam != null) cam.transform.position = camBase;
         difficulty = Rules.Table.ContainsKey(diff) ? diff : "normal";
         timeAttack = ta;
 
@@ -249,6 +255,20 @@ public class GameManager : MonoBehaviour
         {
             sfx.PlayDestroy(result.MaxChain);
             view.FlashCells(result.Destroyed);
+
+            var burstColors = new List<Color>(result.Destroyed.Count);
+            foreach (var bp in result.Destroyed)
+            {
+                int ci = visual[bp.X, bp.Y];
+                burstColors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
+            }
+            float energy = 1f + 0.35f * Mathf.Clamp(result.MaxChain - 1, 0, 6) + (result.BigHit ? 0.6f : 0f);
+            view.Burst(result.Destroyed, burstColors, energy);
+
+            float mag = Mathf.Min(0.7f, 0.12f + 0.05f * (result.MaxChain - 1) + 0.01f * Mathf.Min(result.Destroyed.Count, 30));
+            Shake(mag, 0.18f);
+            if (result.MaxChain >= 2 || result.ScoreGained >= 500)
+                ui.ShowChainPopup(result.MaxChain, result.ScoreGained);
             yield return new WaitForSeconds(destroyFlash);
         }
         if (result.Spawns.Count > 0) sfx.PlayItem();
@@ -307,7 +327,31 @@ public class GameManager : MonoBehaviour
         float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 1.0f) / aspect);
         cam.orthographicSize = half;
-        cam.transform.position = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.10f, -10);
+        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.10f, -10);
+        if (shakeCo == null) cam.transform.position = camBase;
+    }
+
+    /// <summary>카메라 흔들림 (타격감). 파괴 규모/연쇄에 비례해 호출.</summary>
+    public void Shake(float magnitude, float duration)
+    {
+        if (!isActiveAndEnabled || cam == null) return;
+        if (shakeCo != null) StopCoroutine(shakeCo);
+        shakeCo = StartCoroutine(ShakeCo(magnitude, duration));
+    }
+
+    IEnumerator ShakeCo(float mag, float dur)
+    {
+        float t = 0;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float damper = 1f - Mathf.Clamp01(t / dur);
+            Vector2 r = UnityEngine.Random.insideUnitCircle * (mag * damper);
+            cam.transform.position = camBase + new Vector3(r.x, r.y, 0);
+            yield return null;
+        }
+        cam.transform.position = camBase;
+        shakeCo = null;
     }
 
     static int MaxCell(Piece p, int axis)

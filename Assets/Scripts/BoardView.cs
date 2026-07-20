@@ -1,5 +1,5 @@
 // BoardView.cs — 보드 렌더링/연출 계층.
-// 스프라이트(타일/아이템 아이콘)는 전부 런타임 생성 — 외부 에셋 의존 없음.
+// 스프라이트(타일/아이템 아이콘/파티클)는 전부 런타임 생성 — 외부 에셋 의존 없음.
 
 using System.Collections;
 using System.Collections.Generic;
@@ -14,16 +14,28 @@ public class BoardView : MonoBehaviour
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
     SpriteRenderer[] ghost;
-    Sprite square;
+    Sprite tile;                  // 둥근 모서리 + 세로 그라데이션 (타일/고스트)
+    Sprite plain;                 // 평면 사각 (프레임)
+    Sprite soft;                  // 파티클용 소프트 원
     readonly Dictionary<ItemType, Sprite> icons = new Dictionary<ItemType, Sprite>();
     bool built;
+
+    // ---- 파티클 풀 (파괴 버스트 타격감) ----
+    const int MaxParts = 200;
+    Transform[] pTr;
+    SpriteRenderer[] pSr;
+    Vector2[] pVel;
+    float[] pLife, pMax, pSpin, pRot, pSize;
+    int liveParts;
 
     public void Build()
     {
         if (built) return;
         built = true;
 
-        square = MakeSquareSprite();
+        tile = MakeTileSprite();
+        plain = MakeSquareSprite();
+        soft = MakeSoftSprite();
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
@@ -35,7 +47,7 @@ public class BoardView : MonoBehaviour
         frameGo.transform.localPosition = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f, 1);
         frameGo.transform.localScale = new Vector3(Board.W + 0.7f, Board.H + 0.7f, 1);
         var fsr = frameGo.AddComponent<SpriteRenderer>();
-        fsr.sprite = square;
+        fsr.sprite = plain;
         fsr.color = new Color(0.13f, 0.13f, 0.18f);
         fsr.sortingOrder = -2;
 
@@ -49,7 +61,7 @@ public class BoardView : MonoBehaviour
                 go.transform.localPosition = new Vector3(x, y, 0);
                 go.transform.localScale = Vector3.one * TileScale;
                 var sr = go.AddComponent<SpriteRenderer>();
-                sr.sprite = square;
+                sr.sprite = tile;
                 tiles[x, y] = sr;
 
                 var og = new GameObject("i_" + x + "_" + y);
@@ -69,10 +81,37 @@ public class BoardView : MonoBehaviour
             go.transform.SetParent(transform, false);
             go.transform.localScale = Vector3.one * 0.7f;
             var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = square;
+            sr.sprite = tile;
             sr.sortingOrder = 5;
             sr.enabled = false;
             ghost[i] = sr;
+        }
+
+        BuildParticlePool();
+    }
+
+    void BuildParticlePool()
+    {
+        pTr = new Transform[MaxParts];
+        pSr = new SpriteRenderer[MaxParts];
+        pVel = new Vector2[MaxParts];
+        pLife = new float[MaxParts];
+        pMax = new float[MaxParts];
+        pSpin = new float[MaxParts];
+        pRot = new float[MaxParts];
+        pSize = new float[MaxParts];
+        var root = new GameObject("particles").transform;
+        root.SetParent(transform, false);
+        for (int i = 0; i < MaxParts; i++)
+        {
+            var go = new GameObject("p" + i);
+            go.transform.SetParent(root, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = soft;
+            sr.sortingOrder = 8;
+            sr.enabled = false;
+            pTr[i] = go.transform;
+            pSr[i] = sr;
         }
     }
 
@@ -102,18 +141,20 @@ public class BoardView : MonoBehaviour
         foreach (var p in cells)
         {
             tiles[p.X, p.Y].color = c;
-            tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.08f;
+            tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.14f;
         }
         StartCoroutine(ShrinkCells(cells));
     }
 
     IEnumerator ShrinkCells(List<Point> cells)
     {
-        float t = 0, d = 0.12f;
+        float t = 0, d = 0.14f;
         while (t < d)
         {
             t += Time.deltaTime;
-            float s = Mathf.Lerp(1.08f, TileScale, t / d);
+            // ease-out-back 느낌으로 탄력 있게 수축
+            float k = t / d;
+            float s = Mathf.Lerp(1.14f, TileScale, k * k * (3f - 2f * k));
             foreach (var p in cells) tiles[p.X, p.Y].transform.localScale = Vector3.one * s;
             yield return null;
         }
@@ -124,6 +165,70 @@ public class BoardView : MonoBehaviour
     public void FlashCells(List<Point> pts)
     {
         foreach (var p in pts) tiles[p.X, p.Y].color = Color.white;
+    }
+
+    /// <summary>파괴 버스트: 각 칸 위치에서 색 파편이 튀어나가며 페이드 (타격감)</summary>
+    public void Burst(List<Point> pts, List<Color> colors, float energy)
+    {
+        if (pTr == null) return;
+        int perCell = pts.Count > 60 ? 1 : (pts.Count > 24 ? 2 : 3);
+        for (int i = 0; i < pts.Count; i++)
+        {
+            Color col = (colors != null && i < colors.Count) ? colors[i] : Color.white;
+            for (int k = 0; k < perCell; k++)
+                Spawn(pts[i].X, pts[i].Y, col, energy);
+        }
+    }
+
+    void Spawn(float x, float y, Color col, float energy)
+    {
+        // 비활성 파티클 찾기 (풀 소진 시 스킵)
+        int idx = -1;
+        for (int i = 0; i < MaxParts; i++)
+            if (!pSr[i].enabled) { idx = i; break; }
+        if (idx < 0) return;
+
+        var ang = Random.value * Mathf.PI * 2f;
+        var spd = Random.Range(2.2f, 5.5f) * Mathf.Clamp(energy, 0.7f, 2.2f);
+        pVel[idx] = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * spd;
+        pLife[idx] = 0f;
+        pMax[idx] = Random.Range(0.28f, 0.5f);
+        pSpin[idx] = Random.Range(-540f, 540f);
+        pRot[idx] = Random.value * 360f;
+        pSize[idx] = Random.Range(0.18f, 0.34f);
+        var c = Color.Lerp(col, Color.white, 0.35f);
+        c.a = 1f;
+        pSr[idx].color = c;
+        pTr[idx].localPosition = new Vector3(x + Random.Range(-0.15f, 0.15f), y + Random.Range(-0.15f, 0.15f), -1.2f);
+        pTr[idx].localScale = Vector3.one * pSize[idx];
+        pTr[idx].localRotation = Quaternion.Euler(0, 0, pRot[idx]);
+        pSr[idx].enabled = true;
+        liveParts++;
+    }
+
+    void Update()
+    {
+        if (liveParts <= 0) return;
+        float dt = Time.deltaTime;
+        for (int i = 0; i < MaxParts; i++)
+        {
+            if (!pSr[i].enabled) continue;
+            pLife[i] += dt;
+            float k = pLife[i] / pMax[i];
+            if (k >= 1f) { pSr[i].enabled = false; liveParts--; continue; }
+            pVel[i] *= 0.90f;               // 감쇠
+            pVel[i].y -= 6f * dt;           // 중력
+            var pos = pTr[i].localPosition;
+            pos.x += pVel[i].x * dt;
+            pos.y += pVel[i].y * dt;
+            pTr[i].localPosition = pos;
+            pRot[i] += pSpin[i] * dt;
+            pTr[i].localRotation = Quaternion.Euler(0, 0, pRot[i]);
+            pTr[i].localScale = Vector3.one * pSize[i] * (1f - 0.6f * k);
+            var c = pSr[i].color;
+            c.a = 1f - k * k;
+            pSr[i].color = c;
+        }
     }
 
     /// <summary>바뀐 칸들이 위에서 떨어져 들어오는 낙하 연출. 색은 이미 Refresh로 최종 상태.</summary>
@@ -181,6 +286,7 @@ public class BoardView : MonoBehaviour
         foreach (var g in ghost) if (g != null) g.enabled = false;
     }
 
+    // 평면 흰 사각 (프레임)
     static Sprite MakeSquareSprite()
     {
         var tex = new Texture2D(8, 8);
@@ -190,6 +296,50 @@ public class BoardView : MonoBehaviour
         tex.SetPixels(px);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, 8, 8), new Vector2(0.5f, 0.5f), 8);
+    }
+
+    // 둥근 모서리 + 위가 밝은 세로 그라데이션 + 얇은 안쪽 하이라이트 (SpriteRenderer.color로 틴트)
+    static Sprite MakeTileSprite()
+    {
+        const int S = 32; const float r = 7f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(r - dist + 0.5f); // 모서리 안티에일리어싱
+                float g = Mathf.Lerp(0.80f, 1.0f, fy / (S - 1)); // 아래 어둡게, 위 밝게
+                // 상단 하이라이트 밴드
+                if (fy > S - 6) g = Mathf.Min(1f, g + 0.06f);
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 소프트 원판 (파티클)
+    static Sprite MakeSoftSprite()
+    {
+        const int S = 16;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        float c = (S - 1) / 2f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x - c, dy = y - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / c;
+                float a = Mathf.Clamp01(1f - d);
+                px[y * S + x] = new Color(1, 1, 1, a * a);
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
     // 아이템 아이콘: 반투명 어두운 원판 + 흰 글리프 (타일 색과 무관하게 대비 확보)
