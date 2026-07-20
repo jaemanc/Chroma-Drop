@@ -1,0 +1,3 @@
+[submodule ".kiro/steering/harness-playbook"]
+	path = .kiro/steering/harness-playbook
+	url = https://github.com/jaemanc/harness-playbook.git
