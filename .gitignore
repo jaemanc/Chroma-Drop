@@ -49,3 +49,7 @@ ExportedObj/
 # Local test build outputs
 core_tests.exe
 compile_check.dll
+
+# 서명 키 (절대 커밋 금지)
+*.keystore
+*.jks

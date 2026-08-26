@@ -88,6 +88,53 @@ MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scr
    HTML v5 `dedupeBest`/`nationRanking`을 C#으로 옮기면 됨(동명동국 최고점 병합, 국가 합산).
 6. **모바일 입력**: 현재 마우스 기준. Touch/드래그로 교체.
 
+## 안드로이드 빌드 (Tools/build-android.sh)
+
+사전 준비 — Android Build Support 모듈(SDK/NDK/OpenJDK 포함) 1회 설치:
+
+```bash
+'/Applications/Unity Hub.app/Contents/MacOS/Unity Hub' -- --headless install-modules \
+    --version 6000.5.2f1 --module android --childModules
+```
+
+빌드:
+
+```bash
+./Tools/build-android.sh apk              # 사이드로드용 APK (디버그 서명)
+./Tools/build-android.sh apk --install    # 빌드 후 연결된 기기에 adb install
+./Tools/build-android.sh apk --fast       # Mono/ARMv7 — IL2CPP 없이 빠른 확인용
+./Tools/build-android.sh aab              # Play Console 업로드용 AAB
+./Tools/build-android.sh aab -appVersion 1.0.1 -versionCode 2
+```
+
+산출물은 `Builds/Android/ChromaDrop-<버전>.(apk|aab)`. 에디터에서는 메뉴
+`ChromaDrop > Build > Android APK / Android AAB` 로도 같은 빌드가 돈다.
+
+기본 설정: IL2CPP + ARM64, minSdk 26, targetSdk Auto(설치된 최신), 세로 고정,
+패키지명 `com.jaemanc.chromadrop`.
+
+### 서명
+
+환경변수 4개가 모두 있으면 릴리즈 키로, 아니면 Unity 디버그 키로 서명한다.
+디버그 서명 APK는 기기에 직접 설치(사이드로드)만 가능하고 Play 업로드는 불가.
+
+```bash
+./Tools/make-keystore.sh          # ~/.keystores/chromadrop.keystore 생성 (1회)
+export CHROMADROP_KEYSTORE="$HOME/.keystores/chromadrop.keystore"
+export CHROMADROP_KEYSTORE_PASS='...' CHROMADROP_KEYALIAS=chromadrop CHROMADROP_KEYALIAS_PASS='...'
+./Tools/build-android.sh aab
+```
+
+키스토어는 `.gitignore` 처리돼 있다. **분실하면 같은 앱으로 업데이트할 수 없으니 따로 백업할 것.**
+
+### 기기에 파일로 떨구기
+
+- USB 디버깅 켠 기기 연결 후 `./Tools/build-android.sh apk --install`
+- 또는 `Builds/Android/*.apk` 를 드라이브/에어드롭 등으로 전달 → 기기에서
+  "출처를 알 수 없는 앱 설치" 허용 후 실행
+- AAB 는 그대로 설치할 수 없다. Play Console 내부 테스트 트랙에 올리거나
+  `bundletool build-apks --local-testing` 으로 APK 로 변환해야 한다.
+
 ## iOS/Android 배포 개요 (검증 아님, 일반 절차)
 
 - 한 Unity 프로젝트에서 Build Settings의 플랫폼만 전환해 양쪽 빌드.
