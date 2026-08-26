@@ -57,7 +57,7 @@ set +e
   -buildTarget Android \
   -logFile "$LOG" \
   -executeMethod "$METHOD" \
-  "${EXTRA_ARGS[@]}"
+  ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
 STATUS=$?
 set -e
 
