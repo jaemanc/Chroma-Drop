@@ -53,3 +53,6 @@ compile_check.dll
 # 서명 키 (절대 커밋 금지)
 *.keystore
 *.jks
+
+# Unity 빌드 임시 디렉터리
+/.utmp/
