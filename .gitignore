@@ -29,7 +29,7 @@ ExportedObj/
 # Auto-generated solution/project files
 *.csproj
 *.sln
-*.slnx
+*.slnxS
 *.suo
 *.user
 *.userprefs
@@ -56,3 +56,6 @@ compile_check.dll
 
 # Unity 빌드 임시 디렉터리
 /.utmp/
+
+keystore.env
+keystore.credentials*
