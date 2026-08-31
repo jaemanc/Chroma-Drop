@@ -59,3 +59,6 @@ compile_check.dll
 
 keystore.env
 keystore.credentials*
+# 랭킹 서버 설정 (Tools/make-leaderboard-config.sh 로 생성)
+/Assets/Resources/leaderboard.json
+/Assets/Resources/leaderboard.json.meta

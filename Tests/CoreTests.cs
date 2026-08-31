@@ -62,8 +62,8 @@ class CoreTests
         var b5 = FlatBoard(0);
         Assert(b5.EffectCells(ItemType.Row, 5, 3).Count == 16, "Row = 16칸");
         Assert(b5.EffectCells(ItemType.Col, 5, 3).Count == 16, "Col = 16칸");
-        Assert(b5.EffectCells(ItemType.Bomb9, 8, 8).Count == 81, "Bomb9 중앙 = 81칸");
-        Assert(b5.EffectCells(ItemType.Bomb9, 0, 0).Count == 25, "Bomb9 모서리 = 25칸");
+        Assert(b5.EffectCells(ItemType.Bomb5, 8, 8).Count == 25, "Bomb5 중앙 = 25칸");
+        Assert(b5.EffectCells(ItemType.Bomb5, 0, 0).Count == 9, "Bomb5 모서리 = 9칸");
         Assert(b5.EffectCells(ItemType.Diag, 8, 8).Count == 30, "Diag 중앙 = 30칸");
         Assert(b5.EffectCells(ItemType.Diag, 0, 0).Count == 16, "Diag 모서리 = 16칸");
         // ColorClear: 색0 평면 전체
@@ -75,16 +75,16 @@ class CoreTests
         {
             var bb = new Board(3, s + 1);
             var trng = new Random(s + 1);
-            var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb9, ItemType.ColorClear };
+            var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb5, ItemType.ColorClear };
             for (int i = 0; i < 30; i++)
                 bb.SetItem(trng.Next(16), trng.Next(16), types[trng.Next(types.Length)]);
-            // Bomb9 하나를 매칭에 넣어 발동시키는 대신, 발동 시뮬레이션은 Resolve 경유가 복잡하므로
+            // Bomb5 하나를 매칭에 넣어 발동시키는 대신, 발동 시뮬레이션은 Resolve 경유가 복잡하므로
             // EffectCells + 수동 BFS로 종결만 확인
             var td = new Dictionary<int, Point>();
             var q = new Queue<Point>();
             var start = new Point(8, 8);
             td[8 * 100 + 8] = start; q.Enqueue(start);
-            bb.SetItem(8, 8, ItemType.Bomb9);
+            bb.SetItem(8, 8, ItemType.Bomb5);
             int steps = 0;
             while (q.Count > 0)
             {

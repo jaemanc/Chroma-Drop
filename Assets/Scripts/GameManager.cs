@@ -22,6 +22,7 @@ public class GameManager : MonoBehaviour
     [Header("연출 시간(초)")]
     public float stampPop = 0.10f;
     public float destroyFlash = 0.20f;
+    public float chainStep = 0.11f;        // 연쇄 한 단계가 터지는 간격
     public float fallTime = 0.20f;
     public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
@@ -35,6 +36,10 @@ public class GameManager : MonoBehaviour
     public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((pieceDeadline - Time.time) / pieceTimeTotal); } }
     public Board BoardRef { get { return board; } }
     public Piece CurrentPiece { get { return current; } }
+
+    // 스탬프로 바로 터진 칸 / 연계(아이템 발동·후속 연쇄)로 터진 칸을 색으로 구분한다.
+    static readonly Color DirectFlash = new Color(1f, 1f, 1f);
+    static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);
 
     Board board;
     Piece current;
@@ -50,7 +55,7 @@ public class GameManager : MonoBehaviour
     int score, movesLeft, totalMoves, goal;
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
-    int lastW, lastH;
+    int lastW, lastH, curSeed;
     Vector3 camBase;
     Coroutine shakeCo;
 
@@ -70,6 +75,7 @@ public class GameManager : MonoBehaviour
         cam.clearFlags = CameraClearFlags.SolidColor;
         cam.backgroundColor = new Color(0.09f, 0.09f, 0.12f);
 
+        Leaderboard.Create();
         view = new GameObject("BoardView").AddComponent<BoardView>();
         sfx = gameObject.AddComponent<Sfx>();
         ui = GameUI.Create(this);
@@ -103,6 +109,7 @@ public class GameManager : MonoBehaviour
         timeAttack = ta;
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
+        curSeed = s;
         board = new Board(Rules.ColorCount, s);
         pieceRng = new System.Random(s + 1);
         palette = Palette.Generate(Rules.ColorCount, new System.Random(s + 2));
@@ -144,6 +151,16 @@ public class GameManager : MonoBehaviour
 
         if (win || taRunning) sfx.PlayWin(); else sfx.PlayLose();
         ui.ShowResult(win, taRunning, score, best, newBest);
+
+        // 랭킹 자동 제출 — 설정이 없거나 오프라인이면 조용히 넘어간다.
+        var lb = Leaderboard.I;
+        if (lb != null && lb.Configured && score > 0)
+        {
+            ui.SetSubmitState(GameUI.SubmitState.Sending);
+            StartCoroutine(lb.Submit(taRunning, difficulty, score, curSeed,
+                ok => ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed)));
+        }
+        else ui.SetSubmitState(GameUI.SubmitState.Off);
     }
 
     public static string BestKey(bool ta, string diff) { return ta ? "best_ta" : "best_score_" + diff; }
@@ -250,23 +267,10 @@ public class GameManager : MonoBehaviour
         view.PaintCells(stamped, palette[current.Color]);
         yield return new WaitForSeconds(stampPop);
 
-        // 2) 파괴 플래시
+        // 2) 파괴 — 연쇄 단계별로 순차 폭발
         if (result.Destroyed.Count > 0)
         {
-            sfx.PlayDestroy(result.MaxChain);
-            view.FlashCells(result.Destroyed);
-
-            var burstColors = new List<Color>(result.Destroyed.Count);
-            foreach (var bp in result.Destroyed)
-            {
-                int ci = visual[bp.X, bp.Y];
-                burstColors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
-            }
-            float energy = 1f + 0.35f * Mathf.Clamp(result.MaxChain - 1, 0, 6) + (result.BigHit ? 0.6f : 0f);
-            view.Burst(result.Destroyed, burstColors, energy);
-
-            float mag = Mathf.Min(0.7f, 0.12f + 0.05f * (result.MaxChain - 1) + 0.01f * Mathf.Min(result.Destroyed.Count, 30));
-            Shake(mag, 0.18f);
+            yield return DestroyWaves(result, visual);
             if (result.MaxChain >= 2 || result.ScoreGained >= 500)
                 ui.ShowChainPopup(result.MaxChain, result.ScoreGained);
             yield return new WaitForSeconds(destroyFlash);
@@ -297,6 +301,53 @@ public class GameManager : MonoBehaviour
             if (movesLeft <= 0) { EndGame(false); yield break; }
             StartPieceTimer();
         }
+    }
+
+    /// <summary>연쇄 단계(웨이브)를 하나씩 터뜨린다. 각 웨이브 안에서도 매칭 → 아이템 발동 순.</summary>
+    IEnumerator DestroyWaves(ResolveResult result, int[,] visual)
+    {
+        // 단계가 많으면 전체가 늘어지므로 간격을 줄인다.
+        int segments = 0;
+        foreach (var w in result.Waves)
+            segments += (w.MatchEnd > w.Start ? 1 : 0) + (w.End > w.MatchEnd ? 1 : 0);
+        float step = segments <= 1 ? 0f : Mathf.Max(0.045f, chainStep - 0.006f * segments);
+
+        for (int i = 0; i < result.Waves.Count; i++)
+        {
+            var w = result.Waves[i];
+            sfx.PlayDestroy(i + 1);
+
+            // 첫 웨이브의 매칭만 '직접 터진 칸'. 아이템 발동과 후속 웨이브는 전부 '연계'.
+            yield return BurstSegment(result, visual, w.Start, w.MatchEnd,
+                i == 0 ? DirectFlash : ChainFlash, i + 1, result.BigHit, step);
+            yield return BurstSegment(result, visual, w.MatchEnd, w.End,
+                ChainFlash, i + 1, result.BigHit, step);
+        }
+    }
+
+    IEnumerator BurstSegment(ResolveResult result, int[,] visual, int from, int to,
+                             Color flash, int chain, bool bigHit, float step)
+    {
+        if (to <= from) yield break;
+
+        var pts = new List<Point>(to - from);
+        var colors = new List<Color>(to - from);
+        for (int i = from; i < to; i++)
+        {
+            var p = result.Destroyed[i];
+            pts.Add(p);
+            int ci = visual[p.X, p.Y];
+            colors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
+        }
+
+        view.FlashCells(pts, flash);
+        float energy = 1f + 0.35f * Mathf.Clamp(chain - 1, 0, 6) + (bigHit ? 0.6f : 0f);
+        view.Burst(pts, colors, energy, flash);
+
+        float mag = Mathf.Min(0.7f, 0.12f + 0.05f * (chain - 1) + 0.01f * Mathf.Min(pts.Count, 30));
+        Shake(mag, 0.18f);
+
+        if (step > 0f) yield return new WaitForSeconds(step);
     }
 
     IEnumerator ExpirePiece()

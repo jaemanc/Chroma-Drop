@@ -27,7 +27,7 @@ namespace ColorMatcher.Core
         public override string ToString() { return "(" + X + "," + Y + ")"; }
     }
 
-    public enum ItemType { None, Row, Col, Diag, Bomb9, ColorClear }
+    public enum ItemType { None, Row, Col, Diag, Bomb5, ColorClear }
 
     public enum GameMode { Score, TimeAttack }
 
@@ -47,6 +47,15 @@ namespace ColorMatcher.Core
         public List<Point> Destroyed = new List<Point>(); // 이번에 비워진 칸(연출용)
         public List<SpawnedItem> Spawns = new List<SpawnedItem>();
         public bool BigHit;                              // 3x3 이상 매칭 발생 여부
+        public List<Wave> Waves = new List<Wave>();      // 연쇄 단계별 경계(연출용)
+    }
+
+    /// <summary>Destroyed 안의 한 연쇄 단계 구간. 표현 계층이 순차 연출에 사용.</summary>
+    public struct Wave
+    {
+        public int Start;      // Destroyed[Start .. MatchEnd) = 매칭으로 파괴된 칸
+        public int MatchEnd;   // Destroyed[MatchEnd .. End)   = 아이템 발동으로 연쇄 파괴된 칸
+        public int End;
     }
 
     public struct SpawnedItem
@@ -175,8 +184,10 @@ namespace ColorMatcher.Core
 
                 int matchTiles = 0;
                 foreach (var m in matches) matchTiles += m.Size * m.Size;
+                bool huge = false;   // 이 단계에 4x4 이상 매칭이 있었나 (colorclear 조건)
 
                 var toDestroy = new Dictionary<int, Point>();
+                var order = new List<Point>();   // 매칭 칸 먼저, 아이템 발동 칸 나중
                 var actQueue = new Queue<Point>();
 
                 foreach (var m in matches)
@@ -185,15 +196,18 @@ namespace ColorMatcher.Core
                     res.ScoreGained += (int)(m.Size * m.Size * BaseTileScore * sizeMult * mult);
                     res.Matches.Add(m);
                     if (m.Size >= 3) res.BigHit = true;
+                    if (m.Size >= 4) huge = true;
                     for (int dx = 0; dx < m.Size; dx++)
                         for (int dy = 0; dy < m.Size; dy++)
                         {
                             int x = m.X + dx, y = m.Y + dy;
                             int k = Key(x, y);
-                            if (!toDestroy.ContainsKey(k)) toDestroy[k] = new Point(x, y);
+                            if (!toDestroy.ContainsKey(k)) { toDestroy[k] = new Point(x, y); order.Add(new Point(x, y)); }
                             if (items[x, y] != ItemType.None) actQueue.Enqueue(new Point(x, y));
                         }
                 }
+
+                int matchEnd = order.Count;
 
                 // 아이템 발동 BFS (발동으로 파괴된 칸의 아이템도 연쇄 발동)
                 int actCount = 0;
@@ -207,6 +221,7 @@ namespace ColorMatcher.Core
                         int k = Key(e.X, e.Y);
                         if (toDestroy.ContainsKey(k)) continue;
                         toDestroy[k] = e;
+                        order.Add(e);
                         actCount++;
                         if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
                     }
@@ -215,19 +230,26 @@ namespace ColorMatcher.Core
                     res.ScoreGained += (int)(actCount * BaseTileScore * mult);
 
                 // 실제 파괴
-                res.TilesDestroyed += toDestroy.Count;
-                foreach (var pt in toDestroy.Values)
+                res.TilesDestroyed += order.Count;
+                int waveStart = res.Destroyed.Count;
+                foreach (var pt in order)
                 {
                     tiles[pt.X, pt.Y] = Empty;
                     items[pt.X, pt.Y] = ItemType.None;
                     res.Destroyed.Add(pt);
                 }
+                res.Waves.Add(new Wave
+                {
+                    Start = waveStart,
+                    MatchEnd = waveStart + matchEnd,
+                    End = res.Destroyed.Count,
+                });
 
                 ApplyGravity();
                 Refill();
 
                 // 스폰: 이 단계에서 (연쇄/동시파괴) 조건 충족 시. 즉시 파괴 방지 위해 실제 배치는 여기서.
-                MaybeSpawn(chain, matchTiles, res);
+                MaybeSpawn(chain, matchTiles, huge, res);
             }
             res.MaxChain = chain;
             return res;
@@ -236,18 +258,19 @@ namespace ColorMatcher.Core
         // v5 스폰 규칙:
         //  - 한 단계 매칭 6타일 이상: row/col/diag 중 랜덤 1개
         //  - 연쇄 2 도달: row
-        //  - 연쇄 3 도달: bomb9
-        //  - 연쇄 5 이상 또는 3x3 이상 매칭(BigHit): colorclear (랜덤 색으로 재칠)
-        void MaybeSpawn(int chain, int matchTiles, ResolveResult res)
+        //  - 연쇄 3 도달: bomb5
+        //  - 연쇄 5 이상 또는 4x4 이상 매칭: colorclear (랜덤 색으로 재칠)
+        void MaybeSpawn(int chain, int matchTiles, bool huge, ResolveResult res)
         {
             if (matchTiles >= 6)
             {
                 var pool = new[] { ItemType.Row, ItemType.Col, ItemType.Diag };
                 SpawnItem(pool[rng.Next(pool.Length)], false, res);
             }
-            if (chain >= 2) SpawnItem(ItemType.Row, false, res);
-            if (chain >= 3) SpawnItem(ItemType.Bomb9, false, res);
-            if (chain >= 5 || res.BigHit) SpawnItem(ItemType.ColorClear, true, res);
+            // '도달'이므로 == 다. >= 로 두면 연쇄가 길어질수록 매 단계마다 또 나온다.
+            if (chain == 2) SpawnItem(ItemType.Row, false, res);
+            if (chain == 3) SpawnItem(ItemType.Bomb5, false, res);
+            if (chain == 5 || huge) SpawnItem(ItemType.ColorClear, true, res);
         }
 
         void SpawnItem(ItemType type, bool randomColor, ResolveResult res)
@@ -287,9 +310,9 @@ namespace ColorMatcher.Core
                         for (int by = 0; by < H; by++)
                             if (bx - x == by - y || bx - x == -(by - y)) cells.Add(new Point(bx, by));
                     break;
-                case ItemType.Bomb9:
-                    for (int dx = -4; dx <= 4; dx++)
-                        for (int dy = -4; dy <= 4; dy++)
+                case ItemType.Bomb5:
+                    for (int dx = -2; dx <= 2; dx++)
+                        for (int dy = -2; dy <= 2; dy++)
                         {
                             int bx = x + dx, by = y + dy;
                             if (InBounds(bx, by)) cells.Add(new Point(bx, by));

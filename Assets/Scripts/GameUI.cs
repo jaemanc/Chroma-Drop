@@ -27,6 +27,17 @@ public class GameUI : MonoBehaviour
     Coroutine chainCo;
     Image timerFill;
     Image[] modeBtnBgs; Image[] diffBtnBgs;
+
+    // 랭킹
+    public enum SubmitState { Off, Sending, Done, Failed }
+    GameObject rankPanel, countryPanel;
+    Text submitText, rankTitle, rankEmpty;
+    Text[] rankRows;
+    Image rankTabMe, rankTabNation;
+    Image homeBadge; Text homeBadgeText;
+    bool rankNationTab;
+    Coroutine rankCo;
+    const int RankRowCount = 12;
     RectTransform nextRoot;
     readonly List<Image> nextCells = new List<Image>();
 
@@ -86,9 +97,13 @@ public class GameUI : MonoBehaviour
         BuildGamePanel();
         BuildHomePanel();
         BuildResultPanel();
+        BuildRankPanel();
+        BuildCountryPanel();
         homePanel.SetActive(false);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
+        rankPanel.SetActive(false);
+        countryPanel.SetActive(false);
     }
 
     // ---------- 패널 전환 ----------
@@ -98,6 +113,8 @@ public class GameUI : MonoBehaviour
         homePanel.SetActive(true);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
+        rankPanel.SetActive(false);
+        countryPanel.SetActive(false);
         RefreshHomeButtons();
     }
 
@@ -106,6 +123,8 @@ public class GameUI : MonoBehaviour
         homePanel.SetActive(false);
         gamePanel.SetActive(true);
         resultPanel.SetActive(false);
+        rankPanel.SetActive(false);
+        countryPanel.SetActive(false);
     }
 
     public void ShowResult(bool win, bool ta, int score, int best, bool newBest)
@@ -291,6 +310,20 @@ public class GameUI : MonoBehaviour
         Place((RectTransform)start.transform, new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(520, 150));
         start.gameObject.AddComponent<UiPulse>();
 
+        // 국가 배지 — 누르면 국가를 바꿀 수 있다 (기본값은 기기 로케일에서 추정).
+        var badgeBtn = NewButton("country", safe, "", 0, new Color(0, 0, 0, 0), () => ShowCountryPicker());
+        Place((RectTransform)badgeBtn.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 96));
+        homeBadge = NewImage("badge", badgeBtn.transform, Color.white);
+        Place(homeBadge.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0, 0), new Vector2(96, 68));
+        homeBadgeText = NewText("badgecode", homeBadge.transform, "", 40, TextAnchor.MiddleCenter, Color.white);
+        Stretch(homeBadgeText.rectTransform);
+        var nameText = NewText("acctname", badgeBtn.transform, "", 38, TextAnchor.MiddleLeft, new Color(1, 1, 1, 0.7f));
+        Place(nameText.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(112, 0), new Vector2(320, 60));
+        nameText.text = PlayerAccount.Name;
+
+        var rankBtn = NewButton("rankhome", safe, L("랭킹", "RANKING"), 44, BtnDim, () => ShowRanking(false));
+        Place((RectTransform)rankBtn.transform, new Vector2(0.5f, 0.115f), new Vector2(0.5f, 0.115f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 96));
+
         var footer = NewText("footer", safe, "v1.0.0  ·  jaemanc", 34, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.35f));
         Place(footer.rectTransform, new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 50));
     }
@@ -303,6 +336,15 @@ public class GameUI : MonoBehaviour
         for (int i = 0; i < 3; i++)
             diffBtnBgs[i].color = DiffKeys[i] == gm.difficulty ? BtnSel : BtnDim;
         bestHomeText.text = L("최고 기록 ", "BEST ") + gm.BestForSelection().ToString("N0");
+        RefreshBadge();
+    }
+
+    void RefreshBadge()
+    {
+        if (homeBadge == null) return;
+        string c = PlayerAccount.Country;
+        homeBadge.color = PlayerAccount.BadgeColor(c);
+        homeBadgeText.text = c;
     }
 
     // ---------- 결과 ----------
@@ -324,11 +366,169 @@ public class GameUI : MonoBehaviour
         resultBest = NewText("rbest", card.transform, "", 46, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.65f));
         Place(resultBest.rectTransform, new Vector2(0.5f, 0.47f), new Vector2(0.5f, 0.47f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 60));
 
+        submitText = NewText("rsubmit", card.transform, "", 36, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.5f));
+        Place(submitText.rectTransform, new Vector2(0.5f, 0.385f), new Vector2(0.5f, 0.385f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 50));
+
+        var rankB = NewButton("rrank", card.transform, L("랭킹 보기", "LEADERBOARD"), 42, BtnDim, () => ShowRanking(false));
+        Place((RectTransform)rankB.transform, new Vector2(0.5f, 0.325f), new Vector2(0.5f, 0.325f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 84));
+
         var retry = NewButton("retry", card.transform, L("다시하기", "RETRY"), 50, Accent, () => gm.StartGame());
-        Place((RectTransform)retry.transform, new Vector2(0.5f, 0.24f), new Vector2(0.5f, 0.24f), new Vector2(0.5f, 0.5f), new Vector2(-185, 0), new Vector2(340, 130));
+        Place((RectTransform)retry.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), new Vector2(-185, 0), new Vector2(340, 130));
 
         var homeB = NewButton("rhome", card.transform, L("홈", "HOME"), 50, BtnDim, () => gm.GoHome());
-        Place((RectTransform)homeB.transform, new Vector2(0.5f, 0.24f), new Vector2(0.5f, 0.24f), new Vector2(0.5f, 0.5f), new Vector2(185, 0), new Vector2(340, 130));
+        Place((RectTransform)homeB.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), new Vector2(185, 0), new Vector2(340, 130));
+    }
+
+    // ---------- 랭킹 ----------
+
+    void BuildRankPanel()
+    {
+        rankPanel = NewImage("rankdim", transform, new Color(0, 0, 0, 0.78f)).gameObject;
+        Stretch((RectTransform)rankPanel.transform);
+
+        var card = NewImage("rcard", rankPanel.transform, new Color(0.10f, 0.10f, 0.15f, 0.98f));
+        Place(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(900, 1240));
+
+        rankTitle = NewText("rktitle", card.transform, "", 56, TextAnchor.MiddleCenter, Color.white);
+        Place(rankTitle.rectTransform, new Vector2(0.5f, 0.945f), new Vector2(0.5f, 0.945f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(860, 80));
+
+        var meBtn = NewButton("tabme", card.transform, L("개인", "PLAYERS"), 40, BtnSel, () => { rankNationTab = false; RefreshRank(); });
+        Place((RectTransform)meBtn.transform, new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.5f), new Vector2(-160, 0), new Vector2(300, 80));
+        rankTabMe = meBtn.GetComponent<Image>();
+
+        var natBtn = NewButton("tabnat", card.transform, L("국가", "NATIONS"), 40, BtnDim, () => { rankNationTab = true; RefreshRank(); });
+        Place((RectTransform)natBtn.transform, new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.5f), new Vector2(160, 0), new Vector2(300, 80));
+        rankTabNation = natBtn.GetComponent<Image>();
+
+        rankRows = new Text[RankRowCount];
+        for (int i = 0; i < RankRowCount; i++)
+        {
+            rankRows[i] = NewText("row" + i, card.transform, "", 38, TextAnchor.MiddleLeft, Color.white);
+            Place(rankRows[i].rectTransform, new Vector2(0.5f, 0.815f), new Vector2(0.5f, 0.815f), new Vector2(0.5f, 0.5f), new Vector2(0, -i * 66), new Vector2(820, 60));
+        }
+
+        rankEmpty = NewText("rkempty", card.transform, "", 38, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.5f));
+        Place(rankEmpty.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(820, 120));
+
+        var close = NewButton("rkclose", card.transform, L("닫기", "CLOSE"), 46, BtnDim, () => rankPanel.SetActive(false));
+        Place((RectTransform)close.transform, new Vector2(0.5f, 0.05f), new Vector2(0.5f, 0.05f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420, 110));
+    }
+
+    public void ShowRanking(bool nation)
+    {
+        rankNationTab = nation;
+        rankPanel.SetActive(true);
+        rankPanel.transform.SetAsLastSibling();
+        RefreshRank();
+    }
+
+    void RefreshRank()
+    {
+        rankTabMe.color = rankNationTab ? BtnDim : BtnSel;
+        rankTabNation.color = rankNationTab ? BtnSel : BtnDim;
+        rankTitle.text = gm.timeAttack ? L("타임어택", "TIME ATTACK")
+                                       : L("점수 · ", "SCORE · ") + gm.difficulty.ToUpperInvariant();
+        foreach (var r in rankRows) r.text = "";
+
+        var lb = Leaderboard.I;
+        if (lb == null || !lb.Configured)
+        {
+            rankEmpty.text = L("랭킹 서버가 설정되지 않았습니다", "Leaderboard not configured");
+            return;
+        }
+        rankEmpty.text = L("불러오는 중...", "Loading...");
+        if (rankCo != null) StopCoroutine(rankCo);
+        rankCo = StartCoroutine(lb.FetchTop(gm.timeAttack, gm.difficulty, FillRank));
+    }
+
+    void FillRank(List<ScoreEntry> rows)
+    {
+        rankCo = null;
+        if (rows == null) { rankEmpty.text = L("불러오지 못했습니다", "Failed to load"); return; }
+        if (rows.Count == 0) { rankEmpty.text = L("아직 기록이 없습니다", "No records yet"); return; }
+        rankEmpty.text = "";
+
+        string myUid = Leaderboard.I != null ? Leaderboard.I.Uid : "";
+        if (rankNationTab)
+        {
+            var nations = NationRanking.Aggregate(rows);
+            for (int i = 0; i < rankRows.Length; i++)
+            {
+                if (i >= nations.Count) break;
+                var n = nations[i];
+                rankRows[i].text = string.Format("{0,2}.  [{1}] {2,-10}  {3}  ({4}{5})",
+                    i + 1, n.Country, PlayerAccount.DisplayName(n.Country),
+                    n.Total.ToString("N0"), n.Players, L("명", "p"));
+                rankRows[i].color = n.Country == PlayerAccount.Country ? Accent : Color.white;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < rankRows.Length; i++)
+            {
+                if (i >= rows.Count) break;
+                var e = rows[i];
+                rankRows[i].text = string.Format("{0,2}.  [{1}] {2,-12}  {3}",
+                    i + 1, e.Country, Trim(e.Name, 12), e.Score.ToString("N0"));
+                rankRows[i].color = e.Uid == myUid ? Accent : Color.white;
+            }
+        }
+    }
+
+    static string Trim(string s, int n)
+    {
+        if (string.IsNullOrEmpty(s)) return "?";
+        return s.Length <= n ? s : s.Substring(0, n);
+    }
+
+    public void SetSubmitState(SubmitState st)
+    {
+        if (submitText == null) return;
+        switch (st)
+        {
+            case SubmitState.Sending: submitText.text = L("랭킹 등록 중...", "Submitting..."); break;
+            case SubmitState.Done: submitText.text = L("랭킹에 등록됨", "Submitted"); break;
+            case SubmitState.Failed: submitText.text = L("랭킹 등록 실패 (오프라인?)", "Submit failed (offline?)"); break;
+            default: submitText.text = ""; break;
+        }
+    }
+
+    // ---------- 국가 선택 ----------
+
+    void BuildCountryPanel()
+    {
+        countryPanel = NewImage("cdim", transform, new Color(0, 0, 0, 0.8f)).gameObject;
+        Stretch((RectTransform)countryPanel.transform);
+
+        var card = NewImage("ccard", countryPanel.transform, new Color(0.10f, 0.10f, 0.15f, 0.98f));
+        Place(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(940, 1320));
+
+        var t = NewText("ctitle", card.transform, L("국가 선택", "COUNTRY"), 52, TextAnchor.MiddleCenter, Color.white);
+        Place(t.rectTransform, new Vector2(0.5f, 0.95f), new Vector2(0.5f, 0.95f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(880, 70));
+
+        // 6열 그리드 배지 버튼
+        var list = PlayerAccount.PickList;
+        const int cols = 6;
+        for (int i = 0; i < list.Length; i++)
+        {
+            string code = list[i];
+            int cx = i % cols, cy = i / cols;
+            var b = NewButton("c" + code, card.transform, "", 0, PlayerAccount.BadgeColor(code),
+                () => { PlayerAccount.Country = code; RefreshBadge(); countryPanel.SetActive(false); });
+            Place((RectTransform)b.transform, new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.5f),
+                new Vector2((cx - (cols - 1) / 2f) * 145, -cy * 92), new Vector2(130, 78));
+            var lt = NewText("l", b.transform, code, 38, TextAnchor.MiddleCenter, Color.white);
+            Stretch(lt.rectTransform);
+        }
+
+        var close = NewButton("cclose", card.transform, L("닫기", "CLOSE"), 46, BtnDim, () => countryPanel.SetActive(false));
+        Place((RectTransform)close.transform, new Vector2(0.5f, 0.04f), new Vector2(0.5f, 0.04f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420, 110));
+    }
+
+    void ShowCountryPicker()
+    {
+        countryPanel.SetActive(true);
+        countryPanel.transform.SetAsLastSibling();
     }
 
     // ---------- UI 조립 헬퍼 ----------

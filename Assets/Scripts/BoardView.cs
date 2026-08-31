@@ -14,8 +14,12 @@ public class BoardView : MonoBehaviour
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
     SpriteRenderer[] ghost;
+    SpriteRenderer[] ghostRing;   // 고스트 테두리 — 타일 색과 무관하게 위치를 읽히게 한다
+    int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
+    Color ghostRingColor;
     Sprite tile;                  // 둥근 모서리 + 세로 그라데이션 (타일/고스트)
     Sprite plain;                 // 평면 사각 (프레임)
+    Sprite ring;                  // 둥근 사각 테두리 (고스트)
     Sprite soft;                  // 파티클용 소프트 원
     readonly Dictionary<ItemType, Sprite> icons = new Dictionary<ItemType, Sprite>();
     bool built;
@@ -35,11 +39,12 @@ public class BoardView : MonoBehaviour
 
         tile = MakeTileSprite();
         plain = MakeSquareSprite();
+        ring = MakeRingSprite();
         soft = MakeSoftSprite();
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
-        icons[ItemType.Bomb9] = MakeIcon(ItemType.Bomb9);
+        icons[ItemType.Bomb5] = MakeIcon(ItemType.Bomb5);
         icons[ItemType.ColorClear] = MakeIcon(ItemType.ColorClear);
 
         var frameGo = new GameObject("frame");
@@ -75,14 +80,24 @@ public class BoardView : MonoBehaviour
             }
 
         ghost = new SpriteRenderer[8]; // 최대 조각 5칸 + 여유
+        ghostRing = new SpriteRenderer[8];
         for (int i = 0; i < ghost.Length; i++)
         {
+            var rg = new GameObject("ghostring_" + i);
+            rg.transform.SetParent(transform, false);
+            rg.transform.localScale = Vector3.one * TileScale;
+            var rsr = rg.AddComponent<SpriteRenderer>();
+            rsr.sprite = ring;
+            rsr.sortingOrder = 5;
+            rsr.enabled = false;
+            ghostRing[i] = rsr;
+
             var go = new GameObject("ghost_" + i);
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.7f;
+            go.transform.localScale = Vector3.one * 0.58f;
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = tile;
-            sr.sortingOrder = 5;
+            sr.sortingOrder = 6;
             sr.enabled = false;
             ghost[i] = sr;
         }
@@ -161,14 +176,18 @@ public class BoardView : MonoBehaviour
         foreach (var p in cells) tiles[p.X, p.Y].transform.localScale = Vector3.one * TileScale;
     }
 
-    /// <summary>파괴 직전 플래시</summary>
-    public void FlashCells(List<Point> pts)
+    /// <summary>파괴 직전 플래시. 색으로 직접 파괴/연계 파괴를 구분한다.</summary>
+    public void FlashCells(List<Point> pts, Color c)
     {
-        foreach (var p in pts) tiles[p.X, p.Y].color = Color.white;
+        foreach (var p in pts)
+        {
+            tiles[p.X, p.Y].color = c;
+            tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.10f;
+        }
     }
 
     /// <summary>파괴 버스트: 각 칸 위치에서 색 파편이 튀어나가며 페이드 (타격감)</summary>
-    public void Burst(List<Point> pts, List<Color> colors, float energy)
+    public void Burst(List<Point> pts, List<Color> colors, float energy, Color tint)
     {
         if (pTr == null) return;
         int perCell = pts.Count > 60 ? 1 : (pts.Count > 24 ? 2 : 3);
@@ -176,11 +195,11 @@ public class BoardView : MonoBehaviour
         {
             Color col = (colors != null && i < colors.Count) ? colors[i] : Color.white;
             for (int k = 0; k < perCell; k++)
-                Spawn(pts[i].X, pts[i].Y, col, energy);
+                Spawn(pts[i].X, pts[i].Y, col, energy, tint);
         }
     }
 
-    void Spawn(float x, float y, Color col, float energy)
+    void Spawn(float x, float y, Color col, float energy, Color tint)
     {
         // 비활성 파티클 찾기 (풀 소진 시 스킵)
         int idx = -1;
@@ -196,7 +215,7 @@ public class BoardView : MonoBehaviour
         pSpin[idx] = Random.Range(-540f, 540f);
         pRot[idx] = Random.value * 360f;
         pSize[idx] = Random.Range(0.18f, 0.34f);
-        var c = Color.Lerp(col, Color.white, 0.35f);
+        var c = Color.Lerp(col, tint, 0.45f);
         c.a = 1f;
         pSr[idx].color = c;
         pTr[idx].localPosition = new Vector3(x + Random.Range(-0.15f, 0.15f), y + Random.Range(-0.15f, 0.15f), -1.2f);
@@ -208,6 +227,7 @@ public class BoardView : MonoBehaviour
 
     void Update()
     {
+        PulseGhost();
         if (liveParts <= 0) return;
         float dt = Time.deltaTime;
         for (int i = 0; i < MaxParts; i++)
@@ -265,6 +285,10 @@ public class BoardView : MonoBehaviour
 
     public void ShowGhost(Piece p, int ax, int ay, bool can, Color pieceColor)
     {
+        // 놓을 수 없으면 붉은 테두리 — 팔레트가 무슨 색이든 구분된다.
+        ghostRingColor = can ? Color.white : new Color(1f, 0.35f, 0.35f);
+        ghostCount = p.Cells.Count;
+
         for (int i = 0; i < ghost.Length; i++)
         {
             if (i < p.Cells.Count)
@@ -273,17 +297,39 @@ public class BoardView : MonoBehaviour
                 ghost[i].enabled = true;
                 ghost[i].transform.localPosition = new Vector3(gx, gy, -1);
                 ghost[i].color = can
-                    ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 0.95f)
-                    : new Color(1, 1, 1, 0.25f);
+                    ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
+                    : new Color(0.1f, 0.1f, 0.12f, 0.75f);
+
+                ghostRing[i].enabled = true;
+                ghostRing[i].transform.localPosition = new Vector3(gx, gy, -1.05f);
+                ghostRing[i].color = ghostRingColor;
             }
-            else ghost[i].enabled = false;
+            else { ghost[i].enabled = false; ghostRing[i].enabled = false; }
         }
     }
 
     public void HideGhost()
     {
         if (ghost == null) return;
+        ghostCount = 0;
         foreach (var g in ghost) if (g != null) g.enabled = false;
+        foreach (var g in ghostRing) if (g != null) g.enabled = false;
+    }
+
+    // 고스트 테두리를 천천히 맥동시켜 배경 타일에 묻히지 않게 한다.
+    void PulseGhost()
+    {
+        if (ghostCount <= 0) return;
+        float k = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6.5f);
+        float scale = Mathf.Lerp(TileScale * 0.94f, TileScale * 1.06f, k);
+        var c = ghostRingColor;
+        c.a = Mathf.Lerp(0.55f, 1f, k);
+        for (int i = 0; i < ghostCount && i < ghostRing.Length; i++)
+        {
+            if (!ghostRing[i].enabled) continue;
+            ghostRing[i].transform.localScale = Vector3.one * scale;
+            ghostRing[i].color = c;
+        }
     }
 
     // 평면 흰 사각 (프레임)
@@ -316,6 +362,28 @@ public class BoardView : MonoBehaviour
                 // 상단 하이라이트 밴드
                 if (fy > S - 6) g = Mathf.Min(1f, g + 0.06f);
                 px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 둥근 사각 테두리 (고스트 위치 표시)
+    static Sprite MakeRingSprite()
+    {
+        const int S = 32; const float r = 7f, thick = 3.4f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float sdf = Mathf.Sqrt(dx * dx + dy * dy) - r; // 0 = 모서리 경계, 음수 = 내부
+                // 경계 안쪽 thick 폭만 남긴다 (양끝 안티에일리어싱)
+                float a = Mathf.Clamp01(-sdf + 0.5f) * Mathf.Clamp01(sdf + thick + 0.5f);
+                px[y * S + x] = new Color(1, 1, 1, a);
             }
         tex.SetPixels(px);
         tex.Apply();
@@ -366,7 +434,7 @@ public class BoardView : MonoBehaviour
                     case ItemType.Diag:
                         glyph = (Mathf.Abs(dx - dy) <= 2f || Mathf.Abs(dx + dy) <= 2f) && dist <= 9f;
                         break;
-                    case ItemType.Bomb9: glyph = dist <= 6f; break;
+                    case ItemType.Bomb5: glyph = dist <= 6f; break;
                     case ItemType.ColorClear:
                         // 8방향 스파클
                         glyph = ((Mathf.Abs(dx) <= 1.6f || Mathf.Abs(dy) <= 1.6f) && Mathf.Abs(dx) + Mathf.Abs(dy) <= 9f)
