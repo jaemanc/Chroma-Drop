@@ -43,6 +43,23 @@ export NODE_EXTRA_CA_CERTS="$HOME/.certs/ptkroea.pem"   # §6 — 없으면 빌�
   -testResults /tmp/playmode_results.xml
 ```
 
+### 랭킹 CRUD 테스트 (목 서버)
+
+실제 Firebase 없이 REST 경로를 검증한다. 환경변수가 없으면 이 테스트들은 건너뛴다.
+
+```bash
+python3 Tools/fake-rtdb.py 8765 &          # RTDB REST 를 흉내내는 목 서버
+CHROMADROP_FIREBASE_URL=http://127.0.0.1:8765 \
+CHROMADROP_FIREBASE_APIKEY=test \
+CHROMADROP_FIREBASE_AUTHBASE=http://127.0.0.1:8765/v1 \
+"$UNITY" -batchmode -runTests -testPlatform PlayMode -projectPath . \
+  -testResults /tmp/crud_results.xml
+kill %1                                     # 목 서버 종료
+```
+
+> 목 서버는 **API 키를 검사하지 않는다.** 키 유효성·인덱스(`.indexOn`)·보안 규칙은
+> 실제 Firebase 에서만 확인된다. 프로젝트를 만든 뒤 같은 테스트를 실서버로 한 번 돌릴 것.
+
 > 배치모드는 **Unity 에디터가 열려 있으면 실패한다.** 먼저 닫을 것.
 > 에디터가 떠 있는지 확인: `pgrep -fl "Unity.app/Contents/MacOS/Unity"`
 

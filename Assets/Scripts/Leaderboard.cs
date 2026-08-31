@@ -1,9 +1,12 @@
 // Leaderboard.cs — Firebase 랭킹 (REST 전용, SDK 미사용).
 // UnityWebRequest 로만 호출하므로 외부 플러그인/에셋 의존이 없다.
 //
-// 설정: Resources/leaderboard.json (Tools/make-leaderboard-config.sh 로 생성, 커밋 안 함)
-//   { "databaseUrl": "https://<프로젝트>-default-rtdb.firebaseio.com", "apiKey": "<웹 API 키>" }
-// 파일이 없으면 Configured=false 가 되어 랭킹 기능만 꺼지고 게임은 그대로 동작한다.
+// 설정 (앞쪽이 우선):
+//   1) 환경변수 CHROMADROP_FIREBASE_URL / CHROMADROP_FIREBASE_APIKEY / CHROMADROP_FIREBASE_AUTHBASE
+//   2) Resources/leaderboard.json (Tools/make-leaderboard-config.sh 로 생성, 커밋 안 함)
+//      { "databaseUrl": "https://<프로젝트>-default-rtdb.firebaseio.com", "apiKey": "<웹 API 키>" }
+// 둘 다 없으면 Configured=false 가 되어 랭킹 기능만 꺼지고 게임은 그대로 동작한다.
+// authBase 는 Firebase 인증 에뮬레이터나 테스트용 목 서버를 가리킬 때만 준다 (평소 비움).
 //
 // 데이터 모델 (Realtime Database):
 //   /boards/{boardId}/{uid} = { name, country, score, diff, seed, updated }
@@ -34,6 +37,8 @@ public class Leaderboard : MonoBehaviour
     public string LastError { get; private set; }
 
     string dbUrl, apiKey, idToken;
+    string signUpBase = "https://identitytoolkit.googleapis.com/v1";
+    string tokenBase = "https://securetoken.googleapis.com/v1";
     float tokenExpiry;
 
     public static Leaderboard Create()
@@ -49,18 +54,35 @@ public class Leaderboard : MonoBehaviour
 
     void LoadConfig()
     {
-        var ta = Resources.Load<TextAsset>("leaderboard");
-        if (ta == null)
+        dbUrl = Env("CHROMADROP_FIREBASE_URL");
+        apiKey = Env("CHROMADROP_FIREBASE_APIKEY");
+        string authBase = Env("CHROMADROP_FIREBASE_AUTHBASE");
+
+        if (dbUrl.Length == 0 || apiKey.Length == 0)
         {
-            LastError = "설정 없음 (Resources/leaderboard.json)";
-            return;
+            var ta = Resources.Load<TextAsset>("leaderboard");
+            if (ta == null)
+            {
+                LastError = "설정 없음 (환경변수도 Resources/leaderboard.json 도 없음)";
+                return;
+            }
+            var m = Json.AsMap(Json.Parse(ta.text));
+            if (dbUrl.Length == 0) dbUrl = Json.Str(m, "databaseUrl", "");
+            if (apiKey.Length == 0) apiKey = Json.Str(m, "apiKey", "");
+            if (authBase.Length == 0) authBase = Json.Str(m, "authBase", "");
         }
-        var m = Json.AsMap(Json.Parse(ta.text));
-        dbUrl = Json.Str(m, "databaseUrl", "").TrimEnd('/');
-        apiKey = Json.Str(m, "apiKey", "");
+
+        dbUrl = dbUrl.TrimEnd('/');
+        if (authBase.Length > 0) signUpBase = tokenBase = authBase.TrimEnd('/');
+
         Configured = dbUrl.Length > 0 && apiKey.Length > 0;
-        if (!Configured) LastError = "설정 파일에 databaseUrl/apiKey 가 비어 있음";
+        if (!Configured) LastError = "databaseUrl/apiKey 가 비어 있음";
         Uid = PlayerPrefs.GetString(PrefUid, "");
+    }
+
+    static string Env(string name)
+    {
+        return Environment.GetEnvironmentVariable(name) ?? "";
     }
 
     // ---------- 익명 인증 ----------
@@ -69,11 +91,12 @@ public class Leaderboard : MonoBehaviour
     public IEnumerator SignInAnonymously(Action<bool> done)
     {
         if (!Configured) { if (done != null) done(false); yield break; }
+        idToken = null;   // 갱신에 실패했는데 낡은 토큰이 남아 성공으로 보이면 안 된다
 
         var refresh = PlayerPrefs.GetString(PrefRefresh, "");
         if (!string.IsNullOrEmpty(refresh))
         {
-            yield return Post("https://securetoken.googleapis.com/v1/token?key=" + apiKey,
+            yield return Post(tokenBase + "/token?key=" + apiKey,
                 "grant_type=refresh_token&refresh_token=" + UnityWebRequest.EscapeURL(refresh),
                 "application/x-www-form-urlencoded",
                 res =>
@@ -87,7 +110,7 @@ public class Leaderboard : MonoBehaviour
         }
 
         // 새 게스트 계정
-        yield return Post("https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=" + apiKey,
+        yield return Post(signUpBase + "/accounts:signUp?key=" + apiKey,
             "{\"returnSecureToken\":true}", "application/json",
             res =>
             {
