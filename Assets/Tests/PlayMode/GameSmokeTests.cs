@@ -19,6 +19,7 @@ public class GameSmokeTests
         var g = go.AddComponent<GameManager>();
         // 테스트 가속: 연출 대기 최소화
         g.stampPop = g.destroyFlash = g.fallTime = 0.01f;
+        g.chainStep = g.chainFall = g.glowTime = 0.01f;
         return g;
     }
 

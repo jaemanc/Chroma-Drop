@@ -23,6 +23,8 @@ public class GameManager : MonoBehaviour
     public float stampPop = 0.10f;
     public float destroyFlash = 0.20f;
     public float chainStep = 0.11f;        // 연쇄 한 단계가 터지는 간격
+    public float chainFall = 0.13f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
+    public float glowTime = 0.16f;         // 새로 내려온 칸 반짝임
     public float fallTime = 0.20f;
     public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
@@ -279,15 +281,8 @@ public class GameManager : MonoBehaviour
 
         score += result.ScoreGained;
 
-        // 3) 최종 상태 반영 + 바뀐 칸 낙하 연출
-        var changed = new bool[Board.W, Board.H];
-        bool any = false;
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
-                if (board.GetTile(x, y) != visual[x, y]) { changed[x, y] = true; any = true; }
-        foreach (var p in result.Destroyed) { changed[p.X, p.Y] = true; any = true; }
+        // 3) 최종 상태 확정. 파괴가 있었다면 단계별 연출이 이미 여기까지 옮겨놨다.
         view.Refresh(board, palette);
-        if (any) yield return view.FallIn(changed, fallTime);
 
         // 다음 조각
         current = queue.Dequeue();
@@ -311,6 +306,7 @@ public class GameManager : MonoBehaviour
         foreach (var w in result.Waves)
             segments += (w.MatchEnd > w.Start ? 1 : 0) + (w.End > w.MatchEnd ? 1 : 0);
         float step = segments <= 1 ? 0f : Mathf.Max(0.045f, chainStep - 0.006f * segments);
+        float fall = Mathf.Max(0.07f, chainFall - 0.008f * result.Waves.Count);
 
         for (int i = 0; i < result.Waves.Count; i++)
         {
@@ -322,7 +318,36 @@ public class GameManager : MonoBehaviour
                 i == 0 ? DirectFlash : ChainFlash, i + 1, result.BigHit, step);
             yield return BurstSegment(result, visual, w.MatchEnd, w.End,
                 ChainFlash, i + 1, result.BigHit, step);
+
+            // 다음 단계의 매칭은 여기서 내려온 블록이 만든 것이다.
+            // 낙하를 먼저 보여주고 새로 채워진 칸을 반짝여야 인과가 읽힌다.
+            bool last = i == result.Waves.Count - 1;
+            yield return ApplyWave(w, visual, last ? fallTime : fall, last ? 0.02f : 0.007f);
         }
+    }
+
+    /// <summary>한 단계의 중력·리필 결과를 낙하 연출로 반영하고, 새로 채워진 칸을 반짝인다.</summary>
+    IEnumerator ApplyWave(Wave w, int[,] visual, float dur, float stagger)
+    {
+        var changed = new bool[Board.W, Board.H];
+        var newCells = new List<Point>();
+        bool any = false;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                int after = w.TilesAfter[x * Board.H + y];
+                if (after == visual[x, y]) continue;
+                changed[x, y] = true;
+                any = true;
+                if (after != Board.Empty) newCells.Add(new Point(x, y));
+                visual[x, y] = after;
+            }
+
+        view.ApplyState(w.TilesAfter, w.ItemsAfter, palette);
+        if (!any) yield break;
+
+        yield return view.FallIn(changed, dur, stagger);
+        yield return view.GlowNew(newCells, glowTime);
     }
 
     IEnumerator BurstSegment(ResolveResult result, int[,] visual, int from, int to,

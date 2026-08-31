@@ -150,6 +150,50 @@ public class BoardView : MonoBehaviour
             }
     }
 
+    /// <summary>연쇄 한 단계가 끝난 시점의 보드를 반영 (색/아이템만; 위치는 FallIn 이 잡는다).</summary>
+    public void ApplyState(int[] t, ItemType[] it, Color[] palette)
+    {
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                int c = t[x * Board.H + y];
+                tiles[x, y].color = c == Board.Empty ? EmptyColor : palette[c];
+                tiles[x, y].transform.localScale = Vector3.one * TileScale;
+
+                var item = it[x * Board.H + y];
+                overlays[x, y].enabled = item != ItemType.None;
+                if (item != ItemType.None) overlays[x, y].sprite = icons[item];
+            }
+    }
+
+    /// <summary>새로 내려온 칸을 잠깐 반짝여 "이번에 채워진 칸"임을 알린다.</summary>
+    public IEnumerator GlowNew(List<Point> pts, float dur)
+    {
+        if (pts == null || pts.Count == 0) yield break;
+        var baseCols = new Color[pts.Count];
+        for (int i = 0; i < pts.Count; i++) baseCols[i] = tiles[pts[i].X, pts[i].Y].color;
+
+        float t = 0;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float k = 1f - t / dur;                       // 1 → 0 으로 잦아든다
+            for (int i = 0; i < pts.Count; i++)
+            {
+                var sr = tiles[pts[i].X, pts[i].Y];
+                sr.color = Color.Lerp(baseCols[i], Color.white, 0.6f * k);
+                sr.transform.localScale = Vector3.one * TileScale * (1f + 0.09f * k);
+            }
+            yield return null;
+        }
+        for (int i = 0; i < pts.Count; i++)
+        {
+            var sr = tiles[pts[i].X, pts[i].Y];
+            sr.color = baseCols[i];
+            sr.transform.localScale = Vector3.one * TileScale;
+        }
+    }
+
     /// <summary>스탬프 연출: 찍힌 칸을 조각 색으로 칠하고 살짝 팝</summary>
     public void PaintCells(List<Point> cells, Color c)
     {
@@ -252,16 +296,19 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>바뀐 칸들이 위에서 떨어져 들어오는 낙하 연출. 색은 이미 Refresh로 최종 상태.</summary>
-    public IEnumerator FallIn(bool[,] changed, float dur)
+    public IEnumerator FallIn(bool[,] changed, float dur) { return FallIn(changed, dur, 0.02f); }
+
+    /// <summary>stagger = 위쪽 칸이 늦게 떨어지는 간격. 연쇄 단계 사이에는 짧게 줘서 늘어지지 않게 한다.</summary>
+    public IEnumerator FallIn(bool[,] changed, float dur, float stagger)
     {
         var xs = new List<int>(); var ys = new List<int>(); var delays = new List<float>();
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
-                if (changed[x, y]) { xs.Add(x); ys.Add(y); delays.Add((Board.H - 1 - y) * 0.02f); }
+                if (changed[x, y]) { xs.Add(x); ys.Add(y); delays.Add((Board.H - 1 - y) * stagger); }
         if (xs.Count == 0) yield break;
 
         const float drop = 3.5f;
-        float maxDelay = (Board.H - 1) * 0.02f;
+        float maxDelay = (Board.H - 1) * stagger;
         float t = 0, total = dur + maxDelay;
         while (t < total)
         {

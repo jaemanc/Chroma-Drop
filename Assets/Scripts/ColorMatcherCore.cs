@@ -56,6 +56,12 @@ namespace ColorMatcher.Core
         public int Start;      // Destroyed[Start .. MatchEnd) = 매칭으로 파괴된 칸
         public int MatchEnd;   // Destroyed[MatchEnd .. End)   = 아이템 발동으로 연쇄 파괴된 칸
         public int End;
+
+        // 이 단계의 중력·리필·아이템 스폰까지 끝난 뒤의 보드 (열 우선: x * H + y).
+        // 다음 단계의 매칭은 여기 내려온 블록들이 만든 것이므로,
+        // 뷰가 다음 폭발을 재생하기 전에 이 상태로 낙하를 보여줘야 인과가 보인다.
+        public int[] TilesAfter;
+        public ItemType[] ItemsAfter;
     }
 
     public struct SpawnedItem
@@ -238,21 +244,39 @@ namespace ColorMatcher.Core
                     items[pt.X, pt.Y] = ItemType.None;
                     res.Destroyed.Add(pt);
                 }
-                res.Waves.Add(new Wave
-                {
-                    Start = waveStart,
-                    MatchEnd = waveStart + matchEnd,
-                    End = res.Destroyed.Count,
-                });
-
                 ApplyGravity();
                 Refill();
 
                 // 스폰: 이 단계에서 (연쇄/동시파괴) 조건 충족 시. 즉시 파괴 방지 위해 실제 배치는 여기서.
                 MaybeSpawn(chain, matchTiles, huge, res);
+
+                res.Waves.Add(new Wave
+                {
+                    Start = waveStart,
+                    MatchEnd = waveStart + matchEnd,
+                    End = res.Destroyed.Count,
+                    TilesAfter = SnapshotTiles(),
+                    ItemsAfter = SnapshotItems(),
+                });
             }
             res.MaxChain = chain;
             return res;
+        }
+
+        int[] SnapshotTiles()
+        {
+            var a = new int[W * H];
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) a[x * H + y] = tiles[x, y];
+            return a;
+        }
+
+        ItemType[] SnapshotItems()
+        {
+            var a = new ItemType[W * H];
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) a[x * H + y] = items[x, y];
+            return a;
         }
 
         // v5 스폰 규칙:
