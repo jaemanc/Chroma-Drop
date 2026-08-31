@@ -71,11 +71,13 @@ kill %1                                     # 목 서버 종료
 가장 빠르게 게임을 눈으로 보는 방법. Mono 백엔드라 빌드가 20초쯤 걸린다.
 
 ```bash
+./Tools/build-mac.sh --run     # 빌드 후 실행
+
+# 스크립트 없이 직접:
 "$UNITY" -batchmode -nographics -quit -projectPath . \
   -buildTarget OSXUniversal \
   -logFile Logs/build-mac.log \
   -executeMethod MacBuild.App
-
 open Builds/Mac/ChromaDrop.app
 ```
 
