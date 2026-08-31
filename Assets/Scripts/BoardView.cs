@@ -9,6 +9,7 @@ using ColorMatcher.Core;
 public class BoardView : MonoBehaviour
 {
     static readonly Color EmptyColor = new Color(0.06f, 0.06f, 0.08f);
+    static readonly Color BrickColor = new Color(0.42f, 0.35f, 0.30f);   // 무채색에 가까운 갈색 — 팔레트와 안 겹친다
     const float TileScale = 0.92f;
 
     SpriteRenderer[,] tiles;
@@ -21,6 +22,8 @@ public class BoardView : MonoBehaviour
     Sprite plain;                 // 평면 사각 (프레임)
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
     Sprite soft;                  // 파티클용 소프트 원
+    Sprite[] brick;               // 내구도별 벽돌 (금 0/1/2줄)
+    Sprite rainbow;               // 무지개 타일
     readonly Dictionary<ItemType, Sprite> icons = new Dictionary<ItemType, Sprite>();
     bool built;
 
@@ -41,6 +44,8 @@ public class BoardView : MonoBehaviour
         plain = MakeSquareSprite();
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
+        brick = new[] { MakeBrickSprite(0), MakeBrickSprite(1), MakeBrickSprite(2) };
+        rainbow = MakeRainbowSprite();
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
@@ -85,7 +90,7 @@ public class BoardView : MonoBehaviour
         {
             var rg = new GameObject("ghostring_" + i);
             rg.transform.SetParent(transform, false);
-            rg.transform.localScale = Vector3.one * TileScale;
+            rg.transform.localScale = Vector3.one * TileScale * 1.22f;
             var rsr = rg.AddComponent<SpriteRenderer>();
             rsr.sprite = ring;
             rsr.sortingOrder = 5;
@@ -94,7 +99,7 @@ public class BoardView : MonoBehaviour
 
             var go = new GameObject("ghost_" + i);
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.58f;
+            go.transform.localScale = Vector3.one * 1.06f;   // 밑 타일(0.92)보다 크게 — 얹힌 느낌
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = tile;
             sr.sortingOrder = 6;
@@ -132,6 +137,28 @@ public class BoardView : MonoBehaviour
 
     public void SetVisible(bool v) { gameObject.SetActive(v); }
 
+    /// <summary>칸 하나의 스프라이트·색을 결정한다. 벽돌/무지개/빈칸/일반색을 한 곳에서 다룬다.</summary>
+    void PaintTile(int x, int y, int c, int hp, Color[] palette)
+    {
+        var sr = tiles[x, y];
+        if (c == Board.Brick)
+        {
+            // hp 3→금 없음, 2→한 줄, 1→두 줄
+            sr.sprite = brick[Mathf.Clamp(Rules.BrickHp - hp, 0, brick.Length - 1)];
+            sr.color = BrickColor;
+        }
+        else if (c == Board.Rainbow)
+        {
+            sr.sprite = rainbow;
+            sr.color = Color.white;          // 스프라이트 자체가 색을 갖는다
+        }
+        else
+        {
+            sr.sprite = tile;
+            sr.color = c == Board.Empty ? EmptyColor : palette[c];
+        }
+    }
+
     /// <summary>보드 최종 상태를 즉시 반영 (색/아이템/위치·스케일 리셋)</summary>
     public void Refresh(Board b, Color[] palette)
     {
@@ -139,7 +166,7 @@ public class BoardView : MonoBehaviour
             for (int y = 0; y < Board.H; y++)
             {
                 int c = b.GetTile(x, y);
-                tiles[x, y].color = c == Board.Empty ? EmptyColor : palette[c];
+                PaintTile(x, y, c, b.GetBrickHp(x, y), palette);
                 tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
                 tiles[x, y].transform.localScale = Vector3.one * TileScale;
 
@@ -151,13 +178,13 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>연쇄 한 단계가 끝난 시점의 보드를 반영 (색/아이템만; 위치는 FallIn 이 잡는다).</summary>
-    public void ApplyState(int[] t, ItemType[] it, Color[] palette)
+    public void ApplyState(int[] t, ItemType[] it, int[] hp, Color[] palette)
     {
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
                 int c = t[x * Board.H + y];
-                tiles[x, y].color = c == Board.Empty ? EmptyColor : palette[c];
+                PaintTile(x, y, c, hp[x * Board.H + y], palette);
                 tiles[x, y].transform.localScale = Vector3.one * TileScale;
 
                 var item = it[x * Board.H + y];
@@ -199,6 +226,7 @@ public class BoardView : MonoBehaviour
     {
         foreach (var p in cells)
         {
+            tiles[p.X, p.Y].sprite = tile;      // 무지개/벽돌 자리였어도 색 칸으로 덮인다
             tiles[p.X, p.Y].color = c;
             tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.14f;
         }
@@ -368,7 +396,7 @@ public class BoardView : MonoBehaviour
     {
         if (ghostCount <= 0) return;
         float k = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6.5f);
-        float scale = Mathf.Lerp(TileScale * 0.94f, TileScale * 1.06f, k);
+        float scale = Mathf.Lerp(TileScale * 1.16f, TileScale * 1.30f, k);
         var c = ghostRingColor;
         c.a = Mathf.Lerp(0.55f, 1f, k);
         for (int i = 0; i < ghostCount && i < ghostRing.Length; i++)
@@ -392,7 +420,8 @@ public class BoardView : MonoBehaviour
     }
 
     // 둥근 모서리 + 위가 밝은 세로 그라데이션 + 얇은 안쪽 하이라이트 (SpriteRenderer.color로 틴트)
-    static Sprite MakeTileSprite()
+    // GameUI 의 배경 블록도 같은 모양을 쓴다.
+    public static Sprite MakeTileSprite()
     {
         const int S = 32; const float r = 7f;
         var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
@@ -434,6 +463,59 @@ public class BoardView : MonoBehaviour
             }
         tex.SetPixels(px);
         tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 벽돌: 둥근 사각에 가로 이음매, cracks 만큼 사선 금이 간다
+    static Sprite MakeBrickSprite(int cracks)
+    {
+        const int S = 32; const float r = 4f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+
+                float g = Mathf.Lerp(0.78f, 1.0f, fy / (S - 1));
+                if (y % 10 == 0 || (y / 10) % 2 == 0 && x == (S / 2)) g *= 0.72f;   // 벽돌 이음매
+
+                // 금: 위에서 아래로 내려오는 사선. cracks 개수만큼.
+                for (int k = 0; k < cracks; k++)
+                {
+                    float cx = S * (0.32f + 0.36f * k);
+                    float line = cx + (fy - S * 0.5f) * (k % 2 == 0 ? 0.45f : -0.45f);
+                    if (Mathf.Abs(fx - line) < 1.3f) g *= 0.38f;
+                }
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 무지개: 둥근 사각 안에 대각 방향 무지개 띠
+    static Sprite MakeRainbowSprite()
+    {
+        const int S = 32; const float r = 7f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+
+                float t = Mathf.Clamp01((fx + fy) / (2f * S));        // 대각 그라데이션
+                var c = Palette.HslToRgb(t, 0.85, 0.58);
+                float sh = Mathf.Lerp(0.86f, 1.05f, fy / (S - 1));    // 위가 밝게
+                px[y * S + x] = new Color(c.r * sh, c.g * sh, c.b * sh, a);
+            }
+        tex.SetPixels(px); tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 

@@ -48,6 +48,7 @@ namespace ColorMatcher.Core
         public List<SpawnedItem> Spawns = new List<SpawnedItem>();
         public bool BigHit;                              // 3x3 이상 매칭 발생 여부
         public List<Wave> Waves = new List<Wave>();      // 연쇄 단계별 경계(연출용)
+        public int BricksCracked;                        // 이번 스탬프에 금이 간 벽돌 수
     }
 
     /// <summary>Destroyed 안의 한 연쇄 단계 구간. 표현 계층이 순차 연출에 사용.</summary>
@@ -62,6 +63,7 @@ namespace ColorMatcher.Core
         // 뷰가 다음 폭발을 재생하기 전에 이 상태로 낙하를 보여줘야 인과가 보인다.
         public int[] TilesAfter;
         public ItemType[] ItemsAfter;
+        public int[] BrickHpAfter;
     }
 
     public struct SpawnedItem
@@ -135,12 +137,18 @@ namespace ColorMatcher.Core
 
     public class Board
     {
-        public const int W = 16, H = 16, Empty = -1;
+        public const int W = 14, H = 14, Empty = -1;
+
+        // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
+        public const int Brick = -2;      // 벽돌: 매칭에 안 끼고, 중력도 안 받고, 옆 칸이 터질 때만 금이 간다
+        public const int Rainbow = -3;    // 무지개: 어떤 색으로도 매칭되고, 인접 칸이 터지면 함께 터진다
+        public const int MinMatch = 3;    // 최소 매칭 정사각형 한 변
         public const int BaseTileScore = 10;
         public const double ChainBonus = 0.5;
 
         public readonly int ColorCount;
         readonly int[,] tiles;
+        readonly int[,] brickHp;
         readonly ItemType[,] items;
         readonly Random rng;
 
@@ -149,6 +157,7 @@ namespace ColorMatcher.Core
             ColorCount = colorCount;
             rng = new Random(seed);
             tiles = new int[W, H];
+            brickHp = new int[W, H];
             items = new ItemType[W, H];
             FillNoInitialMatch();
         }
@@ -159,10 +168,27 @@ namespace ColorMatcher.Core
         public void SetItem(int x, int y, ItemType t) { items[x, y] = t; }
         public bool InBounds(int x, int y) { return x >= 0 && x < W && y >= 0 && y < H; }
 
+        public bool IsBrick(int x, int y) { return tiles[x, y] == Brick; }
+        /// <summary>남은 내구도. 벽돌이 아니면 0.</summary>
+        public int GetBrickHp(int x, int y) { return tiles[x, y] == Brick ? brickHp[x, y] : 0; }
+        public void SetBrick(int x, int y, int hp)
+        {
+            tiles[x, y] = Brick;
+            brickHp[x, y] = hp;
+            items[x, y] = ItemType.None;   // 벽돌 자리에는 아이템이 남지 않는다
+        }
+
+        /// <summary>일반 색 칸인가 (벽돌/무지개/빈칸 제외).</summary>
+        static bool IsColor(int t) { return t >= 0; }
+
         public bool CanPlace(Piece p, int px, int py)
         {
             foreach (var c in p.Cells)
-                if (!InBounds(px + c.X, py + c.Y)) return false;
+            {
+                int x = px + c.X, y = py + c.Y;
+                if (!InBounds(x, y)) return false;
+                if (tiles[x, y] == Brick) return false;   // 벽돌은 덮어쓸 수 없다 — 옆에 놓아서 깨야 한다
+            }
             return true;
         }
 
@@ -201,7 +227,7 @@ namespace ColorMatcher.Core
                     int sizeMult = 1 << (m.Size - 2); // 2x2=x1,3x3=x2,4x4=x4
                     res.ScoreGained += (int)(m.Size * m.Size * BaseTileScore * sizeMult * mult);
                     res.Matches.Add(m);
-                    if (m.Size >= 3) res.BigHit = true;
+                    if (m.Size >= 4) res.BigHit = true;   // 최소 매칭이 3x3 이라 4x4 부터가 '큰 한 방'
                     if (m.Size >= 4) huge = true;
                     for (int dx = 0; dx < m.Size; dx++)
                         for (int dy = 0; dy < m.Size; dy++)
@@ -232,6 +258,35 @@ namespace ColorMatcher.Core
                         if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
                     }
                 }
+                // 무지개: 파괴될 칸에 인접해 있으면 함께 터진다. 한 번만 훑어 폭주를 막는다.
+                var seedCells = new List<Point>(order);
+                foreach (var pt in seedCells)
+                    foreach (var e in Neighbors(pt))
+                    {
+                        int k = Key(e.X, e.Y);
+                        if (tiles[e.X, e.Y] != Rainbow || toDestroy.ContainsKey(k)) continue;
+                        toDestroy[k] = e;
+                        order.Add(e);
+                        actCount++;
+                    }
+
+                // 벽돌: 인접 칸이 터지면 금이 간다. 웨이브당 1 만 깎아 '3번 터트려야' 를 지킨다.
+                var cracked = new HashSet<int>();
+                var crackSeeds = new List<Point>(order);   // 순회 중 order 에 추가되므로 복사본으로 돈다
+                foreach (var pt in crackSeeds)
+                    foreach (var e in Neighbors(pt))
+                    {
+                        if (tiles[e.X, e.Y] != Brick) continue;
+                        int k = Key(e.X, e.Y);
+                        if (!cracked.Add(k)) continue;
+                        if (--brickHp[e.X, e.Y] > 0) continue;
+                        // 다 깨졌다 — 이번 웨이브에 같이 부서진다
+                        toDestroy[k] = e;
+                        order.Add(e);
+                        actCount++;
+                    }
+                res.BricksCracked += cracked.Count;
+
                 if (actCount > 0)
                     res.ScoreGained += (int)(actCount * BaseTileScore * mult);
 
@@ -242,6 +297,7 @@ namespace ColorMatcher.Core
                 {
                     tiles[pt.X, pt.Y] = Empty;
                     items[pt.X, pt.Y] = ItemType.None;
+                    brickHp[pt.X, pt.Y] = 0;
                     res.Destroyed.Add(pt);
                 }
                 ApplyGravity();
@@ -257,6 +313,7 @@ namespace ColorMatcher.Core
                     End = res.Destroyed.Count,
                     TilesAfter = SnapshotTiles(),
                     ItemsAfter = SnapshotItems(),
+                    BrickHpAfter = SnapshotBrickHp(),
                 });
             }
             res.MaxChain = chain;
@@ -268,6 +325,14 @@ namespace ColorMatcher.Core
             var a = new int[W * H];
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < H; y++) a[x * H + y] = tiles[x, y];
+            return a;
+        }
+
+        int[] SnapshotBrickHp()
+        {
+            var a = new int[W * H];
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) a[x * H + y] = brickHp[x, y];
             return a;
         }
 
@@ -354,25 +419,33 @@ namespace ColorMatcher.Core
         }
 
         /// <summary>DP 최대 정사각형 + 큰 것 우선 그리디</summary>
+        /// <summary>겹치지 않는 최대 정사각형 매칭. 한 변 MinMatch 이상만 인정한다.
+        /// 무지개는 어떤 색으로도 쳐주므로 색마다 따로 DP 를 돌린다 (색 수가 3이라 비용은 무시할 만하다).</summary>
         public List<SquareMatch> FindSquares()
         {
-            int[,] dp = new int[W, H];
             var cand = new List<SquareMatch>();
-            for (int x = 0; x < W; x++)
-                for (int y = 0; y < H; y++)
-                {
-                    int c = tiles[x, y];
-                    if (c == Empty) { dp[x, y] = 0; continue; }
-                    if (x == 0 || y == 0) dp[x, y] = 1;
-                    else if (tiles[x - 1, y] == c && tiles[x, y - 1] == c && tiles[x - 1, y - 1] == c)
-                        dp[x, y] = Math.Min(dp[x - 1, y], Math.Min(dp[x, y - 1], dp[x - 1, y - 1])) + 1;
-                    else dp[x, y] = 1;
-                    if (dp[x, y] >= 2)
+            var dp = new int[W, H];
+
+            for (int c = 0; c < ColorCount; c++)
+            {
+                for (int x = 0; x < W; x++)
+                    for (int y = 0; y < H; y++)
                     {
-                        int s = dp[x, y];
-                        cand.Add(new SquareMatch { X = x - s + 1, Y = y - s + 1, Size = s, Color = c });
+                        if (!Fits(x, y, c)) { dp[x, y] = 0; continue; }
+                        if (x == 0 || y == 0) dp[x, y] = 1;
+                        else if (Fits(x - 1, y, c) && Fits(x, y - 1, c) && Fits(x - 1, y - 1, c))
+                            dp[x, y] = Math.Min(dp[x - 1, y], Math.Min(dp[x, y - 1], dp[x - 1, y - 1])) + 1;
+                        else dp[x, y] = 1;
+
+                        if (dp[x, y] >= MinMatch)
+                        {
+                            int sz = dp[x, y];
+                            cand.Add(new SquareMatch { X = x - sz + 1, Y = y - sz + 1, Size = sz, Color = c });
+                        }
                     }
-                }
+            }
+
+            // 큰 것부터 자리를 차지하고, 이미 다 덮인 후보는 버린다.
             cand.Sort((a, b) => b.Size.CompareTo(a.Size));
             bool[,] marked = new bool[W, H];
             var acc = new List<SquareMatch>();
@@ -391,20 +464,48 @@ namespace ColorMatcher.Core
             return acc;
         }
 
+        static readonly int[] NX = { 1, -1, 0, 0 };
+        static readonly int[] NY = { 0, 0, 1, -1 };
+
+        /// <summary>상하좌우 이웃 칸 (판 안쪽만).</summary>
+        IEnumerable<Point> Neighbors(Point p)
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                int x = p.X + NX[i], y = p.Y + NY[i];
+                if (InBounds(x, y)) yield return new Point(x, y);
+            }
+        }
+
+        /// <summary>(x,y) 가 색 c 의 정사각형에 낄 수 있는가. 무지개는 아무 색이나 된다.</summary>
+        bool Fits(int x, int y, int c)
+        {
+            int t = tiles[x, y];
+            return t == c || t == Rainbow;
+        }
+
         public void ApplyGravity()
         {
             for (int x = 0; x < W; x++)
             {
-                int w = 0;
-                for (int y = 0; y < H; y++)
-                    if (tiles[x, y] != Empty)
-                    {
-                        tiles[x, w] = tiles[x, y];
-                        items[x, w] = items[x, y];   // 아이템도 함께 낙하
-                        if (w != y) { tiles[x, y] = Empty; items[x, y] = ItemType.None; }
-                        w++;
-                    }
-                for (int y = w; y < H; y++) { tiles[x, y] = Empty; items[x, y] = ItemType.None; }
+                int segStart = 0;
+                for (int y = 0; y <= H; y++)
+                {
+                    bool barrier = y == H || tiles[x, y] == Brick;
+                    if (!barrier) continue;
+
+                    int w = segStart;
+                    for (int k = segStart; k < y; k++)
+                        if (tiles[x, k] != Empty)
+                        {
+                            tiles[x, w] = tiles[x, k];
+                            items[x, w] = items[x, k];   // 아이템도 함께 낙하
+                            if (w != k) { tiles[x, k] = Empty; items[x, k] = ItemType.None; }
+                            w++;
+                        }
+                    for (int k = w; k < y; k++) { tiles[x, k] = Empty; items[x, k] = ItemType.None; }
+                    segStart = y + 1;
+                }
             }
         }
 
@@ -412,7 +513,22 @@ namespace ColorMatcher.Core
         {
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < H; y++)
-                    if (tiles[x, y] == Empty) tiles[x, y] = rng.Next(ColorCount);
+                    if (tiles[x, y] == Empty)
+                        tiles[x, y] = rng.NextDouble() < Rules.RainbowChance ? Rainbow : rng.Next(ColorCount);
+        }
+
+        /// <summary>빈칸이 아닌 일반 칸을 벽돌로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
+        public int SpawnBricks(int count)
+        {
+            int placed = 0;
+            for (int t = 0; t < count * 40 && placed < count; t++)
+            {
+                int x = rng.Next(W), y = rng.Next(H);
+                if (!IsColor(tiles[x, y])) continue;   // 빈칸/벽돌/무지개 자리는 건너뛴다
+                SetBrick(x, y, Rules.BrickHp);
+                placed++;
+            }
+            return placed;
         }
 
         void FillNoInitialMatch()
@@ -423,6 +539,7 @@ namespace ColorMatcher.Core
                     tiles[x, y] = rng.Next(ColorCount);
                     int guard = 0;
                     while (Makes2x2At(x, y) && guard++ < 16) tiles[x, y] = rng.Next(ColorCount);
+                    // 2x2 를 피해두면 3x3 은 자동으로 안 생긴다 (3x3 은 2x2 를 품는다)
                 }
             // 정리 패스: 채우기 순서상 놓친 잔여 정사각형을 실제 매칭 판정으로 제거.
             // (칸 단위 Makes2x2At은 나중에 채워진 이웃이 완성하는 2x2를 놓칠 수 있음)
@@ -455,27 +572,29 @@ namespace ColorMatcher.Core
     public static class Rules
     {
         public const int ColorCount = 3;            // v5: 3색 랜덤 팔레트
-        public const int TimeAttackMs = 60000;      // 타임어택 60초
-        public const int PieceTimeMaxMs = 8000;     // 첫 조각 8초
-        public const int PieceTimeMinMs = 2500;     // 마지막 조각 2.5초
+        public const int TimeAttackMs = 180000;     // 타임어택 3분
+
+        public const int BrickHp = 3;               // 벽돌은 3번 금이 가야 부서진다
+        public const double RainbowChance = 0.010;  // 리필 한 칸이 무지개일 확률 — 아주 드물게
+
+        /// <summary>이번 수가 끝난 뒤 새로 놓을 벽돌 수. 진행할수록 늘어난다.</summary>
+        public static int BricksAfterMove(int movesUsed, int totalMoves)
+        {
+            if (movesUsed < 3) return 0;                       // 첫 세 수는 판을 익히게 둔다
+            if (movesUsed % 2 != 0) return 0;                  // 한 수 걸러 한 번
+            if (totalMoves <= 0) return 1;
+            double t = movesUsed / (double)totalMoves;         // 0 → 1
+            return 1 + (int)(t * 2);                           // 1개에서 3개까지
+        }
 
         public struct Difficulty { public int Moves; public int Goal; public string Label; }
         public static readonly Dictionary<string, Difficulty> Table = new Dictionary<string, Difficulty>
         {
             { "easy",   new Difficulty { Moves = 30, Goal = 15000, Label = "하" } },
             { "normal", new Difficulty { Moves = 25, Goal = 25000, Label = "중" } },
-            { "hard",   new Difficulty { Moves = 20, Goal = 40000, Label = "상" } },
+            // 봇 측정(50수 중앙값 11,690 / 상위10% 14,060) 기준 잠정치. 실제 플레이로 확인 후 조정할 것.
+            { "hard",   new Difficulty { Moves = 50, Goal = 13000, Label = "상" } },
         };
 
-        /// <summary>남은 수에 선형 비례하는 조각 제한 시간(ms). 첫 조각 MAX, 마지막 MIN.</summary>
-        public static int PieceTimeMs(int movesLeft, int totalMoves)
-        {
-            if (totalMoves <= 1) return PieceTimeMinMs;
-            double t = PieceTimeMinMs + (PieceTimeMaxMs - PieceTimeMinMs)
-                       * (double)(movesLeft - 1) / (totalMoves - 1);
-            if (t < PieceTimeMinMs) t = PieceTimeMinMs;
-            if (t > PieceTimeMaxMs) t = PieceTimeMaxMs;
-            return (int)t;
-        }
     }
 }

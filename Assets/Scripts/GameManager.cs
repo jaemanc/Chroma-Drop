@@ -14,18 +14,20 @@ public enum GamePhase { Home, Playing, Result }
 
 public class GameManager : MonoBehaviour
 {
-    [Header("모드/난이도 (홈 화면 초기값)")]
-    public string difficulty = "normal";   // easy | normal | hard
+    [Header("모드 (홈 화면 초기값)")]
+    // 난이도 선택은 없앴다. 규칙표는 그대로 두고 '상' 하나만 쓴다.
+    public const string Difficulty = "hard";
+    public string difficulty { get { return Difficulty; } }
     public bool timeAttack = false;
     public int seed = 0;                   // 0 = 랜덤
 
     [Header("연출 시간(초)")]
-    public float stampPop = 0.10f;
-    public float destroyFlash = 0.20f;
-    public float chainStep = 0.11f;        // 연쇄 한 단계가 터지는 간격
-    public float chainFall = 0.13f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
-    public float glowTime = 0.16f;         // 새로 내려온 칸 반짝임
-    public float fallTime = 0.20f;
+    public float stampPop = 0.13f;
+    public float destroyFlash = 0.22f;
+    public float chainStep = 0.19f;        // 연쇄 한 단계가 터지는 간격
+    public float chainFall = 0.19f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
+    public float glowTime = 0.20f;         // 새로 내려온 칸 반짝임
+    public float fallTime = 0.24f;
     public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
     public GamePhase Phase { get; private set; }
@@ -35,7 +37,6 @@ public class GameManager : MonoBehaviour
     public int MovesLeft { get { return movesLeft; } }
     public bool TimeAttackMode { get { return taRunning; } }
     public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
-    public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((pieceDeadline - Time.time) / pieceTimeTotal); } }
     public Board BoardRef { get { return board; } }
     public Piece CurrentPiece { get { return current; } }
 
@@ -56,7 +57,7 @@ public class GameManager : MonoBehaviour
 
     int score, movesLeft, totalMoves, goal;
     bool busy, taRunning, touchActive;
-    float pieceDeadline, pieceTimeTotal, taDeadline;
+    float taDeadline;
     int lastW, lastH, curSeed;
     Vector3 camBase;
     Coroutine shakeCo;
@@ -100,14 +101,13 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
-    public void StartGame() { StartGame(difficulty, timeAttack, seed); }
+    public void StartGame() { StartGame(Difficulty, timeAttack, seed); }
 
     public void StartGame(string diff, bool ta, int seedOverride)
     {
         StopAllCoroutines();
         shakeCo = null;
         if (cam != null) cam.transform.position = camBase;
-        difficulty = Rules.Table.ContainsKey(diff) ? diff : "normal";
         timeAttack = ta;
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
@@ -137,7 +137,6 @@ public class GameManager : MonoBehaviour
 
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
-        else StartPieceTimer();
     }
 
     void EndGame(bool win)
@@ -175,14 +174,7 @@ public class GameManager : MonoBehaviour
         if (Screen.width != lastW || Screen.height != lastH) FitCamera();
         if (Phase != GamePhase.Playing) return;
 
-        if (taRunning)
-        {
-            if (!busy && Time.time >= taDeadline) { EndGame(false); return; }
-        }
-        else
-        {
-            if (!busy && Time.time >= pieceDeadline) { StartCoroutine(ExpirePiece()); return; }
-        }
+        if (taRunning && !busy && Time.time >= taDeadline) { EndGame(false); return; }
 
         ui.UpdateHud(this);
         if (busy) { view.HideGhost(); return; }
@@ -281,7 +273,13 @@ public class GameManager : MonoBehaviour
 
         score += result.ScoreGained;
 
-        // 3) 최종 상태 확정. 파괴가 있었다면 단계별 연출이 이미 여기까지 옮겨놨다.
+        // 3) 벽돌 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
+        if (!taRunning)
+        {
+            int used = totalMoves - movesLeft;
+            int add = Rules.BricksAfterMove(used, totalMoves);
+            if (add > 0 && board.SpawnBricks(add) > 0) sfx.PlayItem();
+        }
         view.Refresh(board, palette);
 
         // 다음 조각
@@ -294,19 +292,18 @@ public class GameManager : MonoBehaviour
         {
             if (score >= goal) { EndGame(true); yield break; }
             if (movesLeft <= 0) { EndGame(false); yield break; }
-            StartPieceTimer();
         }
     }
 
     /// <summary>연쇄 단계(웨이브)를 하나씩 터뜨린다. 각 웨이브 안에서도 매칭 → 아이템 발동 순.</summary>
     IEnumerator DestroyWaves(ResolveResult result, int[,] visual)
     {
-        // 단계가 많으면 전체가 늘어지므로 간격을 줄인다.
+        // 단계가 많으면 전체가 늘어지므로 조금씩 줄이되, 눈이 못 따라갈 만큼 빨라지지는 않게 한다.
         int segments = 0;
         foreach (var w in result.Waves)
             segments += (w.MatchEnd > w.Start ? 1 : 0) + (w.End > w.MatchEnd ? 1 : 0);
-        float step = segments <= 1 ? 0f : Mathf.Max(0.045f, chainStep - 0.006f * segments);
-        float fall = Mathf.Max(0.07f, chainFall - 0.008f * result.Waves.Count);
+        float step = segments <= 1 ? 0f : Mathf.Max(0.10f, chainStep - 0.004f * segments);
+        float fall = Mathf.Max(0.11f, chainFall - 0.005f * result.Waves.Count);
 
         for (int i = 0; i < result.Waves.Count; i++)
         {
@@ -322,7 +319,7 @@ public class GameManager : MonoBehaviour
             // 다음 단계의 매칭은 여기서 내려온 블록이 만든 것이다.
             // 낙하를 먼저 보여주고 새로 채워진 칸을 반짝여야 인과가 읽힌다.
             bool last = i == result.Waves.Count - 1;
-            yield return ApplyWave(w, visual, last ? fallTime : fall, last ? 0.02f : 0.007f);
+            yield return ApplyWave(w, visual, last ? fallTime : fall, last ? 0.02f : 0.011f);
         }
     }
 
@@ -343,7 +340,7 @@ public class GameManager : MonoBehaviour
                 visual[x, y] = after;
             }
 
-        view.ApplyState(w.TilesAfter, w.ItemsAfter, palette);
+        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.BrickHpAfter, palette);
         if (!any) yield break;
 
         yield return view.FallIn(changed, dur, stagger);
@@ -375,26 +372,7 @@ public class GameManager : MonoBehaviour
         if (step > 0f) yield return new WaitForSeconds(step);
     }
 
-    IEnumerator ExpirePiece()
-    {
-        busy = true;
-        view.HideGhost();
-        sfx.PlayExpire();
-        yield return new WaitForSeconds(0.15f);
-        movesLeft--;
-        current = queue.Dequeue();
-        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
-        ui.SetNext(new List<Piece>(queue), palette);
-        busy = false;
-        if (movesLeft <= 0) EndGame(false);
-        else StartPieceTimer();
-    }
 
-    void StartPieceTimer()
-    {
-        pieceTimeTotal = Rules.PieceTimeMs(movesLeft, totalMoves) / 1000f;
-        pieceDeadline = Time.time + pieceTimeTotal;
-    }
 
     // 세로(모바일)/가로(에디터) 모두 보드 전체 + 상단 HUD 공간이 나오게 카메라 맞춤
     void FitCamera()

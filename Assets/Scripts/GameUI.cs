@@ -26,7 +26,8 @@ public class GameUI : MonoBehaviour
     Text chainPopup;
     Coroutine chainCo;
     Image timerFill;
-    Image[] modeBtnBgs; Image[] diffBtnBgs;
+    GameObject timerBar;      // 타임어택에서만 보인다 (조각 제한시간은 없앴다)
+    Image[] modeBtnBgs;
 
     // 랭킹
     public enum SubmitState { Off, Sending, Done, Failed }
@@ -40,8 +41,6 @@ public class GameUI : MonoBehaviour
     const int RankRowCount = 12;
     RectTransform nextRoot;
     readonly List<Image> nextCells = new List<Image>();
-
-    static readonly string[] DiffKeys = { "easy", "normal", "hard" };
 
     public static GameUI Create(GameManager gm)
     {
@@ -164,6 +163,7 @@ public class GameUI : MonoBehaviour
 
         var barBg = NewImage("barbg", top.transform, new Color(1, 1, 1, 0.12f));
         Place(barBg.rectTransform, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0.5f, 0), Vector2.zero, new Vector2(0, 12));
+        timerBar = barBg.gameObject;
         timerFill = NewImage("fill", barBg.transform, Accent);
         Stretch(timerFill.rectTransform);
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
@@ -217,22 +217,22 @@ public class GameUI : MonoBehaviour
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
-        float frac;
+        // 조각 제한시간을 없앴으므로 바는 타임어택 남은 시간에만 쓴다.
+        timerBar.SetActive(g.TimeAttackMode);
         if (g.TimeAttackMode)
         {
             subText.text = L("타임어택", "TIME ATTACK");
-            rightText.text = g.TimeLeftSec.ToString("0.0") + L("초", "s");
-            frac = g.TimeLeftSec / (Rules.TimeAttackMs / 1000f);
+            int sec = Mathf.CeilToInt(g.TimeLeftSec);
+            rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
+            float frac = Mathf.Clamp01(g.TimeLeftSec / (Rules.TimeAttackMs / 1000f));
+            timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
+            timerFill.color = Color.Lerp(new Color(0.9f, 0.4f, 0.35f), Accent, frac);
         }
         else
         {
             subText.text = L("목표 ", "GOAL ") + g.Goal.ToString("N0");
-            rightText.text = L("남은 수 ", "MOVES ") + g.MovesLeft;
-            frac = g.PieceTimerFrac;
+            rightText.text = L("남은 기회 ", "MOVES ") + g.MovesLeft;
         }
-        frac = Mathf.Clamp01(frac);
-        timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
-        timerFill.color = Color.Lerp(new Color(0.9f, 0.4f, 0.35f), Accent, frac);
     }
 
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
@@ -267,8 +267,18 @@ public class GameUI : MonoBehaviour
 
     void BuildHomePanel()
     {
-        homePanel = NewImage("homebg", transform, new Color(0.07f, 0.07f, 0.11f, 1)).gameObject;
+        var homeBg = NewImage("homebg", transform, Color.white);
+        homeBg.sprite = MakeGradientSprite(new Color(0.10f, 0.09f, 0.19f),   // 위: 짙은 남보라
+                                           new Color(0.04f, 0.04f, 0.07f));  // 아래: 거의 검정
+        homeBg.type = Image.Type.Simple;
+        homePanel = homeBg.gameObject;
         Stretch((RectTransform)homePanel.transform);
+
+        // 게임 블록이 천천히 떠다니는 배경. 팔레트와 같은 방식으로 색을 만들어 게임과 톤을 맞춘다.
+        var blocksRoot = NewRT("bgblocks", homePanel.transform);
+        Stretch(blocksRoot);
+        blocksRoot.gameObject.AddComponent<BgBlocks>().Build(BoardView.MakeTileSprite());
+
         var safe = NewRT("safe", homePanel.transform);
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
@@ -284,23 +294,13 @@ public class GameUI : MonoBehaviour
         Place(sub.rectTransform, new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 70));
 
         modeBtnBgs = new Image[2];
-        string[] modeLabels = { L("점수 모드", "SCORE"), L("타임어택", "TIME ATTACK") };
+        string[] modeLabels = { L("횟수 모드", "MOVES"), L("타임어택", "TIME ATTACK") };
         for (int i = 0; i < 2; i++)
         {
             bool ta = i == 1;
             var b = NewButton("mode" + i, safe, modeLabels[i], 44, BtnDim, () => { gm.timeAttack = ta; RefreshHomeButtons(); });
             Place((RectTransform)b.transform, new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.5f), new Vector2(i == 0 ? -190 : 190, 0), new Vector2(350, 110));
             modeBtnBgs[i] = b.GetComponent<Image>();
-        }
-
-        diffBtnBgs = new Image[3];
-        string[] diffLabels = { L("하", "EASY"), L("중", "NORMAL"), L("상", "HARD") };
-        for (int i = 0; i < 3; i++)
-        {
-            string key = DiffKeys[i];
-            var b = NewButton("diff" + i, safe, diffLabels[i], 44, BtnDim, () => { gm.difficulty = key; RefreshHomeButtons(); });
-            Place((RectTransform)b.transform, new Vector2(0.5f, 0.49f), new Vector2(0.5f, 0.49f), new Vector2(0.5f, 0.5f), new Vector2((i - 1) * 250, 0), new Vector2(230, 100));
-            diffBtnBgs[i] = b.GetComponent<Image>();
         }
 
         bestHomeText = NewText("best", safe, "", 42, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.65f));
@@ -333,8 +333,6 @@ public class GameUI : MonoBehaviour
         if (modeBtnBgs == null) return;
         for (int i = 0; i < 2; i++)
             modeBtnBgs[i].color = (i == 1) == gm.timeAttack ? BtnSel : BtnDim;
-        for (int i = 0; i < 3; i++)
-            diffBtnBgs[i].color = DiffKeys[i] == gm.difficulty ? BtnSel : BtnDim;
         bestHomeText.text = L("최고 기록 ", "BEST ") + gm.BestForSelection().ToString("N0");
         RefreshBadge();
     }
@@ -426,8 +424,7 @@ public class GameUI : MonoBehaviour
     {
         rankTabMe.color = rankNationTab ? BtnDim : BtnSel;
         rankTabNation.color = rankNationTab ? BtnSel : BtnDim;
-        rankTitle.text = gm.timeAttack ? L("타임어택", "TIME ATTACK")
-                                       : L("점수 · ", "SCORE · ") + gm.difficulty.ToUpperInvariant();
+        rankTitle.text = gm.timeAttack ? L("타임어택", "TIME ATTACK") : L("점수", "SCORE");
         foreach (var r in rankRows) r.text = "";
 
         var lb = Leaderboard.I;
@@ -576,6 +573,24 @@ public class GameUI : MonoBehaviour
         return b;
     }
 
+    // 세로 그라데이션 스프라이트 (에셋 없이 런타임 생성)
+    static Sprite MakeGradientSprite(Color top, Color bottom)
+    {
+        const int H = 128;
+        var tex = new Texture2D(2, H) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[2 * H];
+        for (int y = 0; y < H; y++)
+        {
+            // 위쪽이 더 오래 밝게 남도록 살짝 휘어준 보간
+            float k = y / (float)(H - 1);
+            var c = Color.Lerp(bottom, top, k * k * (3f - 2f * k));
+            px[y * 2] = px[y * 2 + 1] = c;
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, 2, H), new Vector2(0.5f, 0.5f), 100f);
+    }
+
     static void Stretch(RectTransform rt)
     {
         rt.anchorMin = Vector2.zero;
@@ -590,6 +605,63 @@ public class GameUI : MonoBehaviour
         rt.pivot = pivot;
         rt.anchoredPosition = pos;
         rt.sizeDelta = size;
+    }
+}
+
+/// <summary>홈 배경: 게임 블록 모양이 천천히 떠오르며 회전. 화면 위로 나가면 아래에서 다시 들어온다.</summary>
+public class BgBlocks : MonoBehaviour
+{
+    const int Count = 16;
+
+    RectTransform[] rts;
+    float[] speed, spin, size;
+
+    public void Build(Sprite tile)
+    {
+        var rng = new System.Random(7);                      // 실행마다 같은 배치
+        var palette = Palette.Generate(5, new System.Random(7));
+        rts = new RectTransform[Count];
+        speed = new float[Count]; spin = new float[Count]; size = new float[Count];
+
+        for (int i = 0; i < Count; i++)
+        {
+            var go = new GameObject("blk" + i, typeof(RectTransform));
+            var rt = (RectTransform)go.transform;
+            rt.SetParent(transform, false);
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
+            rt.pivot = new Vector2(0.5f, 0.5f);
+
+            size[i] = 70f + (float)rng.NextDouble() * 150f;
+            rt.sizeDelta = new Vector2(size[i], size[i]);
+            rt.anchoredPosition = new Vector2(((float)rng.NextDouble() - 0.5f) * 1100f,
+                                              (float)rng.NextDouble() * 2100f);
+            rt.localRotation = Quaternion.Euler(0, 0, (float)rng.NextDouble() * 360f);
+
+            var img = go.AddComponent<Image>();
+            img.sprite = tile;
+            var c = palette[rng.Next(palette.Length)];
+            // 큰 블록일수록 더 흐리게 — 배경이 앞을 잡아먹지 않게
+            img.color = new Color(c.r, c.g, c.b, Mathf.Lerp(0.13f, 0.05f, (size[i] - 70f) / 150f));
+            img.raycastTarget = false;
+
+            rts[i] = rt;
+            speed[i] = 8f + (float)rng.NextDouble() * 18f;
+            spin[i] = ((float)rng.NextDouble() - 0.5f) * 7f;
+        }
+    }
+
+    void Update()
+    {
+        if (rts == null) return;
+        float dt = Time.unscaledDeltaTime;
+        for (int i = 0; i < rts.Length; i++)
+        {
+            var p = rts[i].anchoredPosition;
+            p.y += speed[i] * dt;
+            if (p.y - size[i] > 2200f) p.y = -size[i];       // 위로 나가면 아래에서 재진입
+            rts[i].anchoredPosition = p;
+            rts[i].Rotate(0, 0, spin[i] * dt);
+        }
     }
 }
 

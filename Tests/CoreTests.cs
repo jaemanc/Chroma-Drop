@@ -41,33 +41,37 @@ class CoreTests
         // 스탬프 직후 상태 확인 불가(Resolve 내부). 대신 매칭 없음 확인:
         Assert(b.FindSquares().Count == 0, "I3 스탬프는 즉시 매칭 없음");
 
-        // 3. 페인트로 2x2 완성 → 파괴 + 점수
-        var b2 = FlatBoard(0);
-        // 색0 보드에서 (2,2),(3,2),(2,3)은 이미 색0. (3,3)만 색0→색0이라 매칭.
-        // 명시적으로: 색0 평면은 시작부터 거대 정사각형이므로 다른 검증법 사용.
-        // 체커보드 배경에 2x2만 심어 정확히 1개 매칭:
+        // 3. 최소 매칭은 3x3 — 2x2 는 더 이상 터지지 않는다
+        var b2x2 = CheckerBoard();
+        Fill(b2x2, 4, 4, 2, 1);
+        Assert(b2x2.FindSquares().Count == 0, "2x2 는 매칭 아님 (최소 3x3)");
+
         var b3 = CheckerBoard();
-        b3.SetTile(4, 4, 1); b3.SetTile(5, 4, 1); b3.SetTile(4, 5, 1); b3.SetTile(5, 5, 1);
+        Fill(b3, 4, 4, 3, 1);
         var ms = b3.FindSquares();
-        Assert(ms.Count == 1 && ms[0].Size == 2, "체커보드+2x2 = 정확히 1매칭");
+        Assert(ms.Count == 1 && ms[0].Size == 3, "체커보드+3x3 = 정확히 1매칭");
 
         // 4. 점수 공식: 3x3 chain1 = 9*10*2 = 180
         var b4 = CheckerBoard();
         for (int x = 2; x <= 4; x++) for (int y = 2; y <= 4; y++) b4.SetTile(x, y, 1);
         var r4 = b4.Resolve();
         Assert(r4.ScoreGained >= 180, "3x3 점수 >= 180 (배수 x2 적용)");
-        Assert(r4.BigHit, "3x3은 BigHit");
+        Assert(!r4.BigHit, "3x3은 BigHit 아님 (최소 매칭이라 4x4부터)");
 
-        // 5. EffectCells 크기 (16x16)
+        // 5. EffectCells 크기 — 기대값을 Board.W/H 에서 유도한다 (보드 크기를 바꿔도 유효)
         var b5 = FlatBoard(0);
-        Assert(b5.EffectCells(ItemType.Row, 5, 3).Count == 16, "Row = 16칸");
-        Assert(b5.EffectCells(ItemType.Col, 5, 3).Count == 16, "Col = 16칸");
-        Assert(b5.EffectCells(ItemType.Bomb5, 8, 8).Count == 25, "Bomb5 중앙 = 25칸");
+        int cx = Board.W / 2, cy = Board.H / 2;
+        Assert(b5.EffectCells(ItemType.Row, 5, 3).Count == Board.W, "Row = " + Board.W + "칸");
+        Assert(b5.EffectCells(ItemType.Col, 5, 3).Count == Board.H, "Col = " + Board.H + "칸");
+        Assert(b5.EffectCells(ItemType.Bomb5, cx, cy).Count == 25, "Bomb5 중앙 = 25칸");
         Assert(b5.EffectCells(ItemType.Bomb5, 0, 0).Count == 9, "Bomb5 모서리 = 9칸");
-        Assert(b5.EffectCells(ItemType.Diag, 8, 8).Count == 30, "Diag 중앙 = 30칸");
-        Assert(b5.EffectCells(ItemType.Diag, 0, 0).Count == 16, "Diag 모서리 = 16칸");
+        Assert(b5.EffectCells(ItemType.Diag, cx, cy).Count == ExpectedDiag(cx, cy),
+               "Diag 중앙 = " + ExpectedDiag(cx, cy) + "칸");
+        Assert(b5.EffectCells(ItemType.Diag, 0, 0).Count == ExpectedDiag(0, 0),
+               "Diag 모서리 = " + ExpectedDiag(0, 0) + "칸");
         // ColorClear: 색0 평면 전체
-        Assert(b5.EffectCells(ItemType.ColorClear, 0, 0).Count == 256, "ColorClear 단색평면 = 256칸");
+        Assert(b5.EffectCells(ItemType.ColorClear, 0, 0).Count == Board.W * Board.H,
+               "ColorClear 단색평면 = " + (Board.W * Board.H) + "칸");
 
         // 6. 아이템 발동 BFS 종결성 (아이템 30개 무작위 배치, 100회)
         bool bfsOk = true;
@@ -77,14 +81,14 @@ class CoreTests
             var trng = new Random(s + 1);
             var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb5, ItemType.ColorClear };
             for (int i = 0; i < 30; i++)
-                bb.SetItem(trng.Next(16), trng.Next(16), types[trng.Next(types.Length)]);
+                bb.SetItem(trng.Next(Board.W), trng.Next(Board.H), types[trng.Next(types.Length)]);
             // Bomb5 하나를 매칭에 넣어 발동시키는 대신, 발동 시뮬레이션은 Resolve 경유가 복잡하므로
             // EffectCells + 수동 BFS로 종결만 확인
             var td = new Dictionary<int, Point>();
             var q = new Queue<Point>();
-            var start = new Point(8, 8);
-            td[8 * 100 + 8] = start; q.Enqueue(start);
-            bb.SetItem(8, 8, ItemType.Bomb5);
+            var start = new Point(Board.W / 2, Board.H / 2);
+            td[start.X * 100 + start.Y] = start; q.Enqueue(start);
+            bb.SetItem(start.X, start.Y, ItemType.Bomb5);
             int steps = 0;
             while (q.Count > 0)
             {
@@ -117,12 +121,12 @@ class CoreTests
         {
             var p = Piece.CreateRandom(prng, 3);
             for (int r = prng.Next(4); r > 0; r--) p = p.Rotated();
-            int px = prng.Next(16), py = prng.Next(16);
+            int px = prng.Next(Board.W), py = prng.Next(Board.H);
             if (!b8.CanPlace(p, px, py)) continue;
             b8.Stamp(p, px, py);
         }
         bool full = true;
-        for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++) if (b8.GetTile(x, y) == Board.Empty) full = false;
+        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) if (b8.GetTile(x, y) == Board.Empty) full = false;
         Assert(full, "30수 후 빈 칸 없음");
         Assert(b8.FindSquares().Count == 0, "30수 후 잔여 매칭 없음");
 
@@ -139,29 +143,107 @@ class CoreTests
         Assert(rotOk, "모든 조각 4회 회전 복귀");
 
         // 10. 난이도/타이머 규칙
-        Assert(Rules.Table["hard"].Goal == 40000 && Rules.Table["hard"].Moves == 20, "상 난이도 = 20수/40000");
-        Assert(Rules.PieceTimeMs(30, 30) == 8000, "첫 조각 = 8000ms");
-        Assert(Rules.PieceTimeMs(1, 30) == 2500, "마지막 조각 = 2500ms");
-        int prev = int.MaxValue; bool mono = true;
-        for (int m = 30; m >= 1; m--) { int t = Rules.PieceTimeMs(m, 30); if (t > prev) mono = false; prev = t; }
-        Assert(mono, "타이머 단조 감소");
+        Assert(Rules.Table["hard"].Goal == 13000 && Rules.Table["hard"].Moves == 50, "횟수 모드 = 50수/13000");
 
         Console.WriteLine();
+        BrickRainbowTests();
+
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
     }
 
+    // ── 벽돌 / 무지개 ──
+    static void BrickRainbowTests()
+    {
+        // 무지개는 어떤 색으로도 정사각형에 낀다
+        var b = CheckerBoard();
+        Fill(b, 4, 4, 3, 1);
+        b.SetTile(5, 5, Board.Rainbow);               // 한가운데를 무지개로
+        var ms = b.FindSquares();
+        Assert(ms.Count == 1 && ms[0].Size == 3, "무지개는 와일드카드 (3x3 성립)");
+
+        // 무지개는 인접 칸이 터질 때 함께 터진다
+        var b2 = CheckerBoard();
+        Fill(b2, 4, 4, 3, 1);
+        b2.SetTile(7, 5, Board.Rainbow);              // 3x3(4..6) 오른쪽에 붙여둔다
+        var r2 = b2.Resolve();
+        Assert(r2.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "인접 무지개도 함께 터진다");
+
+        // 벽돌 위에는 조각을 놓을 수 없다
+        var b3 = CheckerBoard();
+        b3.SetBrick(5, 5, Rules.BrickHp);
+        var piece = new Piece("dot", new List<Point> { new Point(0, 0) }, 1);
+        Assert(!b3.CanPlace(piece, 5, 5), "벽돌 위에는 스탬프 불가");
+        Assert(b3.CanPlace(piece, 5, 6), "벽돌 옆에는 스탬프 가능");
+
+        // 옆 칸이 터지면 금이 가고, 3번이면 부서진다
+        var b4 = CheckerBoard();
+        b4.SetBrick(7, 5, Rules.BrickHp);
+        int hp0 = b4.GetBrickHp(7, 5);
+        Fill(b4, 4, 4, 3, 1);
+        b4.Resolve();
+        Assert(hp0 == 3, "벽돌 초기 내구도 3");
+
+        var b5 = CheckerBoard();
+        b5.SetBrick(7, 5, 1);                          // 마지막 한 대만 남은 벽돌
+        Fill(b5, 4, 4, 3, 1);
+        var r5 = b5.Resolve();
+        Assert(r5.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "내구도 1 벽돌은 인접 파괴로 부서진다");
+
+        // 벽돌은 중력을 받지 않는다
+        var b6 = CheckerBoard();
+        b6.SetBrick(3, 7, Rules.BrickHp);
+        b6.SetTile(3, 5, Board.Empty);
+        b6.SetTile(3, 6, Board.Empty);
+        b6.ApplyGravity();
+        Assert(b6.IsBrick(3, 7), "벽돌은 제자리 (중력 안 받음)");
+
+        // 벽돌 위 칸은 벽돌 위에 쌓인다 (통과하지 않는다)
+        var b7 = CheckerBoard();
+        b7.SetBrick(3, 5, Rules.BrickHp);
+        b7.SetTile(3, 6, Board.Empty);
+        int above = b7.GetTile(3, 7);
+        b7.ApplyGravity();
+        Assert(b7.GetTile(3, 6) == above && b7.IsBrick(3, 5), "위쪽 블록은 벽돌 위에 얹힌다");
+
+        // 진행할수록 벽돌이 늘어난다
+        Assert(Rules.BricksAfterMove(0, 20) == 0, "초반에는 벽돌이 안 생긴다");
+        // 한 수 걸러 생기므로 짝수 수끼리 비교한다
+        Assert(Rules.BricksAfterMove(18, 20) > Rules.BricksAfterMove(4, 20), "후반일수록 벽돌이 많다");
+        Assert(Rules.BricksAfterMove(19, 20) == 0, "홀수 수에는 벽돌이 안 생긴다");
+    }
+
     // ── 헬퍼 ──
+
+    /// <summary>(x,y) 좌하단 size x size 를 색 c 로 채운다.</summary>
+    static void Fill(Board b, int x, int y, int size, int c)
+    {
+        for (int dx = 0; dx < size; dx++)
+            for (int dy = 0; dy < size; dy++) b.SetTile(x + dx, y + dy, c);
+    }
+
+
+    // (x,y) 를 지나는 두 대각선의 칸 수. EffectCells 를 베끼지 않고 구간 길이로 센다.
+    //   주대각선: bx=x+t, by=y+t 가 판 안에 드는 t 의 개수
+    //   반대각선: bx=x+t, by=y-t 가 판 안에 드는 t 의 개수
+    //   두 선은 t=0 (자기 칸) 에서만 겹치므로 1 을 뺀다.
+    static int ExpectedDiag(int x, int y)
+    {
+        int main = Math.Min(Board.W - 1 - x, Board.H - 1 - y) - Math.Max(-x, -y) + 1;
+        int anti = Math.Min(Board.W - 1 - x, y) - Math.Max(-x, y - (Board.H - 1)) + 1;
+        return main + anti - 1;
+    }
+
     static Board FlatBoard(int color)
     {
         var b = new Board(3, 1);
-        for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++) b.SetTile(x, y, color);
+        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, color);
         return b;
     }
     static Board CheckerBoard()
     {
         var b = new Board(3, 1);
-        for (int x = 0; x < 16; x++) for (int y = 0; y < 16; y++) b.SetTile(x, y, (x + y) % 2 == 0 ? 2 : 0);
+        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, (x + y) % 2 == 0 ? 2 : 0);
         // 색은 0/2만 사용 → 색1 심으면 격리됨. ColorCount=3이므로 유효.
         return b;
     }

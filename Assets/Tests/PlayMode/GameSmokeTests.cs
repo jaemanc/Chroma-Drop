@@ -13,6 +13,9 @@ public class GameSmokeTests
 {
     GameManager gm;
 
+    // 난이도 선택이 없어져 규칙표에서 가져온다
+    static int Moves { get { return Rules.Table[GameManager.Difficulty].Moves; } }
+
     GameManager NewGm()
     {
         var go = new GameObject("GM_under_test");
@@ -43,10 +46,10 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame("easy", false, 12345);
+        gm.StartGame(GameManager.Difficulty, false, 12345);
         yield return null;
         Assert.AreEqual(GamePhase.Playing, gm.Phase);
-        Assert.AreEqual(30, gm.MovesLeft);
+        Assert.AreEqual(Moves, gm.MovesLeft);
 
         gm.RotateCurrent(); // 회전이 예외 없이 동작
         Assert.IsTrue(gm.TryStamp(3, 3), "고정 시드에서 (3,3) 배치는 항상 가능해야 함");
@@ -54,7 +57,7 @@ public class GameSmokeTests
         float t0 = Time.realtimeSinceStartup;
         while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
         Assert.IsFalse(gm.Busy, "스탬프 연출이 10초 안에 끝나야 함");
-        Assert.AreEqual(29, gm.MovesLeft);
+        Assert.AreEqual(Moves - 1, gm.MovesLeft);
 
         // 코어 불변식: 해소 후 보드에 빈 칸/잔여 매칭 없음
         var b = gm.BoardRef;
@@ -69,10 +72,10 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame("easy", false, 999);
+        gm.StartGame(GameManager.Difficulty, false, 999);
         yield return null;
         Assert.IsFalse(gm.TryStamp(15, 15), "경계 밖 배치는 거부");
-        Assert.AreEqual(30, gm.MovesLeft);
+        Assert.AreEqual(Moves, gm.MovesLeft);
     }
 
     [UnityTest]
@@ -80,7 +83,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame("easy", false, 777);
+        gm.StartGame(GameManager.Difficulty, false, 777);
         yield return null;
 
         // 낙하 연출은 실시간 시차 대기(~0.3초/수)를 쓰므로 가드는 프레임 수가 아니라 실시간 기준.
@@ -92,7 +95,7 @@ public class GameSmokeTests
             if (!gm.Busy) gm.TryStamp(rng.Next(13), rng.Next(13));
             yield return null;
         }
-        Assert.AreEqual(GamePhase.Result, gm.Phase, "30수 안에 게임이 종료(성공/실패)돼야 함");
+        Assert.AreEqual(GamePhase.Result, gm.Phase, "제한 수 안에 게임이 종료(성공/실패)돼야 함");
     }
 
     [UnityTest]
@@ -100,7 +103,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame("normal", true, 4242);
+        gm.StartGame(GameManager.Difficulty, true, 4242);
         yield return null;
         Assert.IsTrue(gm.TimeAttackMode);
         Assert.Greater(gm.TimeLeftSec, 55f);
