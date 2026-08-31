@@ -48,9 +48,10 @@ export NODE_EXTRA_CA_CERTS="$HOME/.certs/ptkroea.pem"   # §6 — 없으면 빌�
 실제 Firebase 없이 REST 경로를 검증한다. 환경변수가 없으면 이 테스트들은 건너뛴다.
 
 ```bash
-python3 Tools/fake-rtdb.py 8765 &          # RTDB REST 를 흉내내는 목 서버
-CHROMADROP_FIREBASE_URL=http://127.0.0.1:8765 \
+python3 Tools/fake-firestore.py 8765 &     # Firestore REST 를 흉내내는 목 서버
+CHROMADROP_FIREBASE_PROJECT=test-proj \
 CHROMADROP_FIREBASE_APIKEY=test \
+CHROMADROP_FIREBASE_BASE=http://127.0.0.1:8765/v1 \
 CHROMADROP_FIREBASE_AUTHBASE=http://127.0.0.1:8765/v1 \
 "$UNITY" -batchmode -runTests -testPlatform PlayMode -projectPath . \
   -testResults /tmp/crud_results.xml
@@ -215,51 +216,72 @@ cp -n "$JDK/lib/security/cacerts" "$JDK/lib/security/cacerts.backup"
 
 ---
 
-## 7. 랭킹 서버 (Firebase)
+## 7. 랭킹 서버 (Firebase Firestore)
 
 SDK 없이 REST 만 쓴다 (`Assets/Scripts/Leaderboard.cs`). 설정 파일이 없으면
 랭킹 기능만 꺼지고 게임은 정상 동작한다.
 
 ### 최초 1회 — Firebase 콘솔에서
 
-1. 프로젝트 생성 → **Realtime Database** 만들기
-2. Authentication → Sign-in method → **익명 로그인** 활성화
-3. 데이터베이스 **규칙**을 아래로 교체 (인덱스 + 남의 점수 못 건드리게)
+1. **Firestore Database** 만들기
+2. **Authentication → 시작하기 → Sign-in method → 익명** 사용 설정
+   ⚠ Firestore 규칙만 게시해서는 안 된다. Authentication 은 별개 제품이고,
+   초기화하지 않으면 로그인이 `CONFIGURATION_NOT_FOUND` 로 떨어진다.
+3. Firestore **규칙** 게시
 
-```json
-{
-  "rules": {
-    "boards": {
-      "$board": {
-        ".read": "auth != null",
-        ".indexOn": ["score"],
-        "$uid": { ".write": "auth != null && auth.uid == $uid" }
-      }
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{board}/{uid} {
+      allow read:  if request.auth != null && board.matches('boards_.*');
+      allow write: if request.auth != null
+                   && request.auth.uid == uid
+                   && board.matches('boards_.*');
     }
   }
 }
 ```
 
+`score` 단일 필드 정렬이라 **복합 색인은 필요 없다.**
+
 ### 설정 파일 생성
 
 ```bash
-export CHROMADROP_FIREBASE_URL="https://<프로젝트>-default-rtdb.firebaseio.com"
+./Tools/make-leaderboard-config.sh .env      # .env 에서 projectId/apiKey 를 읽는다
+# 또는
+export CHROMADROP_FIREBASE_PROJECT="<프로젝트 ID>"
 export CHROMADROP_FIREBASE_APIKEY="<웹 API 키>"
-./Tools/make-leaderboard-config.sh     # → Assets/Resources/leaderboard.json
+./Tools/make-leaderboard-config.sh
 ```
 
-> - 생성된 파일은 `.gitignore` 에 등록돼 있다. **커밋하지 않는다.**
-> - 값을 채팅·로그·문서에 되출력하지 않는다. 키 **이름**으로만 지칭한다.
+> 생성물 `Assets/Resources/leaderboard.json` 과 `.env` 는 `.gitignore` 에 있다. **커밋하지 않는다.**
+> 값을 채팅·로그·문서에 되출력하지 않는다. 키 **이름**으로만 지칭한다.
 
 ### 데이터 모델
 
 ```
-/boards/{boardId}/{uid} = { name, country, score, diff, seed, updated }
+컬렉션 boards_{boardId} / 문서 {uid}
+  = { name, country, score, diff, seed, updated }
 boardId = "ta" | "score_easy" | "score_normal" | "score_hard"
 ```
 
-> ⚠ **점수는 클라이언트가 올린다.** 위 규칙은 "남의 칸에 못 쓴다"까지만 막고,
-> 자기 칸에 임의의 점수를 쓰는 것은 막지 못한다. 막으려면 서버(Cloud Functions 등)에서
+### 더미 데이터 (개발용)
+
+```bash
+python3 Tools/seed-dummy-scores.py <서비스계정키.json> --count 100
+python3 Tools/seed-dummy-scores.py <서비스계정키.json> --delete    # 더미만 제거
+```
+
+문서 ID 가 전부 `dummy_` 로 시작하므로 실제 사용자 기록과 섞이지 않는다.
+`:commit` 배치로 한 번에 보낸다 (순차 PATCH 는 100건에 2분을 넘긴다).
+
+> ⚠ **서비스 계정 키(`*firebase-adminsdk*.json`)는 보안 규칙을 통째로 우회하는 관리자 권한이다.**
+> 절대 커밋하지 말고, `Assets/` 안에 두지 말 것 — 빌드에 섞이면 APK 를 푸는 것만으로 유출된다.
+> 쓸 자리는 이런 개발 스크립트와 (나중에 만들) 서버측 점수 검증뿐이다.
+
+> ⚠ **점수는 클라이언트가 올린다.** 위 규칙은 "남의 문서에 못 쓴다"까지만 막고,
+> 자기 문서에 임의의 점수를 쓰는 것은 막지 못한다. 막으려면 서버에서
 > `seed` + 입력 로그로 `ColorMatcherCore` 를 재실행해 검증해야 한다. 아직 미구현.
 
 ---

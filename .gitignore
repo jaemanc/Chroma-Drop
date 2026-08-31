@@ -62,3 +62,15 @@ keystore.credentials*
 # 랭킹 서버 설정 (Tools/make-leaderboard-config.sh 로 생성)
 /Assets/Resources/leaderboard.json
 /Assets/Resources/leaderboard.json.meta
+
+# Firebase 자격증명 — 절대 커밋 금지.
+# adminsdk 키는 보안 규칙을 통째로 우회하는 관리자 권한이다. 클라이언트에 넣지 말 것.
+*firebase-adminsdk*.json
+*service-account*.json
+google-services.json
+GoogleService-Info.plist
+
+# 환경변수 파일 — 키가 들어간다. 절대 커밋 금지.
+.env
+.env.*
+!.env.example

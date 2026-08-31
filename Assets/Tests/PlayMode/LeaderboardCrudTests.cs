@@ -1,11 +1,12 @@
 // LeaderboardCrudTests.cs — 랭킹 REST 경로 CRUD 검증.
-// 실제 Firebase 대신 RTDB REST 를 흉내내는 목 서버를 띄우고 Leaderboard 를 그대로 통과시킨다.
-// 환경변수 CHROMADROP_FIREBASE_URL 이 없으면 건너뛴다 (평소 테스트는 그대로 통과).
+// 실제 Firebase 대신 Firestore REST 를 흉내내는 목 서버를 띄우고 Leaderboard 를 그대로 통과시킨다.
+// 환경변수 CHROMADROP_FIREBASE_PROJECT 가 없으면 건너뛴다 (평소 테스트는 그대로 통과).
 //
 // 실행:
-//   python3 Tools/fake-rtdb.py 8765 &
-//   CHROMADROP_FIREBASE_URL=http://127.0.0.1:8765 \
+//   python3 Tools/fake-firestore.py 8765 &
+//   CHROMADROP_FIREBASE_PROJECT=test-proj \
 //   CHROMADROP_FIREBASE_APIKEY=test \
+//   CHROMADROP_FIREBASE_BASE=http://127.0.0.1:8765/v1 \
 //   CHROMADROP_FIREBASE_AUTHBASE=http://127.0.0.1:8765/v1 \
 //   Unity -batchmode -runTests -testPlatform PlayMode -projectPath .
 
@@ -21,7 +22,7 @@ public class LeaderboardCrudTests
 
     Leaderboard Ready()
     {
-        if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("CHROMADROP_FIREBASE_URL")))
+        if (string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("CHROMADROP_FIREBASE_PROJECT")))
             Assert.Ignore("랭킹 서버 환경변수가 없어 건너뜀 (목 서버를 띄우고 다시 실행할 것)");
         var lb = Leaderboard.Create();
         Assert.IsTrue(lb.Configured, "설정이 로드되지 않았다: " + lb.LastError);

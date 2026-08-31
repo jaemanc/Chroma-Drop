@@ -1,18 +1,19 @@
-// Leaderboard.cs — Firebase 랭킹 (REST 전용, SDK 미사용).
+// Leaderboard.cs — Firebase 랭킹 (Firestore REST 전용, SDK 미사용).
 // UnityWebRequest 로만 호출하므로 외부 플러그인/에셋 의존이 없다.
 //
 // 설정 (앞쪽이 우선):
-//   1) 환경변수 CHROMADROP_FIREBASE_URL / CHROMADROP_FIREBASE_APIKEY / CHROMADROP_FIREBASE_AUTHBASE
+//   1) 환경변수 CHROMADROP_FIREBASE_PROJECT / _APIKEY / _BASE / _AUTHBASE
 //   2) Resources/leaderboard.json (Tools/make-leaderboard-config.sh 로 생성, 커밋 안 함)
-//      { "databaseUrl": "https://<프로젝트>-default-rtdb.firebaseio.com", "apiKey": "<웹 API 키>" }
+//      { "projectId": "<프로젝트 ID>", "apiKey": "<웹 API 키>" }
 // 둘 다 없으면 Configured=false 가 되어 랭킹 기능만 꺼지고 게임은 그대로 동작한다.
-// authBase 는 Firebase 인증 에뮬레이터나 테스트용 목 서버를 가리킬 때만 준다 (평소 비움).
+// _BASE / _AUTHBASE 는 에뮬레이터나 테스트용 목 서버를 가리킬 때만 준다 (평소 비움).
 //
-// 데이터 모델 (Realtime Database):
-//   /boards/{boardId}/{uid} = { name, country, score, diff, seed, updated }
+// 데이터 모델 (Firestore):
+//   컬렉션 boards_{boardId} / 문서 {uid} = { name, country, score, diff, seed, updated }
 //   boardId = "ta" | "score_easy" | "score_normal" | "score_hard"
+//   score 단일 필드 정렬이라 복합 색인은 필요 없다.
 //
-// ⚠ 점수는 클라이언트가 올린다. 서버 검증이 없으면 조작이 가능하다 (README/COMMANDS 참고).
+// ⚠ 점수는 클라이언트가 올린다. 서버 검증이 없으면 조작이 가능하다 (COMMANDS.md 참고).
 
 using System;
 using System.Collections;
@@ -36,7 +37,8 @@ public class Leaderboard : MonoBehaviour
     public string Uid { get; private set; }
     public string LastError { get; private set; }
 
-    string dbUrl, apiKey, idToken;
+    string projectId, apiKey, idToken;
+    string fsBase = "https://firestore.googleapis.com/v1";
     string signUpBase = "https://identitytoolkit.googleapis.com/v1";
     string tokenBase = "https://securetoken.googleapis.com/v1";
     float tokenExpiry;
@@ -54,11 +56,12 @@ public class Leaderboard : MonoBehaviour
 
     void LoadConfig()
     {
-        dbUrl = Env("CHROMADROP_FIREBASE_URL");
+        projectId = Env("CHROMADROP_FIREBASE_PROJECT");
         apiKey = Env("CHROMADROP_FIREBASE_APIKEY");
+        string baseOverride = Env("CHROMADROP_FIREBASE_BASE");
         string authBase = Env("CHROMADROP_FIREBASE_AUTHBASE");
 
-        if (dbUrl.Length == 0 || apiKey.Length == 0)
+        if (projectId.Length == 0 || apiKey.Length == 0)
         {
             var ta = Resources.Load<TextAsset>("leaderboard");
             if (ta == null)
@@ -67,16 +70,17 @@ public class Leaderboard : MonoBehaviour
                 return;
             }
             var m = Json.AsMap(Json.Parse(ta.text));
-            if (dbUrl.Length == 0) dbUrl = Json.Str(m, "databaseUrl", "");
+            if (projectId.Length == 0) projectId = Json.Str(m, "projectId", "");
             if (apiKey.Length == 0) apiKey = Json.Str(m, "apiKey", "");
+            if (baseOverride.Length == 0) baseOverride = Json.Str(m, "firestoreBase", "");
             if (authBase.Length == 0) authBase = Json.Str(m, "authBase", "");
         }
 
-        dbUrl = dbUrl.TrimEnd('/');
+        if (baseOverride.Length > 0) fsBase = baseOverride.TrimEnd('/');
         if (authBase.Length > 0) signUpBase = tokenBase = authBase.TrimEnd('/');
 
-        Configured = dbUrl.Length > 0 && apiKey.Length > 0;
-        if (!Configured) LastError = "databaseUrl/apiKey 가 비어 있음";
+        Configured = projectId.Length > 0 && apiKey.Length > 0;
+        if (!Configured) LastError = "projectId/apiKey 가 비어 있음";
         Uid = PlayerPrefs.GetString(PrefUid, "");
     }
 
@@ -147,6 +151,9 @@ public class Leaderboard : MonoBehaviour
         return timeAttack ? "ta" : "score_" + difficulty;
     }
 
+    string DocPath(string board) { return "boards_" + board; }
+    string DocsBase { get { return fsBase + "/projects/" + projectId + "/databases/(default)/documents"; } }
+
     /// <summary>내 기록을 올린다. 서버에 이미 더 높은 점수가 있으면 덮어쓰지 않는다.</summary>
     public IEnumerator Submit(bool timeAttack, string difficulty, int score, int seed, Action<bool> done)
     {
@@ -154,62 +161,74 @@ public class Leaderboard : MonoBehaviour
         yield return EnsureToken();
         if (!SignedIn) { if (done != null) done(false); yield break; }
 
-        string board = BoardId(timeAttack, difficulty);
-        string url = dbUrl + "/boards/" + board + "/" + Uid + ".json?auth=" + idToken;
+        string col = DocPath(BoardId(timeAttack, difficulty));
+        string docUrl = DocsBase + "/" + col + "/" + Uid;
 
-        // 기존 기록 확인 — 더 낮으면 올리지 않는다.
+        // 기존 기록 확인 — 더 낮으면 올리지 않는다. 문서가 없으면 404 라 prev 는 -1 로 남는다.
         int prev = -1;
-        yield return Get(url, res =>
+        yield return Get(docUrl, res =>
         {
-            var m = Json.AsMap(Json.Parse(res));
-            if (m != null) prev = (int)Json.Num(m, "score", -1);
+            var f = Fields(Json.AsMap(Json.Parse(res)));
+            if (f != null) prev = IntField(f, "score");
         });
         if (prev >= score) { if (done != null) done(true); yield break; }
 
         long now = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds;
-        string body = "{"
-            + "\"name\":" + Json.Quote(PlayerAccount.Name) + ","
-            + "\"country\":" + Json.Quote(PlayerAccount.Country) + ","
-            + "\"score\":" + score + ","
-            + "\"diff\":" + Json.Quote(difficulty) + ","
-            + "\"seed\":" + seed + ","
-            + "\"updated\":" + now
-            + "}";
+        string body = "{\"fields\":{"
+            + "\"name\":{\"stringValue\":" + Json.Quote(PlayerAccount.Name) + "},"
+            + "\"country\":{\"stringValue\":" + Json.Quote(PlayerAccount.Country) + "},"
+            + "\"score\":{\"integerValue\":\"" + score + "\"},"
+            + "\"diff\":{\"stringValue\":" + Json.Quote(difficulty) + "},"
+            + "\"seed\":{\"integerValue\":\"" + seed + "\"},"
+            + "\"updated\":{\"integerValue\":\"" + now + "\"}"
+            + "}}";
+
+        // updateMask 를 명시해야 덮어쓰기 범위가 결정적이다. 문서가 없으면 새로 만든다.
+        string mask = "?updateMask.fieldPaths=name&updateMask.fieldPaths=country"
+                    + "&updateMask.fieldPaths=score&updateMask.fieldPaths=diff"
+                    + "&updateMask.fieldPaths=seed&updateMask.fieldPaths=updated";
 
         bool ok = false;
-        yield return Put(url, body, res => ok = res != null);
+        yield return Send(docUrl + mask, "PATCH", body, "application/json", res => ok = res != null);
         if (done != null) done(ok);
     }
 
-    /// <summary>상위 TopN 을 받아 점수 내림차순으로 돌려준다.</summary>
+    /// <summary>상위 TopN 을 점수 내림차순으로 받아온다.</summary>
     public IEnumerator FetchTop(bool timeAttack, string difficulty, Action<List<ScoreEntry>> done)
     {
         if (!Configured) { if (done != null) done(null); yield break; }
         yield return EnsureToken();
 
-        string board = BoardId(timeAttack, difficulty);
-        string url = dbUrl + "/boards/" + board + ".json"
-                   + "?orderBy=" + UnityWebRequest.EscapeURL("\"score\"")
-                   + "&limitToLast=" + TopN
-                   + (SignedIn ? "&auth=" + idToken : "");
+        string col = DocPath(BoardId(timeAttack, difficulty));
+        string body = "{\"structuredQuery\":{"
+            + "\"from\":[{\"collectionId\":" + Json.Quote(col) + "}],"
+            + "\"orderBy\":[{\"field\":{\"fieldPath\":\"score\"},\"direction\":\"DESCENDING\"}],"
+            + "\"limit\":" + TopN
+            + "}}";
 
         List<ScoreEntry> rows = null;
-        yield return Get(url, res =>
+        yield return Send(DocsBase + ":runQuery", "POST", body, "application/json", res =>
         {
-            var m = Json.AsMap(Json.Parse(res));
-            if (m == null) return;
-            rows = new List<ScoreEntry>(m.Count);
-            foreach (var kv in m)
+            // 응답은 배열이고, 결과가 없는 경우 readTime 만 든 원소가 온다.
+            var arr = Json.Parse(res) as List<object>;
+            if (arr == null) return;
+            rows = new List<ScoreEntry>(arr.Count);
+            foreach (var item in arr)
             {
-                var e = Json.AsMap(kv.Value);
-                if (e == null) continue;
+                var m = Json.AsMap(item);
+                if (m == null || !m.ContainsKey("document")) continue;
+                var doc = Json.AsMap(m["document"]);
+                var f = Fields(doc);
+                if (f == null) continue;
+                string name = Json.Str(doc, "name", "");
+                int slash = name.LastIndexOf('/');
                 rows.Add(new ScoreEntry
                 {
-                    Uid = kv.Key,
-                    Name = Json.Str(e, "name", "?"),
-                    Country = Json.Str(e, "country", "ZZ"),
-                    Score = (int)Json.Num(e, "score", 0),
-                    UpdatedMs = Json.Num(e, "updated", 0),
+                    Uid = slash >= 0 ? name.Substring(slash + 1) : name,
+                    Name = StrField(f, "name", "?"),
+                    Country = StrField(f, "country", "ZZ"),
+                    Score = IntField(f, "score"),
+                    UpdatedMs = LongField(f, "updated"),
                 });
             }
         });
@@ -217,12 +236,59 @@ public class Leaderboard : MonoBehaviour
         if (done != null) done(rows == null ? null : NationRanking.DedupeBest(rows));
     }
 
+    // ---------- Firestore 값 표기 (모든 값이 {타입:값} 으로 한 겹 싸여 있다) ----------
+
+    static Dictionary<string, object> Fields(Dictionary<string, object> doc)
+    {
+        if (doc == null || !doc.ContainsKey("fields")) return null;
+        return Json.AsMap(doc["fields"]);
+    }
+
+    static Dictionary<string, object> Val(Dictionary<string, object> f, string key)
+    {
+        object v;
+        return (f != null && f.TryGetValue(key, out v)) ? Json.AsMap(v) : null;
+    }
+
+    static string StrField(Dictionary<string, object> f, string key, string fallback)
+    {
+        return Json.Str(Val(f, key), "stringValue", fallback);
+    }
+
+    static long LongField(Dictionary<string, object> f, string key)
+    {
+        var v = Val(f, key);
+        var s = Json.Str(v, "integerValue", null);   // integerValue 는 문자열로 온다
+        long n;
+        if (s != null && long.TryParse(s, out n)) return n;
+        return Json.Num(v, "doubleValue", 0);
+    }
+
+    static int IntField(Dictionary<string, object> f, string key) { return (int)LongField(f, key); }
+
     // ---------- HTTP ----------
+    // 인증 엔드포인트는 Bearer 를 붙이지 않는다 (Post). Firestore 호출만 붙인다 (Get/Send).
 
     IEnumerator Get(string url, Action<string> ok)
     {
         using (var req = UnityWebRequest.Get(url))
         {
+            Auth(req);
+            req.timeout = Timeout;
+            yield return req.SendWebRequest();
+            if (Failed(req)) yield break;
+            ok(req.downloadHandler.text);
+        }
+    }
+
+    IEnumerator Send(string url, string method, string body, string contentType, Action<string> ok)
+    {
+        using (var req = new UnityWebRequest(url, method))
+        {
+            req.uploadHandler = new UploadHandlerRaw(System.Text.Encoding.UTF8.GetBytes(body));
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", contentType);
+            Auth(req);
             req.timeout = Timeout;
             yield return req.SendWebRequest();
             if (Failed(req)) yield break;
@@ -244,23 +310,18 @@ public class Leaderboard : MonoBehaviour
         }
     }
 
-    IEnumerator Put(string url, string body, Action<string> ok)
+    void Auth(UnityWebRequest req)
     {
-        using (var req = UnityWebRequest.Put(url, body))
-        {
-            req.SetRequestHeader("Content-Type", "application/json");
-            req.timeout = Timeout;
-            yield return req.SendWebRequest();
-            if (Failed(req)) yield break;
-            ok(req.downloadHandler.text);
-        }
+        if (!string.IsNullOrEmpty(idToken)) req.SetRequestHeader("Authorization", "Bearer " + idToken);
     }
 
     bool Failed(UnityWebRequest req)
     {
         if (req.result == UnityWebRequest.Result.Success) { LastError = null; return false; }
         LastError = req.error;
-        Debug.LogWarning("[Leaderboard] " + req.url.Split('?')[0] + " → " + req.error);
+        // 404 는 '아직 기록이 없다'는 정상 흐름이다.
+        if (req.responseCode != 404)
+            Debug.LogWarning("[Leaderboard] " + req.url.Split('?')[0] + " → " + req.error);
         return true;
     }
 }
