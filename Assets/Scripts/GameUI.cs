@@ -161,6 +161,7 @@ public class GameUI : MonoBehaviour
         nextRoot = NewRT("next", top.transform);
         Place(nextRoot, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1), new Vector2(-36, -112), new Vector2(320, 110));
 
+
         var barBg = NewImage("barbg", top.transform, new Color(1, 1, 1, 0.12f));
         Place(barBg.rectTransform, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0.5f, 0), Vector2.zero, new Vector2(0, 12));
         timerBar = barBg.gameObject;
@@ -619,7 +620,7 @@ public class BgBlocks : MonoBehaviour
     public void Build(Sprite tile)
     {
         var rng = new System.Random(7);                      // 실행마다 같은 배치
-        var palette = Palette.Generate(5, new System.Random(7));
+        var palette = Palette.Generate(4, new System.Random(7));
         rts = new RectTransform[Count];
         speed = new float[Count]; spin = new float[Count]; size = new float[Count];
 

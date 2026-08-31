@@ -41,22 +41,18 @@ class CoreTests
         // 스탬프 직후 상태 확인 불가(Resolve 내부). 대신 매칭 없음 확인:
         Assert(b.FindSquares().Count == 0, "I3 스탬프는 즉시 매칭 없음");
 
-        // 3. 최소 매칭은 3x3 — 2x2 는 더 이상 터지지 않는다
-        var b2x2 = CheckerBoard();
-        Fill(b2x2, 4, 4, 2, 1);
-        Assert(b2x2.FindSquares().Count == 0, "2x2 는 매칭 아님 (최소 3x3)");
-
+        // 3. 체커보드 배경에 2x2만 심어 정확히 1개 매칭
         var b3 = CheckerBoard();
-        Fill(b3, 4, 4, 3, 1);
+        Fill(b3, 4, 4, 2, 1);
         var ms = b3.FindSquares();
-        Assert(ms.Count == 1 && ms[0].Size == 3, "체커보드+3x3 = 정확히 1매칭");
+        Assert(ms.Count == 1 && ms[0].Size == 2, "체커보드+2x2 = 정확히 1매칭");
 
         // 4. 점수 공식: 3x3 chain1 = 9*10*2 = 180
         var b4 = CheckerBoard();
         for (int x = 2; x <= 4; x++) for (int y = 2; y <= 4; y++) b4.SetTile(x, y, 1);
         var r4 = b4.Resolve();
         Assert(r4.ScoreGained >= 180, "3x3 점수 >= 180 (배수 x2 적용)");
-        Assert(!r4.BigHit, "3x3은 BigHit 아님 (최소 매칭이라 4x4부터)");
+        Assert(r4.BigHit, "3x3은 BigHit");
 
         // 5. EffectCells 크기 — 기대값을 Board.W/H 에서 유도한다 (보드 크기를 바꿔도 유효)
         var b5 = FlatBoard(0);
@@ -77,7 +73,7 @@ class CoreTests
         bool bfsOk = true;
         for (int s = 0; s < 100; s++)
         {
-            var bb = new Board(3, s + 1);
+            var bb = new Board(Rules.ColorCount, s + 1);
             var trng = new Random(s + 1);
             var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb5, ItemType.ColorClear };
             for (int i = 0; i < 30; i++)
@@ -111,15 +107,15 @@ class CoreTests
         // 7. 초기 보드 무매칭 (시드 50개)
         bool clean = true;
         for (int s = 0; s < 50; s++)
-            if (new Board(3, s).FindSquares().Count != 0) clean = false;
+            if (new Board(Rules.ColorCount, s).FindSquares().Count != 0) clean = false;
         Assert(clean, "초기 보드 무매칭 (시드 50)");
 
         // 8. 무작위 30수 후 불변식: 빈 칸 없음 + 잔여 매칭 없음
-        var b8 = new Board(3, 42);
+        var b8 = new Board(Rules.ColorCount, 42);
         var prng = new Random(42);
         for (int mv = 0; mv < 30; mv++)
         {
-            var p = Piece.CreateRandom(prng, 3);
+            var p = Piece.CreateRandom(prng, Rules.ColorCount);
             for (int r = prng.Next(4); r > 0; r--) p = p.Rotated();
             int px = prng.Next(Board.W), py = prng.Next(Board.H);
             if (!b8.CanPlace(p, px, py)) continue;
@@ -146,28 +142,15 @@ class CoreTests
         Assert(Rules.Table["hard"].Goal == 13000 && Rules.Table["hard"].Moves == 50, "횟수 모드 = 50수/13000");
 
         Console.WriteLine();
-        BrickRainbowTests();
+        BrickTests();
 
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
     }
 
-    // ── 벽돌 / 무지개 ──
-    static void BrickRainbowTests()
+    // ── 벽돌 ──
+    static void BrickTests()
     {
-        // 무지개는 어떤 색으로도 정사각형에 낀다
-        var b = CheckerBoard();
-        Fill(b, 4, 4, 3, 1);
-        b.SetTile(5, 5, Board.Rainbow);               // 한가운데를 무지개로
-        var ms = b.FindSquares();
-        Assert(ms.Count == 1 && ms[0].Size == 3, "무지개는 와일드카드 (3x3 성립)");
-
-        // 무지개는 인접 칸이 터질 때 함께 터진다
-        var b2 = CheckerBoard();
-        Fill(b2, 4, 4, 3, 1);
-        b2.SetTile(7, 5, Board.Rainbow);              // 3x3(4..6) 오른쪽에 붙여둔다
-        var r2 = b2.Resolve();
-        Assert(r2.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "인접 무지개도 함께 터진다");
 
         // 벽돌 위에는 조각을 놓을 수 없다
         var b3 = CheckerBoard();
@@ -182,7 +165,7 @@ class CoreTests
         int hp0 = b4.GetBrickHp(7, 5);
         Fill(b4, 4, 4, 3, 1);
         b4.Resolve();
-        Assert(hp0 == 3, "벽돌 초기 내구도 3");
+        Assert(hp0 == Rules.BrickHp && hp0 >= 5, "벽돌 초기 내구도 " + Rules.BrickHp);
 
         var b5 = CheckerBoard();
         b5.SetBrick(7, 5, 1);                          // 마지막 한 대만 남은 벽돌
@@ -236,15 +219,15 @@ class CoreTests
 
     static Board FlatBoard(int color)
     {
-        var b = new Board(3, 1);
+        var b = new Board(Rules.ColorCount, 1);
         for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, color);
         return b;
     }
     static Board CheckerBoard()
     {
-        var b = new Board(3, 1);
+        var b = new Board(Rules.ColorCount, 1);
         for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, (x + y) % 2 == 0 ? 2 : 0);
-        // 색은 0/2만 사용 → 색1 심으면 격리됨. ColorCount=3이므로 유효.
+        // 색 0/2 만 번갈아 깔아 배경을 만든다. 심는 색(1)은 배경과 안 겹친다.
         return b;
     }
     static Piece MakePiece(string name, int color)

@@ -9,7 +9,7 @@ using ColorMatcher.Core;
 public class BoardView : MonoBehaviour
 {
     static readonly Color EmptyColor = new Color(0.06f, 0.06f, 0.08f);
-    static readonly Color BrickColor = new Color(0.42f, 0.35f, 0.30f);   // 무채색에 가까운 갈색 — 팔레트와 안 겹친다
+    static readonly Color BrickColor = new Color(0.88f, 0.87f, 0.84f);   // 밝은 콘크리트 — 채도 낮아 팔레트와 안 겹친다
     const float TileScale = 0.92f;
 
     SpriteRenderer[,] tiles;
@@ -23,7 +23,6 @@ public class BoardView : MonoBehaviour
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
     Sprite soft;                  // 파티클용 소프트 원
     Sprite[] brick;               // 내구도별 벽돌 (금 0/1/2줄)
-    Sprite rainbow;               // 무지개 타일
     readonly Dictionary<ItemType, Sprite> icons = new Dictionary<ItemType, Sprite>();
     bool built;
 
@@ -44,8 +43,9 @@ public class BoardView : MonoBehaviour
         plain = MakeSquareSprite();
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
-        brick = new[] { MakeBrickSprite(0), MakeBrickSprite(1), MakeBrickSprite(2) };
-        rainbow = MakeRainbowSprite();
+        // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
+        brick = new Sprite[Rules.BrickHp];
+        for (int i = 0; i < brick.Length; i++) brick[i] = MakeBrickSprite(i);
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
@@ -137,7 +137,7 @@ public class BoardView : MonoBehaviour
 
     public void SetVisible(bool v) { gameObject.SetActive(v); }
 
-    /// <summary>칸 하나의 스프라이트·색을 결정한다. 벽돌/무지개/빈칸/일반색을 한 곳에서 다룬다.</summary>
+    /// <summary>칸 하나의 스프라이트·색을 결정한다. 벽돌/빈칸/일반색을 한 곳에서 다룬다.</summary>
     void PaintTile(int x, int y, int c, int hp, Color[] palette)
     {
         var sr = tiles[x, y];
@@ -146,11 +146,6 @@ public class BoardView : MonoBehaviour
             // hp 3→금 없음, 2→한 줄, 1→두 줄
             sr.sprite = brick[Mathf.Clamp(Rules.BrickHp - hp, 0, brick.Length - 1)];
             sr.color = BrickColor;
-        }
-        else if (c == Board.Rainbow)
-        {
-            sr.sprite = rainbow;
-            sr.color = Color.white;          // 스프라이트 자체가 색을 갖는다
         }
         else
         {
@@ -226,7 +221,7 @@ public class BoardView : MonoBehaviour
     {
         foreach (var p in cells)
         {
-            tiles[p.X, p.Y].sprite = tile;      // 무지개/벽돌 자리였어도 색 칸으로 덮인다
+            tiles[p.X, p.Y].sprite = tile;      // 벽돌 자리였어도 색 칸으로 덮인다
             tiles[p.X, p.Y].color = c;
             tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.14f;
         }
@@ -466,7 +461,7 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 벽돌: 둥근 사각에 가로 이음매, cracks 만큼 사선 금이 간다
+    // 콘크리트 블록: 밝은 회색 바탕 + 잔알갱이 + cracks 만큼의 갈라진 금
     static Sprite MakeBrickSprite(int cracks)
     {
         const int S = 32; const float r = 4f;
@@ -480,15 +475,22 @@ public class BoardView : MonoBehaviour
                 float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
                 float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
 
-                float g = Mathf.Lerp(0.78f, 1.0f, fy / (S - 1));
-                if (y % 10 == 0 || (y / 10) % 2 == 0 && x == (S / 2)) g *= 0.72f;   // 벽돌 이음매
+                // 밝은 바탕에 위가 살짝 더 밝은 결
+                float g = Mathf.Lerp(0.82f, 1.0f, fy / (S - 1));
+                // 잔알갱이 — 결정적 해시라 매번 같은 무늬가 나온다
+                float n = Frac(Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f);
+                g *= 0.94f + 0.12f * n;
+                // 안쪽 테두리를 살짝 어둡게 해 블록처럼 각지게
+                if (fx < 2.5f || fy < 2.5f || fx > S - 2.5f || fy > S - 2.5f) g *= 0.90f;
 
-                // 금: 위에서 아래로 내려오는 사선. cracks 개수만큼.
+                // 금: 위아래로 지그재그로 갈라진 선. 진해서 밝은 바탕에서도 보인다.
                 for (int k = 0; k < cracks; k++)
                 {
-                    float cx = S * (0.32f + 0.36f * k);
-                    float line = cx + (fy - S * 0.5f) * (k % 2 == 0 ? 0.45f : -0.45f);
-                    if (Mathf.Abs(fx - line) < 1.3f) g *= 0.38f;
+                    float baseX = S * (0.22f + 0.16f * k);
+                    float wob = Mathf.Sin(fy * (0.55f + 0.09f * k) + k * 2.1f) * 2.6f;
+                    float d = Mathf.Abs(fx - (baseX + wob));
+                    if (d < 1.4f) g *= 0.42f;            // 금 본체
+                    else if (d < 2.3f) g *= 0.74f;       // 가장자리 그늘
                 }
                 px[y * S + x] = new Color(g, g, g, a);
             }
@@ -496,28 +498,7 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 무지개: 둥근 사각 안에 대각 방향 무지개 띠
-    static Sprite MakeRainbowSprite()
-    {
-        const int S = 32; const float r = 7f;
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
-        var px = new Color[S * S];
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-            {
-                float fx = x + 0.5f, fy = y + 0.5f;
-                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
-                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
-                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
-
-                float t = Mathf.Clamp01((fx + fy) / (2f * S));        // 대각 그라데이션
-                var c = Palette.HslToRgb(t, 0.85, 0.58);
-                float sh = Mathf.Lerp(0.86f, 1.05f, fy / (S - 1));    // 위가 밝게
-                px[y * S + x] = new Color(c.r * sh, c.g * sh, c.b * sh, a);
-            }
-        tex.SetPixels(px); tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
-    }
+    static float Frac(float v) { return v - Mathf.Floor(v); }
 
     // 소프트 원판 (파티클)
     static Sprite MakeSoftSprite()
