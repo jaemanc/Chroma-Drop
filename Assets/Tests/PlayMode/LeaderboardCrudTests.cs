@@ -52,31 +52,39 @@ public class LeaderboardCrudTests
         yield return lb.SignInAnonymously(null);
         Assert.IsTrue(lb.SignedIn, "익명 로그인 실패: " + lb.LastError);
 
-        // C — 새 기록 제출
-        bool ok = false;
-        yield return lb.Submit(false, Diff, 1000, 42, r => ok = r);
-        Assert.IsTrue(ok, "제출 실패: " + lb.LastError);
-
-        // R — 목록에서 내 기록이 보인다
+        // 실서버는 계정과 기록이 남아 있으므로 기존 점수를 기준으로 삼는다.
+        // 고정값을 기대하면 두 번째 실행부터 깨진다.
         List<ScoreEntry> rows = null;
         yield return lb.FetchTop(false, Diff, r => rows = r);
         Assert.IsNotNull(rows, "조회 실패: " + lb.LastError);
+        var prev = Mine(rows, lb.Uid);
+        int baseScore = prev != null ? prev.Score : 0;
+
+        // C — 기존보다 높은 기록 제출
+        int first = baseScore + 1000;
+        bool ok = false;
+        yield return lb.Submit(false, Diff, first, 42, r => ok = r);
+        Assert.IsTrue(ok, "제출 실패: " + lb.LastError);
+
+        // R — 목록에서 내 기록이 보인다
+        yield return lb.FetchTop(false, Diff, r => rows = r);
         var me = Mine(rows, lb.Uid);
         Assert.IsNotNull(me, "내 기록이 목록에 없다");
-        Assert.AreEqual(1000, me.Score);
+        Assert.AreEqual(first, me.Score);
         Assert.AreEqual(PlayerAccount.Country, me.Country);
 
         // U — 더 높은 점수로 갱신된다
-        yield return lb.Submit(false, Diff, 2000, 42, r => ok = r);
+        int higher = first + 1000;
+        yield return lb.Submit(false, Diff, higher, 42, r => ok = r);
         Assert.IsTrue(ok);
         yield return lb.FetchTop(false, Diff, r => rows = r);
-        Assert.AreEqual(2000, Mine(rows, lb.Uid).Score, "더 높은 점수가 반영되지 않았다");
+        Assert.AreEqual(higher, Mine(rows, lb.Uid).Score, "더 높은 점수가 반영되지 않았다");
 
         // U — 더 낮은 점수는 기존 기록을 덮어쓰지 않는다
-        yield return lb.Submit(false, Diff, 500, 42, r => ok = r);
+        yield return lb.Submit(false, Diff, higher - 500, 42, r => ok = r);
         Assert.IsTrue(ok);
         yield return lb.FetchTop(false, Diff, r => rows = r);
-        Assert.AreEqual(2000, Mine(rows, lb.Uid).Score, "낮은 점수가 기존 기록을 덮어썼다");
+        Assert.AreEqual(higher, Mine(rows, lb.Uid).Score, "낮은 점수가 기존 기록을 덮어썼다");
     }
 
     [UnityTest]
@@ -85,6 +93,7 @@ public class LeaderboardCrudTests
         var lb = Ready();
         yield return lb.SignInAnonymously(null);
 
+        // easy 보드에는 아무것도 올리지 않고 hard 에만 올린다.
         yield return lb.Submit(false, "hard", 777, 1, null);
 
         List<ScoreEntry> easy = null;
@@ -93,6 +102,8 @@ public class LeaderboardCrudTests
 
         List<ScoreEntry> hard = null;
         yield return lb.FetchTop(false, "hard", r => hard = r);
-        Assert.AreEqual(777, Mine(hard, lb.Uid).Score);
+        var me = Mine(hard, lb.Uid);
+        Assert.IsNotNull(me, "hard 보드에 내 기록이 없다");
+        Assert.GreaterOrEqual(me.Score, 777, "hard 기록이 반영되지 않았다");
     }
 }
