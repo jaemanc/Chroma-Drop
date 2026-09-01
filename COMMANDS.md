@@ -27,7 +27,25 @@ export NODE_EXTRA_CA_CERTS="$HOME/.certs/ptkroea.pem"   # §6 — 없으면 빌�
 
 ---
 
-## 1. 테스트
+## 1. 고친 코드를 바로 확인하기 (권장)
+
+```bash
+./Tools/dev.sh            # 코어 테스트 → PlayMode → 빌드 → 실행
+./Tools/dev.sh --fast     # 테스트 건너뛰고 빌드+실행만
+./Tools/dev.sh --test     # 테스트만 (빌드 안 함)
+```
+
+테스트가 깨지면 빌드하지 않는다 — 깨진 걸 띄워놓고 보는 게 제일 헷갈린다.
+컴파일 에러는 로그를 뒤질 필요 없이 바로 뽑아 보여주고, 사내 CA 환경변수도 알아서 잡는다.
+
+> **Unity 에디터가 열려 있으면 배치모드가 실패한다.** 먼저 닫을 것.
+> 반대로 에디터에서 Play 로 볼 때는 빌드가 필요 없다 — 값을 여러 번 바꿔볼 때는 그쪽이 빠르다.
+
+아래 2~3절은 그 안에서 실제로 돌아가는 명령들이다. 따로 쓸 일이 있을 때 참고.
+
+---
+
+## 2. 테스트
 
 ### 코어 규칙 테스트 (가장 빠름 — 코어를 건드렸으면 필수)
 
@@ -66,7 +84,7 @@ kill %1                                     # 목 서버 종료
 
 ---
 
-## 2. 맥 빌드 (로컬 육안 확인용)
+## 3. 맥 빌드 (로컬 육안 확인용)
 
 가장 빠르게 게임을 눈으로 보는 방법. Mono 백엔드라 빌드가 20초쯤 걸린다.
 
@@ -97,7 +115,7 @@ tail -f ~/Library/Logs/jaemanc/"Chroma Drop"/Player.log
 
 ---
 
-## 3. 안드로이드 빌드
+## 4. 안드로이드 빌드
 
 ```bash
 ./Tools/build-android.sh apk              # 사이드로드용 APK (디버그 서명)
@@ -144,7 +162,7 @@ unzip -l Builds/Android/ChromaDrop-1.0.aab | grep -E "META-INF/.*\.(RSA|SF)"
 
 ---
 
-## 4. 릴리즈 서명
+## 5. 릴리즈 서명
 
 ```bash
 ./Tools/make-keystore.sh          # 최초 1회. ~/.keystores/chromadrop.keystore 생성
@@ -163,7 +181,7 @@ export CHROMADROP_KEYALIAS_PASS=...
 
 ---
 
-## 5. 프로젝트 상태 확인
+## 6. 프로젝트 상태 확인
 
 ```bash
 ls -lh Builds/Android Builds/Mac                 # 산출물
@@ -178,7 +196,7 @@ ls Library/PackageCache | wc -l                  # 캐시된 패키지 수
 
 ---
 
-## 6. 사내 TLS 프록시 대응 ⚠️
+## 7. 사내 TLS 프록시 대응 ⚠️
 
 이 머신은 사내 TLS 검사 프록시 뒤에 있다. 모든 HTTPS 인증서가 사내 루트 CA
 `CN=PTKROEA` 로 교체된다. macOS 키체인에는 등록돼 있어 curl·브라우저는 정상이지만,
@@ -218,7 +236,7 @@ cp -n "$JDK/lib/security/cacerts" "$JDK/lib/security/cacerts.backup"
 
 ---
 
-## 7. 랭킹 서버 (Firebase Firestore)
+## 8. 랭킹 서버 (Firebase Firestore)
 
 SDK 없이 REST 만 쓴다 (`Assets/Scripts/Leaderboard.cs`). 설정 파일이 없으면
 랭킹 기능만 꺼지고 게임은 정상 동작한다.
@@ -288,7 +306,7 @@ python3 Tools/seed-dummy-scores.py <서비스계정키.json> --delete    # 더�
 
 ---
 
-## 8. Git
+## 9. Git
 
 ```bash
 git status
