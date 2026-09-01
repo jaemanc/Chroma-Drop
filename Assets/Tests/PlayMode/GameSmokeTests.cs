@@ -121,6 +121,61 @@ public class GameSmokeTests
     }
 
     [UnityTest]
+    public IEnumerator 아이템은_보유량이_있어야_쓰이고_기회를_안_쓴다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 555);
+        yield return null;
+
+        // 없으면 못 쓴다
+        while (Wallet.Count(ShopItem.Reroll) > 0) Wallet.Use(ShopItem.Reroll);
+        Assert.IsFalse(gm.UseItem(ShopItem.Reroll), "보유량 0 인데 사용됐다");
+
+        // 리롤: 조각이 바뀌고 기회는 그대로
+        Wallet.Add(ShopItem.Reroll, 1);
+        var before = gm.CurrentPiece;
+        int moves = gm.MovesLeft;
+        Assert.IsTrue(gm.UseItem(ShopItem.Reroll), "리롤이 실패했다");
+        Assert.AreNotSame(before, gm.CurrentPiece, "조각이 바뀌지 않았다");
+        Assert.AreEqual(moves, gm.MovesLeft, "아이템이 기회를 소모했다");
+        Assert.AreEqual(0, Wallet.Count(ShopItem.Reroll), "보유량이 줄지 않았다");
+
+        // 시간 추가: 남은 시간 비율이 올라간다
+        Wallet.Add(ShopItem.AddTime, 1);
+        float f0 = gm.PieceTimerFrac;
+        Assert.IsTrue(gm.UseItem(ShopItem.AddTime));
+        Assert.Greater(gm.PieceTimerFrac, f0, "제한시간이 늘지 않았다");
+
+        // 기회 추가
+        Wallet.Add(ShopItem.ExtraMoves, 1);
+        moves = gm.MovesLeft;
+        Assert.IsTrue(gm.UseItem(ShopItem.ExtraMoves));
+        Assert.AreEqual(moves + 3, gm.MovesLeft, "기회가 3 늘지 않았다");
+    }
+
+    [UnityTest]
+    public IEnumerator 게임이_끝나면_점수만큼_코인을_준다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 777);
+        yield return null;
+
+        int before = Wallet.Coins;
+        var rng = new System.Random(3);
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.Phase == GamePhase.Playing && Time.realtimeSinceStartup - t0 < 90)
+        {
+            if (!gm.Busy) gm.TryStamp(rng.Next(11), rng.Next(11));
+            yield return null;
+        }
+        Assert.AreEqual(GamePhase.Result, gm.Phase);
+        Assert.AreEqual(Rules.CoinsFor(gm.Score), gm.EarnedCoins, "지급 코인이 환산값과 다르다");
+        Assert.AreEqual(before + gm.EarnedCoins, Wallet.Coins, "지갑에 반영되지 않았다");
+    }
+
+    [UnityTest]
     public IEnumerator OutOfBoundsStampRejected()
     {
         gm = NewGm();

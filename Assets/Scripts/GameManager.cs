@@ -61,7 +61,7 @@ public class GameManager : MonoBehaviour
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
-    int pendingScore, pendingSeed;
+    int pendingScore, pendingSeed, earnedCoins;
     bool pendingTa;
     Vector3 camBase;
     Coroutine shakeCo;
@@ -80,7 +80,7 @@ public class GameManager : MonoBehaviour
         }
         cam.orthographic = true;
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Palette.Hex(0xCBE4CF);   // 배경 스프라이트 밖 여백
+        cam.backgroundColor = Palette.Hex(0xCDE3EE);   // 배경 스프라이트 밖 여백 (그림 하늘색)
 
         Leaderboard.Create();
         BuildBackground();
@@ -96,10 +96,14 @@ public class GameManager : MonoBehaviour
     /// <summary>플레이 화면 배경. 보드 프레임(-2)보다 뒤에 오도록 -20 에 둔다.</summary>
     void BuildBackground()
     {
+        var tex = Resources.Load<Texture2D>("jungle_bg");
+        if (tex == null) return;
+
         var go = new GameObject("Background");
         go.transform.SetParent(transform, false);
         bg = go.AddComponent<SpriteRenderer>();
-        bg.sprite = PlayBackdrop.Make(540, 1170);   // 코드로 그린다 — 이미지 파일 불필요
+        bg.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        bg.color = Color.white;      // 채도·명도는 파일에 구워져 있다 (Tools/tune-image.py)
         bg.sortingOrder = -20;
     }
 
@@ -178,9 +182,12 @@ public class GameManager : MonoBehaviour
         if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
 
         if (newBest) sfx.PlayWin(); else sfx.PlayLose();
-        ui.ShowResult(taRunning, score, best, newBest);
+        ui.ShowResult(taRunning, score, best, newBest, earnedCoins);
 
         // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
+        earnedCoins = Rules.CoinsFor(score);
+        Wallet.AddCoins(earnedCoins);
+
         pendingScore = score;
         pendingTa = taRunning;
         pendingSeed = curSeed;
@@ -198,6 +205,8 @@ public class GameManager : MonoBehaviour
     }
 
     public int PendingScore { get { return pendingScore; } }
+    /// <summary>직전 게임에서 번 코인 (결과 화면 표시용).</summary>
+    public int EarnedCoins { get { return earnedCoins; } }
 
     /// <summary>직전 게임 점수를 랭킹에 올린다. 광고를 본 뒤 호출된다.</summary>
     public void SubmitPending(System.Action<bool> done)
@@ -276,6 +285,34 @@ public class GameManager : MonoBehaviour
         if (stamp && can) StartCoroutine(DoStamp(ax, ay));
     }
 
+    /// <summary>상점 아이템을 쓴다. 보유량이 없거나 지금 쓸 수 없으면 false.</summary>
+    public bool UseItem(ShopItem it)
+    {
+        if (Phase != GamePhase.Playing || busy) return false;
+        if (it == ShopItem.ExtraMoves && taRunning) return false;   // 타임어택엔 기회 개념이 없다
+        if (Wallet.Count(it) <= 0) return false;
+
+        switch (it)
+        {
+            case ShopItem.Reroll:
+                current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+                break;
+            case ShopItem.AddTime:
+                // 모드에 맞는 시계에 더한다
+                if (taRunning) taDeadline += 5f;
+                else { pieceDeadline += 5f; pieceTimeTotal += 5f; }
+                break;
+            case ShopItem.ExtraMoves:
+                movesLeft += 3;
+                totalMoves += 3;
+                break;
+        }
+
+        Wallet.Use(it);
+        sfx.PlayItem();
+        return true;
+    }
+
     public void RotateCurrent()
     {
         if (Phase != GamePhase.Playing || busy) return;
@@ -331,12 +368,12 @@ public class GameManager : MonoBehaviour
 
         score += result.ScoreGained;
 
-        // 3) 얼음 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
+        // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
         if (!taRunning)
         {
             int used = totalMoves - movesLeft;
-            int add = Rules.IceAfterMove(used, totalMoves);
-            if (add > 0 && board.SpawnIce(add) > 0) sfx.PlayItem();
+            int add = Rules.ObstaclesAfterMove(used, totalMoves);
+            if (add > 0 && board.SpawnObstacles(add) > 0) sfx.PlayItem();
         }
         view.Refresh(board, palette);
 
@@ -423,7 +460,7 @@ public class GameManager : MonoBehaviour
                 visual[x, y] = after;
             }
 
-        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.IceHpAfter, palette);
+        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.ObstacleHpAfter, palette);
         if (!any) yield break;
 
         yield return view.FallIn(changed, dur, stagger);
@@ -467,9 +504,10 @@ public class GameManager : MonoBehaviour
     {
         lastW = Screen.width; lastH = Screen.height;
         float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
-        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 1.0f) / aspect);
+        // 가로 여백이 카메라 크기를 결정한다. 보드 판이 잘리지 않는 선까지 좁혔다.
+        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 0.44f) / aspect);
         cam.orthographicSize = half;
-        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.10f, -10);
+        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.06f, -10);
         if (shakeCo == null) cam.transform.position = camBase;
         FitBackground();
     }

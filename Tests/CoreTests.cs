@@ -150,8 +150,14 @@ class CoreTests
         for (int m = totalMv; m >= 1; m--) { int t = Rules.PieceTimeMs(m, totalMv); if (t > prev) mono = false; prev = t; }
         Assert(mono, "타이머 단조 감소");
 
+        // 코인 환산
+        Assert(Rules.CoinsFor(1000) == 10, "1000점 = 10코인");
+        Assert(Rules.CoinsFor(0) == 0 && Rules.CoinsFor(-5) == 0, "0점 이하는 0코인");
+        Assert(Rules.CoinsFor(99) == 0 && Rules.CoinsFor(100) == 1, "100점 미만은 버린다");
+        Assert(Rules.CoinsFor(4045) == 40, "4045점 = 40코인 (버림)");
+
         InitialDistributionTest();
-        IceTests();
+        ObstacleTests();
 
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
@@ -184,52 +190,52 @@ class CoreTests
                      + (even ? "" : ", 실제 " + worst) + ")");
     }
 
-    // ── 얼음 ──
-    static void IceTests()
+    // ── 콘크리트 ──
+    static void ObstacleTests()
     {
 
-        // 얼음 위에는 조각을 놓을 수 없다
+        // 콘크리트 위에는 조각을 놓을 수 없다
         var b3 = CheckerBoard();
-        b3.SetIce(5, 5, Rules.IceHp);
+        b3.SetObstacle(5, 5, Rules.ObstacleHp);
         var piece = new Piece("dot", new List<Point> { new Point(0, 0) }, 1);
-        Assert(!b3.CanPlace(piece, 5, 5), "얼음 위에는 스탬프 불가");
-        Assert(b3.CanPlace(piece, 5, 6), "얼음 옆에는 스탬프 가능");
+        Assert(!b3.CanPlace(piece, 5, 5), "콘크리트 위에는 스탬프 불가");
+        Assert(b3.CanPlace(piece, 5, 6), "콘크리트 옆에는 스탬프 가능");
 
         // 옆 칸이 터지면 금이 가고, 3번이면 부서진다
         var b4 = CheckerBoard();
-        b4.SetIce(7, 5, Rules.IceHp);
-        int hp0 = b4.GetIceHp(7, 5);
+        b4.SetObstacle(7, 5, Rules.ObstacleHp);
+        int hp0 = b4.GetObstacleHp(7, 5);
         Fill(b4, 4, 4, 3, 1);
         b4.Resolve();
-        Assert(hp0 == Rules.IceHp && hp0 >= 2, "얼음 초기 내구도 " + Rules.IceHp);
+        Assert(hp0 == Rules.ObstacleHp && hp0 >= 2, "콘크리트 초기 내구도 " + Rules.ObstacleHp);
 
         var b5 = CheckerBoard();
-        b5.SetIce(7, 5, 1);                          // 마지막 한 대만 남은 얼음
+        b5.SetObstacle(7, 5, 1);                          // 마지막 한 대만 남은 콘크리트
         Fill(b5, 4, 4, 3, 1);
         var r5 = b5.Resolve();
-        Assert(r5.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "내구도 1 얼음은 인접 파괴로 부서진다");
+        Assert(r5.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "내구도 1 콘크리트는 인접 파괴로 부서진다");
 
-        // 얼음은 중력을 받지 않는다
+        // 콘크리트는 중력을 받지 않는다
         var b6 = CheckerBoard();
-        b6.SetIce(3, 7, Rules.IceHp);
+        b6.SetObstacle(3, 7, Rules.ObstacleHp);
         b6.SetTile(3, 5, Board.Empty);
         b6.SetTile(3, 6, Board.Empty);
         b6.ApplyGravity();
-        Assert(b6.IsIce(3, 7), "얼음은 제자리 (중력 안 받음)");
+        Assert(b6.IsObstacle(3, 7), "콘크리트는 제자리 (중력 안 받음)");
 
-        // 얼음 위 칸은 얼음 위에 쌓인다 (통과하지 않는다)
+        // 콘크리트 위 칸은 콘크리트 위에 쌓인다 (통과하지 않는다)
         var b7 = CheckerBoard();
-        b7.SetIce(3, 5, Rules.IceHp);
+        b7.SetObstacle(3, 5, Rules.ObstacleHp);
         b7.SetTile(3, 6, Board.Empty);
         int above = b7.GetTile(3, 7);
         b7.ApplyGravity();
-        Assert(b7.GetTile(3, 6) == above && b7.IsIce(3, 5), "위쪽 블록은 얼음 위에 얹힌다");
+        Assert(b7.GetTile(3, 6) == above && b7.IsObstacle(3, 5), "위쪽 블록은 콘크리트 위에 얹힌다");
 
-        // 진행할수록 얼음이 늘어난다
-        Assert(Rules.IceAfterMove(0, 20) == 0, "초반에는 얼음이 안 생긴다");
+        // 진행할수록 콘크리트가 늘어난다
+        Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
         // 한 수 걸러 생기므로 짝수 수끼리 비교한다
-        Assert(Rules.IceAfterMove(18, 20) > Rules.IceAfterMove(4, 20), "후반일수록 얼음이 많다");
-        Assert(Rules.IceAfterMove(19, 20) == 0, "홀수 수에는 얼음이 안 생긴다");
+        Assert(Rules.ObstaclesAfterMove(18, 20) > Rules.ObstaclesAfterMove(4, 20), "후반일수록 콘크리트가 많다");
+        Assert(Rules.ObstaclesAfterMove(19, 20) == 0, "홀수 수에는 콘크리트가 안 생긴다");
     }
 
     // ── 헬퍼 ──

@@ -45,7 +45,12 @@ public class GameUI : MonoBehaviour
     Text myRowLabel;
     Button adBtn;
     Text adBtnLabel;
-    GameObject adPanel;
+    GameObject adPanel, shopPanel;
+    Text shopCoins;
+    Image[] shopBuyFill;
+    Text[] shopBuyLabel, shopOwned;
+    Text[] itemBtnLabel;
+    Image[] itemBtnFill;
     Text adCountdown;
     UiButton rankTabMe, rankTabNation;
     Image homeBadge; Text homeBadgeText;
@@ -114,12 +119,14 @@ public class GameUI : MonoBehaviour
         BuildRankPanel();
         BuildCountryPanel();
         BuildAdPanel();
+        BuildShopPanel();
         homePanel.SetActive(false);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
+        shopPanel.SetActive(false);
         FinishButtons();
     }
 
@@ -133,27 +140,30 @@ public class GameUI : MonoBehaviour
         rankPanel.SetActive(false);
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
+        shopPanel.SetActive(false);
         RefreshHomeButtons();
     }
 
     public void ShowGame()
     {
+        RefreshItemButtons();
         homePanel.SetActive(false);
         gamePanel.SetActive(true);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
+        shopPanel.SetActive(false);
     }
 
-    public void ShowResult(bool ta, int score, int best, bool newBest)
+    public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
     {
         resultPanel.SetActive(true);
         // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
         resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
         resultTitle.color = newBest ? Accent : new Color(1, 1, 1, 0.9f);
         resultScore.text = score.ToString("N0") + (newBest ? "  ★ NEW BEST!" : "");
-        resultBest.text = "BEST " + best.ToString("N0");
+        resultBest.text = "BEST " + best.ToString("N0") + (coins > 0 ? "     +" + coins + " COINS" : "");
 
         // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
         if (Leaderboard.I != null && Leaderboard.I.Configured)
@@ -207,6 +217,20 @@ public class GameUI : MonoBehaviour
         Stretch(timerFill.rectTransform);
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
 
+        // ---- 아이템 (보유량이 0 이면 흐려진다) ----
+        int ni = Shop.Items.Length;
+        itemBtnLabel = new Text[ni];
+        itemBtnFill = new Image[ni];
+        float iw = (390f - 48f - (ni - 1) * 10f) / ni;
+        for (int i = 0; i < ni; i++)
+        {
+            var e = Shop.Items[i];
+            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 690, iw, 54, e.Tint, 16);
+            HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
+            itemBtnFill[i] = f;
+            itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();
+        }
+
         // ---- 하단 조작 ----
         HookButton(Card(safe, "home", 24, 762, cw, 58, Cream, 22), () => gm.GoHome(), "HOME", 19);
         HookButton(Card(safe, "rotate", 24 + cw + 14, 762, cw, 58, Lilac, 22), () => gm.RotateCurrent(), "ROTATE", 19);
@@ -229,6 +253,21 @@ public class GameUI : MonoBehaviour
         var t = NewText("l", cardFill.transform, text, Mathf.RoundToInt(size * PS), TextAnchor.MiddleCenter, Ink);
         t.fontStyle = FontStyle.Bold;
         Stretch(t.rectTransform);
+    }
+
+    /// <summary>아이템 버튼의 보유량 표시. 0 이면 흐리게.</summary>
+    void RefreshItemButtons()
+    {
+        if (itemBtnFill == null) return;
+        for (int i = 0; i < Shop.Items.Length; i++)
+        {
+            var e = Shop.Items[i];
+            int n = Wallet.Count(e.Item);
+            bool usable = n > 0 && !(e.MovesOnly && gm.timeAttack);
+            itemBtnLabel[i].text = e.Name + (n > 0 ? "  x" + n : "");
+            itemBtnFill[i].color = usable ? e.Tint : Color.Lerp(e.Tint, ScreenBg, 0.72f);
+            itemBtnLabel[i].color = usable ? Ink : Muted;
+        }
     }
 
     /// <summary>부모 모서리 기준으로 자식을 배치한다 (프로토타입 좌표).</summary>
@@ -357,7 +396,7 @@ public class GameUI : MonoBehaviour
     Sprite circleSprite;
     Image[] modeFill;
     Text[] modeEyebrow;
-    Text selectedModeText;
+    Text selectedModeText, coinHomeText;
 
     Sprite Rounded(float protoRadius)
     {
@@ -528,6 +567,9 @@ public class GameUI : MonoBehaviour
         bvr.anchorMin = bvr.anchorMax = bvr.pivot = new Vector2(0, 1);
         bvr.sizeDelta = Sz(240, 46); bvr.anchoredPosition = new Vector2(18 * PS, -34 * PS);
 
+        coinHomeText = NewText("coins", best.transform, "", Mathf.RoundToInt(11 * PS), TextAnchor.UpperRight, Muted);
+        Anchor(coinHomeText.transform, 1, 1, -68, -22, 160, 18);
+
         var star = Card(best.transform, "star", 0, 0, 40, 40, Yellow, 12);
         var srt2 = (RectTransform)star.transform.parent;
         srt2.anchorMin = srt2.anchorMax = srt2.pivot = new Vector2(1, 1);
@@ -554,18 +596,24 @@ public class GameUI : MonoBehaviour
             qr.anchoredPosition = new Vector2((10 + (i % 6) * 50) * PS, -(10 + (i / 6) * 50) * PS);
         }
 
-        var lb = Card(best.transform, "lbbtn", 0, 0, 314, 48, Color.white, 16);
+        var lb = Card(best.transform, "lbbtn", 0, 0, 152, 48, Color.white, 16);
         var lbr = (RectTransform)lb.transform.parent;
         lbr.anchorMin = lbr.anchorMax = lbr.pivot = new Vector2(0, 1);
-        lbr.sizeDelta = Sz(314, 48); lbr.anchoredPosition = new Vector2(18 * PS, -262 * PS);
+        lbr.sizeDelta = Sz(152, 48); lbr.anchoredPosition = new Vector2(18 * PS, -262 * PS);
         var lbBtn = lb.transform.parent.gameObject.AddComponent<Button>();
         lbBtn.targetGraphic = lb.transform.parent.GetComponent<Image>();
         lbBtn.transition = Selectable.Transition.None;
         lbBtn.onClick.AddListener(() => ShowRanking(false));
         lb.transform.parent.gameObject.AddComponent<UiPressImage>().target = lbr;
-        var lbl = NewText("l", lb.transform, "LEADERBOARD", Mathf.RoundToInt(15 * PS), TextAnchor.MiddleCenter, Ink);
+        var lbl = NewText("l", lb.transform, "RANKS", Mathf.RoundToInt(15 * PS), TextAnchor.MiddleCenter, Ink);
         lbl.fontStyle = FontStyle.Bold;
         Stretch(lbl.rectTransform);
+
+        var sh = Card(best.transform, "shopbtn", 0, 0, 152, 48, Yellow, 16);
+        var shr = (RectTransform)sh.transform.parent;
+        shr.anchorMin = shr.anchorMax = shr.pivot = new Vector2(0, 1);
+        shr.sizeDelta = Sz(152, 48); shr.anchoredPosition = new Vector2(180 * PS, -262 * PS);
+        HookButton(sh, ShowShop, "SHOP", 15);
     }
 
     void Blob(Transform parent, string name, Color c, float alpha, float x, float y, float d)
@@ -620,6 +668,7 @@ public class GameUI : MonoBehaviour
             modeEyebrow[i].color = on ? TealInk : Muted;
         }
         bestHomeText.text = gm.BestForSelection().ToString("N0");
+        if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0") + " COINS";
         selectedModeText.text = gm.timeAttack
             ? "Selected mode: time attack · 3 min"
             : "Selected mode: " + Rules.Table[GameManager.Difficulty].Moves + " moves";
@@ -877,6 +926,110 @@ public class GameUI : MonoBehaviour
             case SubmitState.Failed: submitText.text = "Submit failed (offline?)"; break;
             default: submitText.text = ""; break;
         }
+    }
+
+    // ---------- 상점 ----------
+
+    void BuildShopPanel()
+    {
+        shopPanel = NewImage("shopdim", transform, new Color(0.06f, 0.08f, 0.10f, 0.82f)).gameObject;
+        Stretch((RectTransform)shopPanel.transform);
+
+        var card = Card(shopPanel.transform, "shopcard", 20, 90, 350, 620, ScreenBg, 24);
+        var cr = (RectTransform)card.transform.parent;
+        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
+        cr.anchoredPosition = Vector2.zero;
+
+        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(26 * PS), TextAnchor.UpperCenter, Ink);
+        title.fontStyle = FontStyle.Bold;
+        Anchor(title.transform, 0.5f, 1, 0, -20, 300, 40);
+
+        shopCoins = NewText("coins", card.transform, "", Mathf.RoundToInt(15 * PS), TextAnchor.UpperCenter, Body);
+        Anchor(shopCoins.transform, 0.5f, 1, 0, -58, 300, 26);
+
+        int n = Shop.Items.Length;
+        shopBuyFill = new Image[n]; shopBuyLabel = new Text[n]; shopOwned = new Text[n];
+        for (int i = 0; i < n; i++)
+        {
+            var e = Shop.Items[i];
+            int idx = i;
+            float rowY = 96 + i * 92;
+
+            var row = Card(card.transform, "item" + i, 0, 0, 314, 78, Color.white, 18);
+            var rr = (RectTransform)row.transform.parent;
+            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
+            rr.sizeDelta = Sz(314, 78); rr.anchoredPosition = new Vector2(0, -rowY * PS);
+
+            var swatch = NewImage("sw", row.transform, e.Tint);
+            swatch.sprite = Rounded(10); swatch.type = Image.Type.Sliced; swatch.raycastTarget = false;
+            Anchor(swatch.transform, 0, 1, 12, -12, 54, 54);
+
+            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(15 * PS), TextAnchor.UpperLeft, Ink);
+            nm.fontStyle = FontStyle.Bold;
+            Anchor(nm.transform, 0, 1, 76, -12, 150, 22);
+
+            var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(10 * PS), TextAnchor.UpperLeft, Muted);
+            Anchor(ds.transform, 0, 1, 76, -34, 160, 32);
+
+            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.LowerRight, Muted);
+            Anchor(shopOwned[i].transform, 1, 0, -12, 10, 120, 18);
+
+            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 84, 40, Teal, 12);
+            var br = (RectTransform)shopBuyFill[i].transform.parent;
+            br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 1);
+            br.sizeDelta = Sz(84, 40); br.anchoredPosition = new Vector2(-12 * PS, -12 * PS);
+            var bb = br.gameObject.AddComponent<Button>();
+            bb.targetGraphic = br.GetComponent<Image>();
+            bb.transition = Selectable.Transition.None;
+            bb.onClick.AddListener(() => Buy(idx));
+            br.gameObject.AddComponent<UiPressImage>().target = br;
+            shopBuyLabel[i] = NewText("l", shopBuyFill[i].transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleCenter, Ink);
+            shopBuyLabel[i].fontStyle = FontStyle.Bold;
+            Stretch(shopBuyLabel[i].rectTransform);
+        }
+
+        float adY = 96 + n * 92 + 12;
+        var adRow = Card(card.transform, "shopad", 0, 0, 314, 62, Coral, 18);
+        var ar = (RectTransform)adRow.transform.parent;
+        ar.anchorMin = ar.anchorMax = ar.pivot = new Vector2(0.5f, 1);
+        ar.sizeDelta = Sz(314, 62); ar.anchoredPosition = new Vector2(0, -adY * PS);
+        HookButton(adRow, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }),
+                   "WATCH AD  ·  +" + Shop.AdReward, 15);
+
+        var close = Card(card.transform, "shopclose", 0, 0, 314, 54, Cream, 18);
+        var clr = (RectTransform)close.transform.parent;
+        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(0.5f, 0);
+        clr.sizeDelta = Sz(314, 54); clr.anchoredPosition = new Vector2(0, 18 * PS);
+        HookButton(close, () => shopPanel.SetActive(false), "CLOSE", 15);
+    }
+
+    public void ShowShop()
+    {
+        shopPanel.SetActive(true);
+        shopPanel.transform.SetAsLastSibling();
+        RefreshShop();
+    }
+
+    void Buy(int i)
+    {
+        var e = Shop.Items[i];
+        if (Wallet.SpendCoins(e.Price)) Wallet.Add(e.Item, 1);
+        RefreshShop();
+    }
+
+    void RefreshShop()
+    {
+        shopCoins.text = Wallet.Coins.ToString("N0") + " COINS";
+        for (int i = 0; i < Shop.Items.Length; i++)
+        {
+            var e = Shop.Items[i];
+            bool afford = Wallet.Coins >= e.Price;
+            shopBuyLabel[i].text = e.Price.ToString();
+            shopBuyFill[i].color = afford ? Teal : new Color(0.85f, 0.86f, 0.88f);
+            shopBuyLabel[i].color = afford ? Ink : Muted;
+            shopOwned[i].text = "owned " + Wallet.Count(e.Item);
+        }
+        RefreshItemButtons();
     }
 
     // ---------- 광고 (자리표시) ----------

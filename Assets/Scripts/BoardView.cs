@@ -8,11 +8,14 @@ using ColorMatcher.Core;
 
 public class BoardView : MonoBehaviour
 {
-    // chroma-drop.html 기준 — 밝은 보드
-    static readonly Color EmptyColor = Palette.Hex(0xE9F4EA);   // 격자 안쪽 — 숲 톤
-    // 배경과 동떨어져 보이지 않게 테두리도 완전한 잉크색 대신 살짝 투명하게 쓴다
-    static readonly Color BoardInk = new Color(0.106f, 0.129f, 0.255f, 0.55f);
-    const float TileScale = 0.92f;
+    // 보드는 배경보다 확실히 밝고 불투명해야 한다. 반투명으로 두면 일러스트에 묻힌다.
+    static readonly Color EmptyColor = Palette.Hex(0xEAF6F2);   // 타일 영역 배경
+    static readonly Color BoardCream = Palette.Hex(0xFDFBF2);   // 보드 서피스
+    static readonly Color BoardNavy  = Palette.Hex(0x1B2141);   // 테두리·그림자
+
+    // 화면 폭 390px ↔ 월드 16유닛 이므로 1px = 0.041 유닛
+    const float Px = 16f / 390f;
+    const float TileScale = 0.96f;   // 칸 대비 블록 크기 — 1.0 이면 칸을 꽉 채운다
 
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
@@ -21,10 +24,9 @@ public class BoardView : MonoBehaviour
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
     Sprite tile;                  // 둥근 모서리 + 세로 그라데이션 (타일/고스트)
-    Sprite panel;                 // 둥근 사각 (판)
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
     Sprite soft;                  // 파티클용 소프트 원
-    Sprite[] ice;               // 내구도별 얼음 (금 0/1/2줄)
+    Sprite[] obstacle;               // 내구도별 콘크리트 (금 0/1/2줄)
     readonly Dictionary<ItemType, Sprite> icons = new Dictionary<ItemType, Sprite>();
     bool built;
 
@@ -50,23 +52,33 @@ public class BoardView : MonoBehaviour
         built = true;
 
         tile = MakeTileSprite();
-        panel = MakePanelSprite();
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
         // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
-        ice = new Sprite[Rules.IceHp];
-        for (int i = 0; i < ice.Length; i++) ice[i] = MakeIceSprite(i);
+        obstacle = new Sprite[Rules.ObstacleHp];
+        for (int i = 0; i < obstacle.Length; i++) obstacle[i] = MakeObstacleSprite(i);
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
         icons[ItemType.Bomb5] = MakeIcon(ItemType.Bomb5);
         icons[ItemType.ColorClear] = MakeIcon(ItemType.ColorClear);
 
-        // 판: 직각 모서리. 얇은 잉크 테두리 + 반투명 안쪽만 두어 배경과 이어지게 한다.
+        // 보드 레이어 (뒤 → 앞):
+        //   ① 흰색 20% 헤일로 — 보드 뒤 배경의 대비를 눌러 경계를 만든다
+        //   ② 하드 그림자 (offset 6px, 블러 없음)  ③ 네이비 테두리 5px, radius 24px
+        //   ④ 크림 서피스  ⑤ 타일 영역
         var center = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f, 1);
-        MakePanel("frame_ink", center, Board.W + 0.78f, Board.H + 0.78f, BoardInk, -5);
-        MakePanel("frame_grid", center, Board.W + 0.60f, Board.H + 0.60f,
-                  new Color(EmptyColor.r, EmptyColor.g, EmptyColor.b, 0.55f), -4);
+        float radius = 24f * Px;
+        // 판 여백을 줄인 만큼 보드를 키울 수 있다 — 카메라 크기를 정하는 건 가로다.
+        float inner = Board.H + 0.20f;
+        float surface = inner + 0.19f;
+        float border = surface + 2f * (5f * Px);
+
+        MakePanel("halo", center, border + 1.6f, border + 1.6f, new Color(1, 1, 1, 0.20f), -8, radius * 1.6f);
+        MakePanel("shadow", center + new Vector3(0, -6f * Px, 0), border, border, BoardNavy, -7, radius);
+        MakePanel("border", center, border, border, BoardNavy, -6, radius);
+        MakePanel("surface", center, surface, surface, BoardCream, -5, radius - 5f * Px);
+        MakePanel("grid", center, inner, inner, EmptyColor, -4, radius - 9f * Px);
 
         tiles = new SpriteRenderer[Board.W, Board.H];
         overlays = new SpriteRenderer[Board.W, Board.H];
@@ -106,7 +118,7 @@ public class BoardView : MonoBehaviour
 
             var go = new GameObject("ghost_" + i);
             go.transform.SetParent(transform, false);
-            go.transform.localScale = Vector3.one * 0.98f;   // 밑 타일(0.92)보다는 크되 칸은 안 넘는다
+            go.transform.localScale = Vector3.one;   // 밑 타일보다 크되 칸은 안 넘는다
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = tile;
             sr.sortingOrder = 6;
@@ -118,14 +130,16 @@ public class BoardView : MonoBehaviour
         BuildRingPool();
     }
 
-    void MakePanel(string name, Vector3 center, float w, float h, Color c, int order)
+    /// <summary>모서리 반경을 월드 단위로 지정한다. 스프라이트가 스케일되므로
+    /// 판 크기에 대한 비율로 환산해 굽는다 — 그래야 레이어마다 반경이 같아 보인다.</summary>
+    void MakePanel(string name, Vector3 center, float w, float h, Color c, int order, float radiusWorld)
     {
         var go = new GameObject(name);
         go.transform.SetParent(transform, false);
         go.transform.localPosition = center;
         go.transform.localScale = new Vector3(w, h, 1);
         var sr = go.AddComponent<SpriteRenderer>();
-        sr.sprite = panel;
+        sr.sprite = MakePanelSprite(Mathf.Clamp01(radiusWorld / w));
         sr.color = c;
         sr.sortingOrder = order;
     }
@@ -219,29 +233,29 @@ public class BoardView : MonoBehaviour
     public void SetVisible(bool v) { gameObject.SetActive(v); }
 
     /// <summary>칸 하나를 그린다. 아이템 아이콘까지 여기서 함께 다룬다 —
-    /// 얼음은 아래 색 칸 + 구멍 뚫린 콘크리트 덮개 두 겹이라 두 레이어를 같이 정해야 한다.</summary>
+    /// 콘크리트는 아래 색 칸 + 구멍 뚫린 콘크리트 덮개 두 겹이라 두 레이어를 같이 정해야 한다.</summary>
     void PaintTile(int x, int y, int c, int hp, ItemType item, Color[] palette)
     {
         var sr = tiles[x, y];
         var ov = overlays[x, y];
 
-        if (c == Board.Ice)
+        if (c == Board.Obstacle)
         {
-            int stage = Mathf.Clamp(Rules.IceHp - hp, 0, ice.Length - 1);
+            int stage = Mathf.Clamp(Rules.ObstacleHp - hp, 0, obstacle.Length - 1);
 
             // 아래층: 마지막 단계에서만 조각 틈으로 색이 비친다. 그 전에는 배경색이라
-            // 얼음 주위에 유채색 테두리가 남지 않는다.
+            // 콘크리트 주위에 유채색 테두리가 남지 않는다.
             sr.sprite = tile;
             sr.color = stage >= 2
                 ? Color.Lerp(UnderColor(x, y, palette), Color.white, 0.22f)
                 : EmptyColor;
-            sr.transform.localScale = Vector3.one * IceStyle.Scale;
+            sr.transform.localScale = Vector3.one * ObstacleStyle.Scale;
 
-            // 위층: 얼음 본체. 색은 스프라이트에 구워져 있으므로 틴트는 흰색.
+            // 위층: 콘크리트 본체. 색은 스프라이트에 구워져 있으므로 틴트는 흰색.
             ov.enabled = true;
-            ov.sprite = ice[stage];
+            ov.sprite = obstacle[stage];
             ov.color = Color.white;
-            ov.transform.localScale = Vector3.one * IceStyle.Scale;
+            ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
             return;
         }
 
@@ -257,7 +271,7 @@ public class BoardView : MonoBehaviour
         }
     }
 
-    /// <summary>얼음 아래 깔린 색. 좌표 해시라 판이 바뀌어도 같은 칸은 같은 색으로 남는다.
+    /// <summary>콘크리트 아래 깔린 색. 좌표 해시라 판이 바뀌어도 같은 칸은 같은 색으로 남는다.
     /// 규칙상 의미는 없고 손상 단계를 읽히게 하는 표시다.</summary>
     static Color UnderColor(int x, int y, Color[] palette)
     {
@@ -271,7 +285,7 @@ public class BoardView : MonoBehaviour
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
-                PaintTile(x, y, b.GetTile(x, y), b.GetIceHp(x, y), b.GetItem(x, y), palette);
+                PaintTile(x, y, b.GetTile(x, y), b.GetObstacleHp(x, y), b.GetItem(x, y), palette);
                 tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
                 overlays[x, y].transform.localPosition = new Vector3(x, y, -0.5f);
             }
@@ -691,20 +705,30 @@ public class BoardView : MonoBehaviour
         }
     }
 
-    // 직각 사각 — 보드 판용
-    static Sprite MakePanelSprite()
+    // 보드 판용 둥근 사각. radiusFrac 은 한 변에 대한 모서리 반경 비율.
+    static Sprite MakePanelSprite(float radiusFrac)
     {
-        const int S = 8;
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Point };
+        const int S = 256;
+        float r = Mathf.Max(0.5f, S * radiusFrac);
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         var px = new Color[S * S];
-        for (int i = 0; i < px.Length; i++) px[i] = Color.white;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+                px[y * S + x] = new Color(1, 1, 1, a);
+            }
         tex.SetPixels(px);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    const float RimPx = 2.8f;      // 테두리 두께 (32px 스프라이트 기준)
-    const float RimDark = 0.80f;   // 테두리 명도 배수 — 1 에 가까울수록 옅다
+    // 타일 경계는 명확해야 한다. 밝은 판 위에서 옅은 테두리는 바로 사라진다.
+    const float RimPx = 3.4f;      // 테두리 두께 (32px 스프라이트 기준 ≈ 11%)
+    const float RimDark = 0.62f;   // 테두리 명도 배수 — 작을수록 진하다
 
     // 둥근 모서리 + 위가 밝은 세로 그라데이션 + 같은 색 진한 테두리 (SpriteRenderer.color로 틴트)
     // GameUI 의 배경 블록도 같은 모양을 쓴다.
@@ -721,9 +745,22 @@ public class BoardView : MonoBehaviour
                 float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
                 float dist = Mathf.Sqrt(dx * dx + dy * dy);
                 float a = Mathf.Clamp01(r - dist + 0.5f); // 모서리 안티에일리어싱
-                float g = Mathf.Lerp(0.88f, 1.0f, fy / (S - 1)); // 밝은 판이라 음영을 약하게
-                // 상단 하이라이트 밴드
-                if (fy > S - 6) g = Mathf.Min(1f, g + 0.06f);
+                // 바탕: 아래가 어둡고 위가 밝다. 광택이 도드라지도록 여유를 남겨 둔다.
+                float g = Mathf.Lerp(0.84f, 0.97f, fy / (S - 1));
+
+                // 광택 ① 왼쪽 위에서 비스듬히 들어오는 넓은 띠
+                float u = (fx + (S - fy)) / (2f * S);              // 0 = 좌상단
+                float sheen = Mathf.Clamp01(1f - Mathf.Abs(u - 0.28f) / 0.17f);
+                g = Mathf.Lerp(g, 1f, 0.60f * sheen * sheen);
+
+                // 광택 ② 좌상단의 작은 반사점 — 유약 바른 느낌
+                float sdx = fx - S * 0.30f, sdy = fy - S * 0.74f;
+                float spec = Mathf.Clamp01(1f - Mathf.Sqrt(sdx * sdx + sdy * sdy) / (S * 0.125f));
+                g = Mathf.Lerp(g, 1f, 0.95f * spec);
+
+                // 아래쪽 반사광 — 바닥에서 살짝 되비친다
+                float bounce = Mathf.Clamp01(1f - fy / (S * 0.22f));
+                g = Mathf.Lerp(g, 0.92f, 0.45f * bounce);
 
                 // 테두리: 경계 쪽 명도만 낮춘다. 틴트가 곱해지므로 자동으로
                 // '그 블록 색의 조금 진한 톤' 이 된다 — 색을 따로 계산할 필요가 없다.
@@ -759,22 +796,18 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 얼음 블록. 색·형태 상수는 IceStyle 에 모아 두었다.
+    // 장애물 블록(콘크리트). 색·형태 상수는 ObstacleStyle 에 모아 두었다.
     // 스프라이트에 실제 색을 구워 넣고 SpriteRenderer 는 흰색으로 둔다 — 틴트가 섞이면
-    // 지정한 냉색이 그대로 나오지 않는다.
+    // 지정한 무채색이 그대로 나오지 않는다.
     //
-    // stage 0 = 온전한 얼음 / 1 = 쩍 갈라져 조각이 벌어진 얼음
-    // 균열과 도트를 함께 쓴다. 작은 화면(≈22px)에서는 균열이 안 읽히고 도트만 남기 때문이다.
-    static Sprite MakeIceSprite(int stage)
+    // stage 0 = 온전 / 1 = 갈라져 조각이 벌어짐 (틈으로 아래 색이 비친다)
+    static Sprite MakeObstacleSprite(int stage)
     {
         const int S = 48;
-        float r = S * IceStyle.RoundFrac;
-        float line = S * IceStyle.LineFrac;
-        float crack = S * IceStyle.CrackFrac;
-        float split = S * IceStyle.SplitFrac;
-        float dotR = S * IceStyle.DotRFrac;
-        int dots = Rules.IceHp - stage;
-        Color body = IceStyle.BodyFor(stage);
+        float r = S * ObstacleStyle.RoundFrac;
+        float line = S * ObstacleStyle.LineFrac;
+        float split = S * ObstacleStyle.SplitFrac;
+        Color body = ObstacleStyle.BodyFor(stage);
 
         var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
         var px = new Color[S * S];
@@ -791,56 +824,39 @@ public class BoardView : MonoBehaviour
 
                 Color c = body;
 
-                // 결정면 — 대각선 띠 두 줄이 빛을 받아 얼음처럼 보이게 한다
-                float diag = (fx + fy) / (2f * S);
-                if (diag > 0.16f && diag < 0.30f) c = IceStyle.Light;
-                if (diag > 0.54f && diag < 0.62f) c = Color.Lerp(c, IceStyle.Light, 0.65f);
-                float anti = (fx - fy) / (float)S;
-                if (anti > 0.30f && anti < 0.40f) c = Color.Lerp(c, IceStyle.Shadow, 0.35f);
+                // 콘크리트 잔알갱이 — 결정적 해시라 매번 같은 무늬가 나온다
+                float n = Frac(Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f);
+                c = Color.Lerp(c, n > 0.5f ? ObstacleStyle.Light : ObstacleStyle.Shadow,
+                               0.16f * Mathf.Abs(n - 0.5f) * 2f);
 
-                // 아래쪽 그늘
-                c = Color.Lerp(c, IceStyle.Shadow, Mathf.Clamp01((0.30f - fy / S) * 1.6f));
+                // 베벨: 위/좌는 밝게, 아래/우는 어둡게 — 두께감
+                float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
+                if (edge > line && edge < line + S * 0.11f)
+                    c = Color.Lerp(c, (fy > S * 0.5f || fx < S * 0.5f)
+                                      ? ObstacleStyle.Light : ObstacleStyle.Shadow, 0.55f);
 
                 // 외곽선 — 색 타일에는 없는 신호라 테두리 자체가 구분 단서가 된다
-                float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
-                if (edge <= line) c = IceStyle.Outline;
+                if (edge <= line) c = ObstacleStyle.Outline;
 
                 // 균열 / 조각 분리
-                float w1 = Mathf.Sin(fy * 0.34f) * S * 0.09f;
+                float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
                 float d1 = Mathf.Abs(fx - (S * 0.44f + w1));
                 if (stage == 0)
                 {
-                    // 온전해도 실금 하나는 넣어 얼음 결처럼 보이게 한다
-                    if (d1 < crack * 0.55f) c = Color.Lerp(c, IceStyle.Outline, 0.35f);
+                    // 온전해도 실금 하나 — 완전히 매끈하면 플라스틱처럼 보인다
+                    if (d1 < line * 0.42f) c = Color.Lerp(c, ObstacleStyle.Outline, 0.45f);
                 }
                 else
                 {
-                    float w2 = Mathf.Sin(fx * 0.30f + 1.4f) * S * 0.08f;
-                    float d2 = Mathf.Abs(fy - (S * 0.62f + w2));
+                    float w2 = Mathf.Sin(fx * 0.28f + 1.5f) * S * 0.075f;
+                    float d2 = Mathf.Abs(fy - (S * 0.60f + w2));
                     float d = Mathf.Min(d1, d2);
-                    if (d < split) a = 0f;                                       // 벌어진 틈 — 아래 색이 비친다
-                    else if (d < split + line) c = IceStyle.Outline;             // 갈라진 단면
+                    if (d < split) a = 0f;                            // 벌어진 틈
+                    else if (d < split + line * 0.9f) c = ObstacleStyle.Outline;   // 갈라진 단면
                 }
 
                 px[y * S + x] = new Color(c.r, c.g, c.b, a);
             }
-
-        // 남은 내구도 도트 — 균열이 안 보이는 크기에서도 이건 읽힌다
-        float cy = S * 0.235f;
-        for (int i = 0; i < dots; i++)
-        {
-            float cx = S * 0.5f + (i - (dots - 1) * 0.5f) * (dotR * 2.45f);
-            for (int y = 0; y < S; y++)
-                for (int x = 0; x < S; x++)
-                {
-                    float d = Mathf.Sqrt((x + 0.5f - cx) * (x + 0.5f - cx) + (y + 0.5f - cy) * (y + 0.5f - cy));
-                    int k = y * S + x;
-                    if (d < dotR + 1.4f && d >= dotR && px[k].a > 0f)
-                        px[k] = new Color(IceStyle.Light.r, IceStyle.Light.g, IceStyle.Light.b, px[k].a);
-                    if (d < dotR)
-                        px[k] = new Color(IceStyle.Dot.r, IceStyle.Dot.g, IceStyle.Dot.b, 1f);
-                }
-        }
 
         tex.SetPixels(px);
         tex.Apply();

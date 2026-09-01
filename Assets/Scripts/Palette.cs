@@ -22,15 +22,30 @@ public static class Palette
 
     public static readonly string[] SetNames = { "색맹 안전", "선셋", "캔디", "쿨 아날로거스" };
 
-    // 배경이 숲 파스텔이라 원색 그대로면 블록만 튄다. 회색 쪽으로 당기고 살짝 밝힌다.
-    public const float Desaturate = 0.1f;   // 0 = 원색, 1 = 무채색
-    public const float Soften     = 0.10f;   // 흰색 쪽으로
+    // 흰색을 많이 섞으면 타일끼리 서로 뿌예져 경계가 사라진다.
+    // 채도는 조금만 빼고 명도를 중간 띠에 묶어 색을 살린다.
+    public const float Desaturate = 0.12f;   // 0 = 원색, 1 = 무채색
+    public const float WhiteMix   = 0.06f;   // 흰색을 섞는 정도 — 과하면 뿌예진다
+
+    // 명도 위계: 배경 75~90% / 보드 서피스 95~100% / 타일 55~70%.
+    // 상한 70% 는 타일영역 배경(#EAF6F2, 명도 0.95)과 25% 차이를 지키기 위한 한계다.
+    public const float TileLumMin = 0.55f;
+    public const float TileLumMax = 0.70f;
+
+    static float Lum(Color c) { return 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b; }
 
     static Color Mute(Color c)
     {
-        float l = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
-        var m = Color.Lerp(c, new Color(l, l, l), Desaturate);
-        return Color.Lerp(m, Color.white, Soften);
+        float l = Lum(c);
+        c = Color.Lerp(c, new Color(l, l, l), Desaturate);
+        c = Color.Lerp(c, Color.white, WhiteMix);
+
+        // 명도를 정해진 띠 안으로 밀어 넣는다. 흰/검 쪽으로 섞으므로 색상은 유지된다.
+        l = Lum(c);
+        float target = Mathf.Clamp(l, TileLumMin, TileLumMax);
+        if (target > l && l < 1f) c = Color.Lerp(c, Color.white, (target - l) / (1f - l));
+        else if (target < l && l > 0f) c = Color.Lerp(c, Color.black, (l - target) / l);
+        return c;
     }
 
     /// <summary>세트를 하나 뽑아 앞에서 n색을 돌려준다.
