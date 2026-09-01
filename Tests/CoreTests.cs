@@ -158,6 +158,7 @@ class CoreTests
 
         InitialDistributionTest();
         ObstacleTests();
+        DetonateTests();
 
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
@@ -165,6 +166,30 @@ class CoreTests
 
     // 초기 보드가 특정 색으로 치우치지 않는지.
     // int[,] 기본값 0 때문에 미충전 칸이 '색0' 으로 읽혀 색0 만 재추첨당하던 결함이 있었다.
+    // 손으로 던지는 폭탄 — 매칭 없이 즉시 발동한다
+    static void DetonateTests()
+    {
+        var b = new Board(Rules.ColorCount, 1234);
+        b.SetItem(7, 7, ItemType.Bomb5);
+        var r = b.Detonate(7, 7);
+        Assert(r.Destroyed.Count >= 25, "폭탄 발동: " + r.Destroyed.Count + "칸 파괴 (25 이상)");
+        Assert(r.ScoreGained > 0, "폭탄 발동: 점수 " + r.ScoreGained);
+        Assert(r.Waves.Count >= 1, "폭탄 발동: 웨이브 " + r.Waves.Count + "개 기록");
+        Assert(b.GetItem(7, 7) == ItemType.None, "폭탄이 소모됐다");
+
+        // 아이템 없는 칸이면 보드가 그대로여야 한다
+        var b2 = new Board(Rules.ColorCount, 99);
+        var snap = new List<int>();
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) snap.Add(b2.GetTile(x, y));
+        var r2 = b2.Detonate(3, 3);
+        bool same = r2.Destroyed.Count == 0;
+        int i = 0;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) if (snap[i++] != b2.GetTile(x, y)) same = false;
+        Assert(same, "아이템 없는 칸 발동은 무해하다");
+    }
+
     static void InitialDistributionTest()
     {
         int expected = Board.W * Board.H / Rules.ColorCount;   // 균등했을 때 색당 칸 수

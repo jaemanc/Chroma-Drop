@@ -23,19 +23,14 @@ public static class Shop
     public static readonly ShopEntry[] Items =
     {
         new ShopEntry {
-            Item = ShopItem.Reroll, Name = "REROLL", Price = 30,
-            Desc = "Swap the current piece. Costs no move.",
+            Item = ShopItem.BombPiece, Name = "BOMB", Price = 120,
+            Desc = "Swap your piece for a 2x2 block that plants a bomb.",
+            Tint = Palette.Hex(0xE4795A),
+        },
+        new ShopEntry {
+            Item = ShopItem.BigPiece, Name = "BIG BLOCK", Price = 250,
+            Desc = "Swap your piece for a huge 9x9 block.",
             Tint = Palette.Hex(0x8B84D6),
-        },
-        new ShopEntry {
-            Item = ShopItem.AddTime, Name = "+5 SEC", Price = 20,
-            Desc = "Add 5 seconds to the clock.",
-            Tint = Palette.Hex(0x7FCFC0),
-        },
-        new ShopEntry {
-            Item = ShopItem.ExtraMoves, Name = "+3 MOVES", Price = 60,
-            Desc = "Three more chances. Moves mode only.",
-            Tint = Palette.Hex(0xE4C05A), MovesOnly = true,
         },
     };
 

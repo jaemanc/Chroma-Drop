@@ -172,18 +172,19 @@ public class GameUI : MonoBehaviour
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 26, 342, 20);
+        // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
+        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 20, 342, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         float cw = (390f - 48f - 14f) / 2f;
-        var scoreCard = Card(safe, "statscore", 24, 54, cw, 78, Cream, 22);
+        var scoreCard = Card(safe, "statscore", 24, 44, cw, 74, Cream, 22);
         var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 12, TextAnchor.UpperLeft, StatLabel, 0, 0, 0, 0);
         Anchor(sl.transform, 0, 1, 16, -12, cw - 32, 18);
         scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
         scoreText.fontStyle = FontStyle.Bold;
         Anchor(scoreText.transform, 0, 1, 16, -30, cw - 32, 46);
 
-        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 54, cw, 78, Mint, 22);
+        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 44, cw, 74, Mint, 22);
         subText = Label(movesCard.transform, "l", "", 12, TextAnchor.UpperRight, MintInk, 0, 0, 0, 0);
         Anchor(subText.transform, 1, 1, -16, -12, cw - 32, 18);
         rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(34 * PS), TextAnchor.UpperRight, Ink);
@@ -191,12 +192,13 @@ public class GameUI : MonoBehaviour
         Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
 
         // ---- 다음 조각 ----
-        Label(safe, "nextlabel", Spaced("NEXT"), 11, TextAnchor.MiddleCenter, Muted, 24, 146, 342, 18);
+        Label(safe, "nextlabel", Spaced("NEXT"), 10, TextAnchor.MiddleCenter, Muted, 24, 124, 342, 14);
         nextRoot = NewRT("next", safe);
-        Place(nextRoot, Top, Top, new Vector2(0.5f, 1), P(195, 166), Sz(320, 60));
+        Place(nextRoot, Top, Top, new Vector2(0.5f, 1), P(195, 140), Sz(320, 46));
 
         // ---- 제한시간 바 ----
-        var bar = Card(safe, "bar", 24, 232, 342, 16, Cream, 8);
+        // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
+        var bar = Card(safe, "bar", 24, 198, 342, 14, Cream, 7);
         timerBar = bar.transform.parent.gameObject;
         timerFill = NewImage("fill", bar.transform, Coral);
         timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;

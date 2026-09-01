@@ -62,7 +62,13 @@ public class GameManager : MonoBehaviour
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
     int pendingScore, pendingSeed, earnedCoins;
-    bool pendingTa;
+    bool pendingTa, pendingBomb;
+
+    /// <summary>폭탄 조각이 장전돼 있나.</summary>
+    public bool BombArmed { get { return pendingBomb; } }
+
+    /// <summary>BIG BLOCK 한 변. 보드보다 작아야 놓을 자리가 생긴다.</summary>
+    public const int BigPieceSide = 9;
     Vector3 camBase;
     Coroutine shakeCo;
 
@@ -154,6 +160,7 @@ public class GameManager : MonoBehaviour
         busy = false;
         touchActive = false;
 
+        pendingBomb = false;
         queue.Clear();
         current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
@@ -282,7 +289,10 @@ public class GameManager : MonoBehaviour
         int ay = cy - MaxCell(current, 1) / 2;
 
         bool can = board.CanPlace(current, ax, ay);
-        view.ShowGhost(current, ax, ay, can, palette[current.Color]);
+        if (pendingBomb)
+            view.ShowBombGhost(ax, ay, can, can ? board.EffectCells(ItemType.Bomb5, ax, ay) : null);
+        else
+            view.ShowGhost(current, ax, ay, can, palette[current.Color]);
         if (stamp && can) StartCoroutine(DoStamp(ax, ay));
     }
 
@@ -290,28 +300,35 @@ public class GameManager : MonoBehaviour
     public bool UseItem(ShopItem it)
     {
         if (Phase != GamePhase.Playing || busy) return false;
-        if (it == ShopItem.ExtraMoves && taRunning) return false;   // 타임어택엔 기회 개념이 없다
         if (Wallet.Count(it) <= 0) return false;
 
         switch (it)
         {
-            case ShopItem.Reroll:
-                current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+            case ShopItem.BombPiece:
+                // 1칸짜리 폭탄. 매칭이 없어도 던진 자리에서 바로 터진다(Board.Detonate).
+                current = Square(1, current.Color);
+                pendingBomb = true;
                 break;
-            case ShopItem.AddTime:
-                // 모드에 맞는 시계에 더한다
-                if (taRunning) taDeadline += 5f;
-                else { pieceDeadline += 5f; pieceTimeTotal += 5f; }
-                break;
-            case ShopItem.ExtraMoves:
-                movesLeft += 3;
-                totalMoves += 3;
+            case ShopItem.BigPiece:
+                current = Square(BigPieceSide, current.Color);
+                pendingBomb = false;
                 break;
         }
 
         Wallet.Use(it);
         sfx.PlayItem();
+        // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
+        if (!taRunning) StartPieceTimer();
         return true;
+    }
+
+    /// <summary>n x n 정사각 조각.</summary>
+    static Piece Square(int n, int color)
+    {
+        var cells = new List<Point>(n * n);
+        for (int x = 0; x < n; x++)
+            for (int y = 0; y < n; y++) cells.Add(new Point(x, y));
+        return new Piece(n + "x" + n, cells, color);
     }
 
     public void RotateCurrent()
@@ -347,7 +364,15 @@ public class GameManager : MonoBehaviour
             visual[p.X, p.Y] = current.Color;
         }
 
-        var result = board.Stamp(current, ax, ay);
+        // 폭탄 조각은 매칭을 기다리지 않는다 — 심고 그 자리에서 바로 터뜨린다.
+        ResolveResult result;
+        if (pendingBomb)
+        {
+            pendingBomb = false;
+            board.SetItem(ax, ay, ItemType.Bomb5);
+            result = board.Detonate(ax, ay);
+        }
+        else result = board.Stamp(current, ax, ay);
         if (!taRunning) movesLeft--;
 
         // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
@@ -401,6 +426,7 @@ public class GameManager : MonoBehaviour
         yield return new WaitForSeconds(0.15f);
 
         movesLeft--;
+        pendingBomb = false;   // 폭탄은 그 조각에만 붙는다. 다음 조각으로 넘어가지 않는다.
         current = queue.Dequeue();
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
         ui.SetNext(new List<Piece>(queue), palette);

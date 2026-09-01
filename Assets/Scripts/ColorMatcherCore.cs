@@ -205,7 +205,38 @@ namespace ColorMatcher.Core
         public ResolveResult Resolve()
         {
             var res = new ResolveResult();
-            int chain = 0;
+            ResolveLoop(res, 0);
+            return res;
+        }
+
+        /// <summary>(x,y) 의 아이템을 매칭 없이 즉시 발동시키고 이어지는 연쇄까지 해소한다.
+        /// 손으로 던지는 폭탄처럼 스스로 터져야 하는 경우에 쓴다.</summary>
+        public ResolveResult Detonate(int x, int y)
+        {
+            var res = new ResolveResult();
+            if (!InBounds(x, y) || items[x, y] == ItemType.None) return res;
+
+            var toDestroy = new Dictionary<int, Point>();
+            var order = new List<Point>();
+            var actQueue = new Queue<Point>();
+
+            // 발동 지점 자체도 함께 사라진다
+            var seed = new Point(x, y);
+            toDestroy[Key(x, y)] = seed;
+            order.Add(seed);
+            actQueue.Enqueue(seed);
+
+            // matchEnd = 1 — 던진 칸은 '직접', 터진 범위는 '연계' 로 연출된다
+            ProcessWave(res, toDestroy, order, actQueue, 1, 1, 1.0, 0, false, false);
+            res.MaxChain = 1;
+            ResolveLoop(res, 1);   // 무너진 뒤 새로 생긴 매칭부터 이어서
+            return res;
+        }
+
+        /// <summary>매칭이 없을 때까지 연쇄를 돈다. startChain 은 이미 지나온 단계 수.</summary>
+        void ResolveLoop(ResolveResult res, int startChain)
+        {
+            int chain = startChain;
             while (true)
             {
                 var matches = FindSquares();
@@ -238,73 +269,80 @@ namespace ColorMatcher.Core
                         }
                 }
 
-                int matchEnd = order.Count;
-
-                // 아이템 발동 BFS (발동으로 파괴된 칸의 아이템도 연쇄 발동)
-                int actCount = 0;
-                while (actQueue.Count > 0)
-                {
-                    var a = actQueue.Dequeue();
-                    ItemType t = items[a.X, a.Y];
-                    if (t == ItemType.None) continue;
-                    foreach (var e in EffectCells(t, a.X, a.Y))
-                    {
-                        int k = Key(e.X, e.Y);
-                        if (toDestroy.ContainsKey(k)) continue;
-                        toDestroy[k] = e;
-                        order.Add(e);
-                        actCount++;
-                        if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
-                    }
-                }
-                // 콘크리트: 인접 칸이 터지면 금이 간다. 웨이브당 1 만 깎아 '3번 터트려야' 를 지킨다.
-                var cracked = new HashSet<int>();
-                var crackSeeds = new List<Point>(order);   // 순회 중 order 에 추가되므로 복사본으로 돈다
-                foreach (var pt in crackSeeds)
-                    foreach (var e in Neighbors(pt))
-                    {
-                        if (tiles[e.X, e.Y] != Obstacle) continue;
-                        int k = Key(e.X, e.Y);
-                        if (!cracked.Add(k)) continue;
-                        if (--obstacleHp[e.X, e.Y] > 0) continue;
-                        // 다 깨졌다 — 이번 웨이브에 같이 부서진다
-                        toDestroy[k] = e;
-                        order.Add(e);
-                        actCount++;
-                    }
-                res.ObstaclesCracked += cracked.Count;
-
-                if (actCount > 0)
-                    res.ScoreGained += (int)(actCount * BaseTileScore * mult);
-
-                // 실제 파괴
-                res.TilesDestroyed += order.Count;
-                int waveStart = res.Destroyed.Count;
-                foreach (var pt in order)
-                {
-                    tiles[pt.X, pt.Y] = Empty;
-                    items[pt.X, pt.Y] = ItemType.None;
-                    obstacleHp[pt.X, pt.Y] = 0;
-                    res.Destroyed.Add(pt);
-                }
-                ApplyGravity();
-                Refill();
-
-                // 스폰: 이 단계에서 (연쇄/동시파괴) 조건 충족 시. 즉시 파괴 방지 위해 실제 배치는 여기서.
-                MaybeSpawn(chain, matchTiles, huge, res);
-
-                res.Waves.Add(new Wave
-                {
-                    Start = waveStart,
-                    MatchEnd = waveStart + matchEnd,
-                    End = res.Destroyed.Count,
-                    TilesAfter = SnapshotTiles(),
-                    ItemsAfter = SnapshotItems(),
-                    ObstacleHpAfter = SnapshotBrickHp(),
-                });
+                ProcessWave(res, toDestroy, order, actQueue, order.Count, chain, mult, matchTiles, huge, true);
             }
-            res.MaxChain = chain;
-            return res;
+            if (chain > res.MaxChain) res.MaxChain = chain;
+        }
+
+        /// <summary>한 연쇄 단계를 끝까지 처리한다 — 아이템 발동 BFS, 콘크리트 손상, 실제 파괴,
+        /// 중력·리필, 스폰, 웨이브 기록. 매칭 경로와 강제 발동 경로가 같은 규칙을 쓰도록 공유한다.
+        /// toDestroy/order 에는 시작 칸이 이미 들어 있어야 한다.</summary>
+        void ProcessWave(ResolveResult res, Dictionary<int, Point> toDestroy, List<Point> order,
+                         Queue<Point> actQueue, int matchEnd, int chain, double mult,
+                         int matchTiles, bool huge, bool allowSpawn)
+        {
+            // 아이템 발동 BFS (발동으로 파괴된 칸의 아이템도 연쇄 발동)
+            int actCount = 0;
+            while (actQueue.Count > 0)
+            {
+                var a = actQueue.Dequeue();
+                ItemType t = items[a.X, a.Y];
+                if (t == ItemType.None) continue;
+                foreach (var e in EffectCells(t, a.X, a.Y))
+                {
+                    int k = Key(e.X, e.Y);
+                    if (toDestroy.ContainsKey(k)) continue;
+                    toDestroy[k] = e;
+                    order.Add(e);
+                    actCount++;
+                    if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
+                }
+            }
+
+            // 콘크리트: 인접 칸이 터지면 금이 간다. 웨이브당 1 만 깎는다.
+            var cracked = new HashSet<int>();
+            var crackSeeds = new List<Point>(order);   // 순회 중 order 에 추가되므로 복사본으로 돈다
+            foreach (var pt in crackSeeds)
+                foreach (var e in Neighbors(pt))
+                {
+                    if (tiles[e.X, e.Y] != Obstacle) continue;
+                    int k = Key(e.X, e.Y);
+                    if (!cracked.Add(k)) continue;
+                    if (--obstacleHp[e.X, e.Y] > 0) continue;
+                    toDestroy[k] = e;
+                    order.Add(e);
+                    actCount++;
+                }
+            res.ObstaclesCracked += cracked.Count;
+
+            if (actCount > 0)
+                res.ScoreGained += (int)(actCount * BaseTileScore * mult);
+
+            // 실제 파괴
+            res.TilesDestroyed += order.Count;
+            int waveStart = res.Destroyed.Count;
+            foreach (var pt in order)
+            {
+                tiles[pt.X, pt.Y] = Empty;
+                items[pt.X, pt.Y] = ItemType.None;
+                obstacleHp[pt.X, pt.Y] = 0;
+                res.Destroyed.Add(pt);
+            }
+            ApplyGravity();
+            Refill();
+
+            // 스폰: 즉시 파괴 방지 위해 실제 배치는 여기서.
+            if (allowSpawn) MaybeSpawn(chain, matchTiles, huge, res);
+
+            res.Waves.Add(new Wave
+            {
+                Start = waveStart,
+                MatchEnd = waveStart + matchEnd,
+                End = res.Destroyed.Count,
+                TilesAfter = SnapshotTiles(),
+                ItemsAfter = SnapshotItems(),
+                ObstacleHpAfter = SnapshotBrickHp(),
+            });
         }
 
         int[] SnapshotTiles()

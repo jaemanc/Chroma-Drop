@@ -4,7 +4,7 @@
 
 using UnityEngine;
 
-public enum ShopItem { Reroll, AddTime, ExtraMoves }
+public enum ShopItem { BombPiece, BigPiece }
 
 /// <summary>타일 겉모습. 규칙에는 영향이 없다.</summary>
 public enum TileSkin { Glossy, Gem, Crayon }

@@ -23,6 +23,9 @@ public class BoardView : MonoBehaviour
     SpriteRenderer[] ghostRing;   // 고스트 테두리 — 타일 색과 무관하게 위치를 읽히게 한다
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
+    Sprite bomb;                  // 폭탄 조각 아이콘
+    SpriteRenderer[] blast;       // 폭발 범위 시뮬레이션 (Bomb5 = 5x5 = 25칸)
+    int blastCount;
     Sprite tile;                  // 현재 스킨의 타일 (타일/고스트 공용)
     TileSkin currentSkin = TileSkin.Glossy;
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
@@ -126,6 +129,21 @@ public class BoardView : MonoBehaviour
             sr.sortingOrder = 6;
             sr.enabled = false;
             ghost[i] = sr;
+        }
+
+        // 폭발 범위 미리보기 — 고스트(5,6)보다 아래, 타일 위
+        bomb = MakeBombSprite();
+        var blastSprite = MakePanelSprite(0.3f);
+        blast = new SpriteRenderer[25];
+        for (int i = 0; i < blast.Length; i++)
+        {
+            var bg = new GameObject("blast_" + i);
+            bg.transform.SetParent(transform, false);
+            var bsr = bg.AddComponent<SpriteRenderer>();
+            bsr.sprite = blastSprite;
+            bsr.sortingOrder = 4;
+            bsr.enabled = false;
+            blast[i] = bsr;
         }
 
         BuildParticlePool();
@@ -670,6 +688,7 @@ public class BoardView : MonoBehaviour
             {
                 int gx = ax + p.Cells[i].X, gy = ay + p.Cells[i].Y;
                 ghost[i].enabled = true;
+                ghost[i].sprite = tile;
                 ghost[i].transform.localPosition = new Vector3(gx, gy, -1);
                 ghost[i].color = can
                     ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
@@ -683,10 +702,38 @@ public class BoardView : MonoBehaviour
         }
     }
 
+    /// <summary>폭탄 조각 고스트 — 던질 칸엔 폭탄 아이콘, 터질 범위는 붉게 미리 보여준다.</summary>
+    public void ShowBombGhost(int ax, int ay, bool can, List<Point> range)
+    {
+        ghostRingColor = can ? Color.white : new Color(1f, 0.35f, 0.35f);
+        ghostCount = 1;
+
+        ghost[0].enabled = true;
+        ghost[0].sprite = bomb;
+        ghost[0].transform.localPosition = new Vector3(ax, ay, -1);
+        ghost[0].color = can ? Color.white : new Color(0.55f, 0.55f, 0.6f, 0.85f);
+        ghostRing[0].enabled = true;
+        ghostRing[0].transform.localPosition = new Vector3(ax, ay, -1.05f);
+        ghostRing[0].color = ghostRingColor;
+        for (int i = 1; i < ghost.Length; i++) { ghost[i].enabled = false; ghostRing[i].enabled = false; }
+
+        blastCount = 0;
+        if (can && range != null)
+            for (int i = 0; i < range.Count && i < blast.Length; i++)
+            {
+                blast[i].enabled = true;
+                blast[i].transform.localPosition = new Vector3(range[i].X, range[i].Y, -0.9f);
+                blastCount++;
+            }
+        for (int i = blastCount; i < blast.Length; i++) blast[i].enabled = false;
+    }
+
     public void HideGhost()
     {
         if (ghost == null) return;
         ghostCount = 0;
+        blastCount = 0;
+        if (blast != null) foreach (var b in blast) if (b != null) b.enabled = false;
         foreach (var g in ghost) if (g != null) g.enabled = false;
         foreach (var g in ghostRing) if (g != null) g.enabled = false;
     }
@@ -694,6 +741,13 @@ public class BoardView : MonoBehaviour
     // 고스트 테두리를 천천히 맥동시켜 배경 타일에 묻히지 않게 한다.
     void PulseGhost()
     {
+        if (blastCount > 0)
+        {
+            // 위험 범위는 빠르고 새빨갛게 — 놓을 자리(흰 테두리)와 한눈에 갈린다
+            float ba = 0.66f + 0.24f * Mathf.Sin(Time.time * 17f);
+            var bc = new Color(1f, 0.06f, 0.04f, ba);
+            for (int i = 0; i < blastCount; i++) blast[i].color = bc;
+        }
         if (ghostCount <= 0) return;
         float k = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 6.5f);
         float scale = Mathf.Lerp(0.93f, 1.0f, k);   // 1.0 을 넘지 않게
@@ -895,6 +949,50 @@ public class BoardView : MonoBehaviour
     }
 
     // 둥근 사각 테두리 (고스트 위치 표시)
+    /// <summary>폭탄 아이콘 — 검은 구체 + 하이라이트 + 심지 + 불꽃.</summary>
+    static Sprite MakeBombSprite()
+    {
+        const int S = 32;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+
+        var body = new Color(0.14f, 0.15f, 0.20f);
+        var edge = new Color(0.06f, 0.06f, 0.10f);
+        var fuse = new Color(0.72f, 0.60f, 0.38f);
+        var spark = new Color(1f, 0.78f, 0.25f);
+
+        float cx = 15.5f, cy = 13.5f, r = 10.5f;   // 구체는 살짝 아래로 — 위에 심지 자리
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = x - cx, dy = y - cy;
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                Color c = new Color(0, 0, 0, 0);
+
+                if (d <= r)
+                {
+                    // 왼쪽 위에서 빛이 온다
+                    float lit = Mathf.Clamp01(1f - (dx * -0.5f + dy * 0.5f + 6f) / 16f);
+                    c = Color.Lerp(edge, body, 0.45f + 0.55f * lit);
+                    float hd = Mathf.Sqrt((x - 11.5f) * (x - 11.5f) + (y - 17.5f) * (y - 17.5f));
+                    if (hd < 3.4f) c = Color.Lerp(c, new Color(0.72f, 0.76f, 0.86f), 0.62f * (1f - hd / 3.4f));
+                    if (d > r - 1.4f) c = Color.Lerp(c, edge, (d - (r - 1.4f)) / 1.4f);
+                    c.a = 1f;
+                }
+                // 심지: 구체 위에서 오른쪽으로 휘어 오른다
+                float fx = 17.5f + 2.6f * Mathf.Sin((y - 23f) * 0.55f);
+                if (y >= 22 && y <= 27 && Mathf.Abs(x - fx) <= 1.3f) c = fuse;
+                // 불꽃
+                float sd = Mathf.Sqrt((x - 20.5f) * (x - 20.5f) + (y - 28.5f) * (y - 28.5f));
+                if (sd <= 3.2f) c = Color.Lerp(spark, new Color(1f, 0.95f, 0.75f), 1f - sd / 3.2f);
+
+                px[y * S + x] = c;
+            }
+
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
     static Sprite MakeRingSprite()
     {
         const int S = 32; const float r = 7f, thick = 3.4f;

@@ -129,29 +129,84 @@ public class GameSmokeTests
         yield return null;
 
         // 없으면 못 쓴다
-        while (Wallet.Count(ShopItem.Reroll) > 0) Wallet.Use(ShopItem.Reroll);
-        Assert.IsFalse(gm.UseItem(ShopItem.Reroll), "보유량 0 인데 사용됐다");
+        while (Wallet.Count(ShopItem.BombPiece) > 0) Wallet.Use(ShopItem.BombPiece);
+        Assert.IsFalse(gm.UseItem(ShopItem.BombPiece), "보유량 0 인데 사용됐다");
 
-        // 리롤: 조각이 바뀌고 기회는 그대로
-        Wallet.Add(ShopItem.Reroll, 1);
-        var before = gm.CurrentPiece;
+        // 폭탄 조각: 2x2 로 바뀌고 기회는 그대로
+        Wallet.Add(ShopItem.BombPiece, 1);
         int moves = gm.MovesLeft;
-        Assert.IsTrue(gm.UseItem(ShopItem.Reroll), "리롤이 실패했다");
-        Assert.AreNotSame(before, gm.CurrentPiece, "조각이 바뀌지 않았다");
+        Assert.IsTrue(gm.UseItem(ShopItem.BombPiece), "폭탄 조각 사용 실패");
+        Assert.AreEqual(1, gm.CurrentPiece.Cells.Count, "1칸 폭탄 조각이 아니다");
         Assert.AreEqual(moves, gm.MovesLeft, "아이템이 기회를 소모했다");
-        Assert.AreEqual(0, Wallet.Count(ShopItem.Reroll), "보유량이 줄지 않았다");
+        Assert.AreEqual(0, Wallet.Count(ShopItem.BombPiece), "보유량이 줄지 않았다");
 
-        // 시간 추가: 남은 시간 비율이 올라간다
-        Wallet.Add(ShopItem.AddTime, 1);
-        float f0 = gm.PieceTimerFrac;
-        Assert.IsTrue(gm.UseItem(ShopItem.AddTime));
-        Assert.Greater(gm.PieceTimerFrac, f0, "제한시간이 늘지 않았다");
+        // 큰 조각: 9x9 = 81칸
+        Wallet.Add(ShopItem.BigPiece, 1);
+        Assert.IsTrue(gm.UseItem(ShopItem.BigPiece));
+        int side = GameManager.BigPieceSide;
+        Assert.AreEqual(side * side, gm.CurrentPiece.Cells.Count, "9x9 조각이 아니다");
+        Assert.AreEqual(moves, gm.MovesLeft, "아이템이 기회를 소모했다");
+    }
 
-        // 기회 추가
-        Wallet.Add(ShopItem.ExtraMoves, 1);
-        moves = gm.MovesLeft;
-        Assert.IsTrue(gm.UseItem(ShopItem.ExtraMoves));
-        Assert.AreEqual(moves + 3, gm.MovesLeft, "기회가 3 늘지 않았다");
+    // 회귀: 폭탄을 장전하면 조준할 시간이 새로 주어져야 한다.
+    // 안 그러면 남은 시간이 짧을 때 폭탄이 그냥 만료되고, 한 번 더 눌러야 하는 것처럼 보였다.
+    [UnityTest]
+    public IEnumerator 폭탄을_장전하면_조각_타이머가_다시_시작된다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 313);
+        yield return null;
+
+        // 시간이 거의 다 흐른 상태를 만든다
+        float full = gm.PieceTimerFrac;
+        while (gm.PieceTimerFrac > full * 0.4f) yield return null;
+        float low = gm.PieceTimerFrac;
+
+        Wallet.Add(ShopItem.BombPiece, 1);
+        Assert.IsTrue(gm.UseItem(ShopItem.BombPiece));
+        Assert.Greater(gm.PieceTimerFrac, low, "장전했는데 타이머가 그대로다");
+        Assert.IsTrue(gm.BombArmed, "폭탄이 장전되지 않았다");
+    }
+
+    // 회귀: 조각이 만료되면 폭탄 예약도 사라져야 한다. 남으면 다음 일반 조각이 폭탄이 된다.
+    [UnityTest]
+    public IEnumerator 조각이_만료되면_폭탄_장전도_풀린다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 767);
+        yield return null;
+
+        Wallet.Add(ShopItem.BombPiece, 1);
+        Assert.IsTrue(gm.UseItem(ShopItem.BombPiece));
+        Assert.IsTrue(gm.BombArmed);
+
+        // 손대지 않고 만료를 기다린다
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.BombArmed && Time.realtimeSinceStartup - t0 < 12) yield return null;
+        Assert.IsFalse(gm.BombArmed, "만료됐는데 폭탄 예약이 남아 있다");
+        Assert.Greater(gm.CurrentPiece.Cells.Count, 1, "폭탄 조각이 그대로다");
+    }
+
+    [UnityTest]
+    public IEnumerator 폭탄_조각을_찍으면_주변이_넓게_터진다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 8080);
+        yield return null;
+
+        Wallet.Add(ShopItem.BombPiece, 1);
+        Assert.IsTrue(gm.UseItem(ShopItem.BombPiece));
+
+        int before = gm.Score;
+        Assert.IsTrue(gm.TryStamp(5, 5), "폭탄 조각을 놓지 못했다");
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.Busy && Time.realtimeSinceStartup - t0 < 20) yield return null;
+
+        // 1칸으론 매칭이 안 생긴다. 점수가 났다면 폭탄이 스스로 터진 것이다.
+        Assert.Greater(gm.Score - before, 200, "폭탄이 발동하지 않은 것으로 보인다");
     }
 
     [UnityTest]
