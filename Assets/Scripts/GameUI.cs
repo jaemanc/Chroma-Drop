@@ -36,7 +36,7 @@ public class GameUI : MonoBehaviour
     {
         public Image Bg, Badge;
         public Text Rank, Code, Name, Score;
-        public void SetActive(bool v) { Bg.gameObject.SetActive(v); }
+        public void SetActive(bool v) { Bg.transform.parent.gameObject.SetActive(v); }
     }
     GameObject rankPanel, countryPanel;
     Text submitText, rankTitle, rankSubTitle, rankEmpty;
@@ -49,10 +49,12 @@ public class GameUI : MonoBehaviour
     Text shopCoins;
     Image[] shopBuyFill;
     Text[] shopBuyLabel, shopOwned;
+    Image[] skinBuyFill, skinSwatch;
+    Text[] skinBuyLabel;
     Text[] itemBtnLabel;
     Image[] itemBtnFill;
     Text adCountdown;
-    UiButton rankTabMe, rankTabNation;
+    Image rankTabMe, rankTabNation;
     Image homeBadge; Text homeBadgeText;
     bool rankNationTab;
     Coroutine rankCo;
@@ -156,22 +158,6 @@ public class GameUI : MonoBehaviour
         shopPanel.SetActive(false);
     }
 
-    public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
-    {
-        resultPanel.SetActive(true);
-        // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
-        resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
-        resultTitle.color = newBest ? Accent : new Color(1, 1, 1, 0.9f);
-        resultScore.text = score.ToString("N0") + (newBest ? "  ★ NEW BEST!" : "");
-        resultBest.text = "BEST " + best.ToString("N0") + (coins > 0 ? "     +" + coins + " COINS" : "");
-
-        // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
-        if (Leaderboard.I != null && Leaderboard.I.Configured)
-            StartCoroutine(OpenRankAfter(1.1f));
-    }
-
-    // ---------- 게임 HUD ----------
-
     // ---------- 게임 HUD (chroma-drop.html) ----------
     static readonly Color Lilac     = Palette.Hex(0x9B8FE0);
     static readonly Color StatLabel = Palette.Hex(0x5F6A90);
@@ -268,6 +254,29 @@ public class GameUI : MonoBehaviour
             itemBtnFill[i].color = usable ? e.Tint : Color.Lerp(e.Tint, ScreenBg, 0.72f);
             itemBtnLabel[i].color = usable ? Ink : Muted;
         }
+    }
+
+    /// <summary>$ 배지가 붙은 코인 칩. 반환값은 금액 Text.</summary>
+    Text CoinChip(Transform parent, string name, float ax, float ay, float x, float y, float w, float h)
+    {
+        var chip = Card(parent, name, 0, 0, w, h, Cream, h * 0.5f);
+        var rt = (RectTransform)chip.transform.parent;
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(ax, ay);
+        rt.sizeDelta = Sz(w, h);
+        rt.anchoredPosition = new Vector2(x * PS, y * PS);
+
+        float d = h - 12f;
+        var coin = NewImage("coin", chip.transform, Yellow);
+        coin.sprite = Rounded(d * 0.5f); coin.type = Image.Type.Sliced; coin.raycastTarget = false;
+        Anchor(coin.transform, 0, 0.5f, 6, 0, d, d);
+        var dollar = NewText("$", coin.transform, "$", Mathf.RoundToInt(d * 0.62f * PS), TextAnchor.MiddleCenter, Ink);
+        dollar.fontStyle = FontStyle.Bold;
+        Stretch(dollar.rectTransform);
+
+        var amt = NewText("amt", chip.transform, "0", Mathf.RoundToInt(h * 0.46f * PS), TextAnchor.MiddleRight, Ink);
+        amt.fontStyle = FontStyle.Bold;
+        Anchor(amt.transform, 1, 0.5f, -10, 0, w - d - 20, h - 10);
+        return amt;
     }
 
     /// <summary>부모 모서리 기준으로 자식을 배치한다 (프로토타입 좌표).</summary>
@@ -567,8 +576,7 @@ public class GameUI : MonoBehaviour
         bvr.anchorMin = bvr.anchorMax = bvr.pivot = new Vector2(0, 1);
         bvr.sizeDelta = Sz(240, 46); bvr.anchoredPosition = new Vector2(18 * PS, -34 * PS);
 
-        coinHomeText = NewText("coins", best.transform, "", Mathf.RoundToInt(11 * PS), TextAnchor.UpperRight, Muted);
-        Anchor(coinHomeText.transform, 1, 1, -68, -22, 160, 18);
+        coinHomeText = CoinChip(best.transform, "coinchip", 1, 1, -66, -14, 112, 34);
 
         var star = Card(best.transform, "star", 0, 0, 40, 40, Yellow, 12);
         var srt2 = (RectTransform)star.transform.parent;
@@ -605,6 +613,11 @@ public class GameUI : MonoBehaviour
         lbBtn.transition = Selectable.Transition.None;
         lbBtn.onClick.AddListener(() => ShowRanking(false));
         lb.transform.parent.gameObject.AddComponent<UiPressImage>().target = lbr;
+        var ver = NewText("ver", safe, "v" + Application.version + "  ·  jaemanc",
+                          Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Muted);
+        Place(ver.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
+              new Vector2(0, 22 * PS), Sz(300, 18));
+
         var lbl = NewText("l", lb.transform, "RANKS", Mathf.RoundToInt(15 * PS), TextAnchor.MiddleCenter, Ink);
         lbl.fontStyle = FontStyle.Bold;
         Stretch(lbl.rectTransform);
@@ -668,7 +681,7 @@ public class GameUI : MonoBehaviour
             modeEyebrow[i].color = on ? TealInk : Muted;
         }
         bestHomeText.text = gm.BestForSelection().ToString("N0");
-        if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0") + " COINS";
+        if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0");
         selectedModeText.text = gm.timeAttack
             ? "Selected mode: time attack · 3 min"
             : "Selected mode: " + Rules.Table[GameManager.Difficulty].Moves + " moves";
@@ -685,118 +698,152 @@ public class GameUI : MonoBehaviour
 
     // ---------- 결과 ----------
 
+    Text resultCoins;
+
     void BuildResultPanel()
     {
-        resultPanel = NewImage("resultdim", transform, new Color(0, 0, 0, 0.65f)).gameObject;
+        resultPanel = NewImage("resultdim", transform, new Color(0.106f, 0.129f, 0.255f, 0.55f)).gameObject;
         Stretch((RectTransform)resultPanel.transform);
 
-        var card = NewImage("card", resultPanel.transform, new Color(0.10f, 0.10f, 0.15f, 0.97f));
-        Place(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(840, 760));
+        var card = Card(resultPanel.transform, "rcard", 0, 0, 330, 380, Cream, 24);
+        var cr = (RectTransform)card.transform.parent;
+        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
+        cr.anchoredPosition = Vector2.zero;
 
-        resultTitle = NewText("rtitle", card.transform, "", 92, TextAnchor.MiddleCenter, Accent);
-        Place(resultTitle.rectTransform, new Vector2(0.5f, 0.82f), new Vector2(0.5f, 0.82f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 120));
+        resultTitle = NewText("t", card.transform, "", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
+        resultTitle.fontStyle = FontStyle.Bold;
+        Anchor(resultTitle.transform, 0.5f, 1, 0, -22, 300, 34);
 
-        resultScore = NewText("rscore", card.transform, "", 78, TextAnchor.MiddleCenter, Color.white);
-        Place(resultScore.rectTransform, new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 100));
+        var scoreLabel = NewText("sl", card.transform, Spaced("SCORE"), Mathf.RoundToInt(10 * PS),
+                                 TextAnchor.UpperCenter, Muted);
+        Anchor(scoreLabel.transform, 0.5f, 1, 0, -66, 300, 16);
 
-        resultBest = NewText("rbest", card.transform, "", 46, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.65f));
-        Place(resultBest.rectTransform, new Vector2(0.5f, 0.47f), new Vector2(0.5f, 0.47f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 60));
+        resultScore = NewText("s", card.transform, "", Mathf.RoundToInt(46 * PS), TextAnchor.UpperCenter, Ink);
+        resultScore.fontStyle = FontStyle.Bold;
+        Anchor(resultScore.transform, 0.5f, 1, 0, -84, 300, 58);
 
-        submitText = NewText("rsubmit", card.transform, "", 36, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.5f));
-        Place(submitText.rectTransform, new Vector2(0.5f, 0.385f), new Vector2(0.5f, 0.385f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 50));
+        resultBest = NewText("b", card.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.UpperCenter, Body);
+        Anchor(resultBest.transform, 0.5f, 1, 0, -146, 300, 20);
 
-        var rankB = NewButton("rrank", card.transform, "LEADERBOARD", UiKind.Secondary, () => ShowRanking(false));
-        Place((RectTransform)rankB.transform, new Vector2(0.5f, 0.325f), new Vector2(0.5f, 0.325f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 84));
+        // 이번 판에 번 코인
+        resultCoins = CoinChip(card.transform, "earned", 0.5f, 1, 0, -174, 130, 38);
 
-        var retry = NewButton("retry", card.transform, "RETRY", UiKind.Primary, () => gm.StartGame());
-        Place((RectTransform)retry.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), new Vector2(-185, 0), new Vector2(340, 130));
+        submitText = NewText("sub", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.UpperCenter, Muted);
+        Anchor(submitText.transform, 0.5f, 1, 0, -220, 300, 16);
 
-        var homeB = NewButton("rhome", card.transform, "HOME", UiKind.Secondary, () => gm.GoHome());
-        Place((RectTransform)homeB.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), new Vector2(185, 0), new Vector2(340, 130));
+        HookButton(Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16),
+                   () => ShowRanking(false), "LEADERBOARD", 14);
+        HookButton(Card(card.transform, "retry", 22, 302, 136, 52, Coral, 18),
+                   () => gm.StartGame(), "RETRY", 16);
+        HookButton(Card(card.transform, "rhome", 172, 302, 136, 52, Color.white, 18),
+                   () => gm.GoHome(), "HOME", 16);
+    }
+
+    public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
+    {
+        resultPanel.SetActive(true);
+        // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
+        resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
+        resultTitle.color = newBest ? Coral : Ink;
+        resultScore.text = score.ToString("N0");
+        resultBest.text = newBest ? "NEW BEST!" : "BEST  " + best.ToString("N0");
+        resultBest.color = newBest ? Coral : Body;
+        resultCoins.text = "+" + coins.ToString("N0");
+
+        // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
+        if (Leaderboard.I != null && Leaderboard.I.Configured)
+            StartCoroutine(OpenRankAfter(1.6f));
     }
 
     // ---------- 랭킹 ----------
 
-    // 순위 표식 색 — 1~3위만 강조하고 나머지는 무채색
+    // 순위 표식 색 — 1~3위만 강조
     static readonly Color[] MedalColors = {
-        Palette.Hex(0xE8C24A), Palette.Hex(0xB9C0C8), Palette.Hex(0xC98A57),
+        Palette.Hex(0xE4C05A), Palette.Hex(0xA9B4BC), Palette.Hex(0xC98A57),
     };
-    const float RowH = 74f;
+    const float RowH = 46f;   // 프로토타입 단위
 
     void BuildRankPanel()
     {
-        rankPanel = NewImage("rankdim", transform, new Color(0, 0, 0, 0.82f)).gameObject;
+        rankPanel = NewImage("rankdim", transform, new Color(0.106f, 0.129f, 0.255f, 0.62f)).gameObject;
         Stretch((RectTransform)rankPanel.transform);
 
-        var card = NewImage("rcard", rankPanel.transform, new Color(0.11f, 0.11f, 0.16f, 0.99f));
-        card.sprite = roundBig; card.type = Image.Type.Sliced;
-        Place(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(920, 1420));
+        var card = Card(rankPanel.transform, "rcard", 0, 0, 350, 700, ScreenBg, 24);
+        var cr = (RectTransform)card.transform.parent;
+        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
+        cr.anchoredPosition = Vector2.zero;
 
-        rankTitle = NewText("rktitle", card.transform, "LEADERBOARD", 54, TextAnchor.MiddleCenter, Color.white);
-        Place(rankTitle.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -34), new Vector2(860, 70));
+        rankTitle = NewText("t", card.transform, "LEADERBOARD", Mathf.RoundToInt(20 * PS), TextAnchor.UpperLeft, Ink);
+        rankTitle.fontStyle = FontStyle.Bold;
+        Anchor(rankTitle.transform, 0, 1, 20, -18, 240, 30);
 
-        var sub = NewText("rksub", card.transform, "", 34, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-        Place(sub.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -98), new Vector2(860, 44));
-        rankSubTitle = sub;
+        rankSubTitle = NewText("st", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.UpperLeft, Muted);
+        Anchor(rankSubTitle.transform, 0, 1, 20, -44, 240, 16);
 
-        var meBtn = NewButton("tabme", card.transform, "PLAYERS", UiKind.Selected, () => { rankNationTab = false; RefreshRank(); });
-        Place((RectTransform)meBtn.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-158, -168), new Vector2(300, 84));
-        rankTabMe = meBtn.GetComponent<UiButton>();
+        HookButton(Card(card.transform, "rkclose", 0, 0, 62, 34, Color.white, 12),
+                   () => rankPanel.SetActive(false), "X", 13);
+        var clr = (RectTransform)card.transform.Find("rkclose");
+        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(1, 1);
+        clr.sizeDelta = Sz(62, 34); clr.anchoredPosition = new Vector2(-16 * PS, -16 * PS);
 
-        var natBtn = NewButton("tabnat", card.transform, "NATIONS", UiKind.Secondary, () => { rankNationTab = true; RefreshRank(); });
-        Place((RectTransform)natBtn.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(158, -168), new Vector2(300, 84));
-        rankTabNation = natBtn.GetComponent<UiButton>();
+        var meBtn = Card(card.transform, "tabme", 20, 72, 152, 40, Teal, 14);
+        HookButton(meBtn, () => { rankNationTab = false; RefreshRank(); }, "PLAYERS", 13);
+        rankTabMe = meBtn;
+        var natBtn = Card(card.transform, "tabnat", 182, 72, 148, 40, Color.white, 14);
+        HookButton(natBtn, () => { rankNationTab = true; RefreshRank(); }, "NATIONS", 13);
+        rankTabNation = natBtn;
 
         rankRows = new RankRow[RankRowCount];
         for (int i = 0; i < RankRowCount; i++)
-            rankRows[i] = MakeRankRow(card.transform, "row" + i, -238 - i * RowH, false);
+            rankRows[i] = MakeRankRow(card.transform, "row" + i, 124 + i * RowH, false);
 
-        rankEmpty = NewText("rkempty", card.transform, "", 36, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.5f));
-        Place(rankEmpty.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(820, 120));
+        rankEmpty = NewText("e", card.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Muted);
+        Anchor(rankEmpty.transform, 0.5f, 1, 0, -300, 300, 40);
 
-        // ---- 맨 아래: 내 점수 고정 줄 ----
-        var divider = NewImage("rkdiv", card.transform, new Color(1, 1, 1, 0.10f));
-        Place(divider.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 246), new Vector2(860, 2));
-
-        myRowLabel = NewText("mylabel", card.transform, "YOU", 28, TextAnchor.MiddleLeft, new Color(1, 1, 1, 0.45f));
-        Place(myRowLabel.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-390, 218), new Vector2(200, 36));
-
+        // ---- 맨 아래: 내 점수 ----
+        myRowLabel = NewText("ml", card.transform, "YOU", Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
+        Anchor(myRowLabel.transform, 0, 0, 22, 138, 200, 14);
         myRow = MakeRankRow(card.transform, "myrow", 0, true);
-        var mrt = myRow.Bg.rectTransform;
-        mrt.anchorMin = mrt.anchorMax = mrt.pivot = new Vector2(0.5f, 0f);
-        mrt.anchoredPosition = new Vector2(0, 152);
+        var mrt = (RectTransform)myRow.Bg.transform.parent;
+        mrt.anchorMin = mrt.anchorMax = mrt.pivot = new Vector2(0.5f, 0);
+        mrt.anchoredPosition = new Vector2(0, 92 * PS);
 
-        // ---- 광고 버튼 ----
-        adBtn = NewButton("adbtn", card.transform, "WATCH AD", UiKind.Primary, OnAdButton);
-        Place((RectTransform)adBtn.transform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0, 34), new Vector2(560, 108));
-        adBtnLabel = adBtn.transform.Find("face/label").GetComponent<Text>();
-
-        var close = NewButton("rkclose", card.transform, "CLOSE", UiKind.Secondary, () => rankPanel.SetActive(false));
-        Place((RectTransform)close.transform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-28, -30), new Vector2(150, 76));
+        var adFill = Card(card.transform, "adbtn", 20, 0, 310, 48, Coral, 16);
+        var art = (RectTransform)adFill.transform.parent;
+        art.anchorMin = art.anchorMax = art.pivot = new Vector2(0.5f, 0);
+        art.sizeDelta = Sz(310, 48); art.anchoredPosition = new Vector2(0, 30 * PS);
+        HookButton(adFill, OnAdButton, "WATCH AD", 14);
+        adBtn = art.GetComponent<Button>();
+        adBtnLabel = adFill.transform.Find("l").GetComponent<Text>();
     }
 
     /// <summary>순위 줄 하나: 배경 + 순위 + 국가배지 + 이름 + 점수</summary>
     RankRow MakeRankRow(Transform parent, string name, float y, bool highlight)
     {
         var r = new RankRow();
-        r.Bg = NewImage(name, parent, new Color(1, 1, 1, highlight ? 0.10f : 0.04f));
-        r.Bg.sprite = roundSmall; r.Bg.type = Image.Type.Sliced;
-        Place(r.Bg.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, y), new Vector2(852, RowH - 8));
+        r.Bg = Card(parent, name, 20, y, 310, RowH - 6, highlight ? Yellow : Color.white, 12);
+        var t = (RectTransform)r.Bg.transform.parent;
+        t.anchorMin = t.anchorMax = t.pivot = new Vector2(0.5f, 1);
+        t.sizeDelta = Sz(310, RowH - 6);
+        t.anchoredPosition = new Vector2(0, -y * PS);
 
-        r.Rank = NewText("rk", r.Bg.transform, "", 34, TextAnchor.MiddleCenter, Color.white);
-        Place(r.Rank.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(14, 0), new Vector2(64, 48));
+        r.Rank = NewText("rk", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink);
+        r.Rank.fontStyle = FontStyle.Bold;
+        Anchor(r.Rank.transform, 0, 0.5f, 8, 0, 30, 22);
 
         r.Badge = NewImage("badge", r.Bg.transform, Color.white);
-        r.Badge.sprite = roundSmall; r.Badge.type = Image.Type.Sliced;
-        Place(r.Badge.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(88, 0), new Vector2(74, 44));
-        r.Code = NewText("code", r.Badge.transform, "", 28, TextAnchor.MiddleCenter, Color.white);
+        r.Badge.sprite = Rounded(6); r.Badge.type = Image.Type.Sliced; r.Badge.raycastTarget = false;
+        Anchor(r.Badge.transform, 0, 0.5f, 42, 0, 34, 22);
+        r.Code = NewText("c", r.Badge.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Color.white);
+        r.Code.fontStyle = FontStyle.Bold;
         Stretch(r.Code.rectTransform);
 
-        r.Name = NewText("nm", r.Bg.transform, "", 34, TextAnchor.MiddleLeft, Color.white);
-        Place(r.Name.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(176, 0), new Vector2(420, 48));
+        r.Name = NewText("n", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleLeft, Ink);
+        Anchor(r.Name.transform, 0, 0.5f, 82, 0, 140, 22);
 
-        r.Score = NewText("sc", r.Bg.transform, "", 36, TextAnchor.MiddleRight, Color.white);
-        Place(r.Score.rectTransform, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-18, 0), new Vector2(280, 48));
+        r.Score = NewText("s", r.Bg.transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleRight, Ink);
+        r.Score.fontStyle = FontStyle.Bold;
+        Anchor(r.Score.transform, 1, 0.5f, -10, 0, 110, 22);
         return r;
     }
 
@@ -804,13 +851,13 @@ public class GameUI : MonoBehaviour
     {
         r.SetActive(true);
         r.Rank.text = rank > 0 ? rank.ToString() : "-";
-        r.Rank.color = rank >= 1 && rank <= 3 ? MedalColors[rank - 1] : new Color(1, 1, 1, 0.55f);
+        r.Rank.color = rank >= 1 && rank <= 3 ? MedalColors[rank - 1] : Muted;
         r.Badge.color = PlayerAccount.BadgeColor(code);
         r.Code.text = code;
         r.Name.text = Trim(name, 14);
-        r.Name.color = isMe ? Accent : Color.white;
+        r.Name.color = Ink;
         r.Score.text = score.ToString("N0");
-        r.Score.color = isMe ? Accent : Color.white;
+        r.Score.color = Ink;
     }
 
     IEnumerator OpenRankAfter(float delay)
@@ -829,8 +876,8 @@ public class GameUI : MonoBehaviour
 
     void RefreshRank()
     {
-        rankTabMe.SetKind(rankNationTab ? UiKind.Secondary : UiKind.Selected);
-        rankTabNation.SetKind(rankNationTab ? UiKind.Selected : UiKind.Secondary);
+        rankTabMe.color = rankNationTab ? Color.white : Teal;
+        rankTabNation.color = rankNationTab ? Teal : Color.white;
         rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "MOVES";
         foreach (var r in rankRows) r.SetActive(false);
         RefreshMyRow(0);
@@ -935,17 +982,26 @@ public class GameUI : MonoBehaviour
         shopPanel = NewImage("shopdim", transform, new Color(0.06f, 0.08f, 0.10f, 0.82f)).gameObject;
         Stretch((RectTransform)shopPanel.transform);
 
-        var card = Card(shopPanel.transform, "shopcard", 20, 90, 350, 620, ScreenBg, 24);
+        var card = Card(shopPanel.transform, "shopcard", 20, 50, 350, 744, ScreenBg, 24);
         var cr = (RectTransform)card.transform.parent;
         cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
         cr.anchoredPosition = Vector2.zero;
 
-        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(26 * PS), TextAnchor.UpperCenter, Ink);
+        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(24 * PS), TextAnchor.UpperLeft, Ink);
         title.fontStyle = FontStyle.Bold;
-        Anchor(title.transform, 0.5f, 1, 0, -20, 300, 40);
+        Anchor(title.transform, 0, 1, 20, -18, 200, 36);
 
-        shopCoins = NewText("coins", card.transform, "", Mathf.RoundToInt(15 * PS), TextAnchor.UpperCenter, Body);
-        Anchor(shopCoins.transform, 0.5f, 1, 0, -58, 300, 26);
+        // 코인 칩 — 카드 오른쪽 위
+        shopCoins = CoinChip(card.transform, "coinchip", 1, 1, -16, -14, 124, 38);
+        var chipRoot = shopCoins.transform.parent.parent.gameObject;   // 칩 바깥(테두리)
+        var cb = chipRoot.AddComponent<Button>();
+        cb.targetGraphic = chipRoot.GetComponent<Image>();
+        cb.transition = Selectable.Transition.None;
+        cb.onClick.AddListener(TapCoins);
+
+        var itemsLabel = NewText("il", card.transform, Spaced("ITEMS"), Mathf.RoundToInt(10 * PS),
+                                 TextAnchor.UpperLeft, Muted);
+        Anchor(itemsLabel.transform, 0, 1, 20, -88, 200, 16);
 
         int n = Shop.Items.Length;
         shopBuyFill = new Image[n]; shopBuyLabel = new Text[n]; shopOwned = new Text[n];
@@ -953,31 +1009,31 @@ public class GameUI : MonoBehaviour
         {
             var e = Shop.Items[i];
             int idx = i;
-            float rowY = 96 + i * 92;
+            float rowY = 108 + i * 78;
 
-            var row = Card(card.transform, "item" + i, 0, 0, 314, 78, Color.white, 18);
+            var row = Card(card.transform, "item" + i, 0, 0, 314, 70, Color.white, 18);
             var rr = (RectTransform)row.transform.parent;
             rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 78); rr.anchoredPosition = new Vector2(0, -rowY * PS);
+            rr.sizeDelta = Sz(314, 70); rr.anchoredPosition = new Vector2(0, -rowY * PS);
 
             var swatch = NewImage("sw", row.transform, e.Tint);
             swatch.sprite = Rounded(10); swatch.type = Image.Type.Sliced; swatch.raycastTarget = false;
-            Anchor(swatch.transform, 0, 1, 12, -12, 54, 54);
+            Anchor(swatch.transform, 0, 1, 12, -10, 48, 48);
 
-            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(15 * PS), TextAnchor.UpperLeft, Ink);
+            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink);
             nm.fontStyle = FontStyle.Bold;
-            Anchor(nm.transform, 0, 1, 76, -12, 150, 22);
+            Anchor(nm.transform, 0, 1, 70, -11, 150, 20);
 
-            var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(10 * PS), TextAnchor.UpperLeft, Muted);
-            Anchor(ds.transform, 0, 1, 76, -34, 160, 32);
+            var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
+            Anchor(ds.transform, 0, 1, 70, -32, 165, 30);
 
-            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.LowerRight, Muted);
-            Anchor(shopOwned[i].transform, 1, 0, -12, 10, 120, 18);
+            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted);
+            Anchor(shopOwned[i].transform, 1, 0, -12, 8, 120, 16);
 
-            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 84, 40, Teal, 12);
+            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 78, 36, Teal, 12);
             var br = (RectTransform)shopBuyFill[i].transform.parent;
             br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 1);
-            br.sizeDelta = Sz(84, 40); br.anchoredPosition = new Vector2(-12 * PS, -12 * PS);
+            br.sizeDelta = Sz(78, 36); br.anchoredPosition = new Vector2(-12 * PS, -10 * PS);
             var bb = br.gameObject.AddComponent<Button>();
             bb.targetGraphic = br.GetComponent<Image>();
             bb.transition = Selectable.Transition.None;
@@ -988,7 +1044,55 @@ public class GameUI : MonoBehaviour
             Stretch(shopBuyLabel[i].rectTransform);
         }
 
-        float adY = 96 + n * 92 + 12;
+        // ---- 타일 스킨 ----
+        float skinTop = 108 + n * 78 + 14;
+        var skinLabel = NewText("sl", card.transform, Spaced("TILE SKINS"), Mathf.RoundToInt(10 * PS),
+                                TextAnchor.UpperLeft, Muted);
+        Anchor(skinLabel.transform, 0, 1, 20, -skinTop, 200, 16);
+
+        int m = Shop.Skins.Length;
+        skinBuyFill = new Image[m]; skinBuyLabel = new Text[m]; skinSwatch = new Image[m];
+        for (int i = 0; i < m; i++)
+        {
+            var sk = Shop.Skins[i];
+            int idx = i;
+            var row = Card(card.transform, "skin" + i, 0, 0, 314, 56, Color.white, 16);
+            var rr = (RectTransform)row.transform.parent;
+            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
+            rr.sizeDelta = Sz(314, 56);
+            rr.anchoredPosition = new Vector2(0, -(skinTop + 20 + i * 64) * PS);
+
+            // 실제 타일 스프라이트를 팔레트 색 3가지로 보여준다 — 사기 전에 재질이 보여야 한다
+            var sp = BoardView.MakeTileSprite(sk.Skin);
+            var demo = Palette.Generate(4, new System.Random(1));
+            for (int k = 0; k < 3; k++)
+            {
+                var sw = NewImage("sw" + k, row.transform, demo[k]);
+                sw.sprite = sp; sw.raycastTarget = false;
+                Anchor(sw.transform, 0, 0.5f, 12 + k * 40, 0, 36, 36);
+                if (k == 0) skinSwatch[i] = sw;
+            }
+
+            var nm = NewText("n", row.transform, sk.Name, Mathf.RoundToInt(13 * PS), TextAnchor.MiddleLeft, Ink);
+            nm.fontStyle = FontStyle.Bold;
+            Anchor(nm.transform, 0, 0.5f, 136, 0, 90, 22);
+
+            skinBuyFill[i] = Card(row.transform, "buy", 0, 0, 82, 34, Teal, 12);
+            var br = (RectTransform)skinBuyFill[i].transform.parent;
+            br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 0.5f);
+            br.sizeDelta = Sz(82, 34); br.anchoredPosition = new Vector2(-10 * PS, 0);
+            var bb = br.gameObject.AddComponent<Button>();
+            bb.targetGraphic = br.GetComponent<Image>();
+            bb.transition = Selectable.Transition.None;
+            bb.onClick.AddListener(() => SkinTap(idx));
+            br.gameObject.AddComponent<UiPressImage>().target = br;
+            skinBuyLabel[i] = NewText("l", skinBuyFill[i].transform, "", Mathf.RoundToInt(12 * PS),
+                                      TextAnchor.MiddleCenter, Ink);
+            skinBuyLabel[i].fontStyle = FontStyle.Bold;
+            Stretch(skinBuyLabel[i].rectTransform);
+        }
+
+        float adY = skinTop + 20 + m * 64 + 12;
         var adRow = Card(card.transform, "shopad", 0, 0, 314, 62, Coral, 18);
         var ar = (RectTransform)adRow.transform.parent;
         ar.anchorMin = ar.anchorMax = ar.pivot = new Vector2(0.5f, 1);
@@ -1017,9 +1121,46 @@ public class GameUI : MonoBehaviour
         RefreshShop();
     }
 
+    /// <summary>안 샀으면 사고, 샀으면 착용한다.</summary>
+    void SkinTap(int i)
+    {
+        var sk = Shop.Skins[i];
+        if (!Wallet.OwnsSkin(sk.Skin))
+        {
+            if (!Wallet.SpendCoins(sk.Price)) { RefreshShop(); return; }
+            Wallet.UnlockSkin(sk.Skin);
+        }
+        Wallet.Skin = sk.Skin;
+        RefreshShop();
+    }
+
+    int coinTaps;
+
+    /// <summary>⚠ 개발용. 코인 칩을 5번 두드리면 코인을 넉넉히 넣는다.
+    /// 실제로 사면서 테스트하기 위한 것이라 무한 모드가 아니라 지급이다.
+    /// 스토어 배포 전에 이 메서드와 Wallet.DevGrant 를 제거할 것.</summary>
+    void TapCoins()
+    {
+        if (++coinTaps < 5) return;
+        coinTaps = 0;
+        Wallet.AddCoins(Wallet.DevGrant);
+        RefreshShop();
+        RefreshItemButtons();
+    }
+
     void RefreshShop()
     {
-        shopCoins.text = Wallet.Coins.ToString("N0") + " COINS";
+        shopCoins.text = Wallet.Coins.ToString("N0");
+        for (int i = 0; i < Shop.Skins.Length; i++)
+        {
+            var sk = Shop.Skins[i];
+            bool owned = Wallet.OwnsSkin(sk.Skin);
+            bool on = Wallet.Skin == sk.Skin;
+            bool afford = Wallet.Coins >= sk.Price;
+            skinBuyLabel[i].text = on ? "EQUIPPED" : owned ? "EQUIP" : sk.Price.ToString();
+            skinBuyFill[i].color = on ? Yellow : (owned || afford) ? Teal : new Color(0.85f, 0.86f, 0.88f);
+            skinBuyLabel[i].color = (on || owned || afford) ? Ink : Muted;
+        }
         for (int i = 0; i < Shop.Items.Length; i++)
         {
             var e = Shop.Items[i];

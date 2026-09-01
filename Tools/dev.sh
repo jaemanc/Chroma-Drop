@@ -31,10 +31,13 @@ for a in "$@"; do
   esac
 done
 
-if pgrep -f "Unity.app/Contents/MacOS/Unity" | grep -qv "^$$"; then
-  if pgrep -fl "Unity.app/Contents/MacOS/Unity" | grep -qv batchmode; then
-    echo "⚠ Unity 에디터가 열려 있는 것 같다. 닫지 않으면 배치모드가 실패한다." >&2
-  fi
+# 같은 프로젝트에서 Unity 가 이미 돌고 있으면 붙지 않는다.
+# 두 인스턴스가 한 프로젝트를 잡으면 조용히 꼬여서, 실패한 것처럼 보이는데 실제로는
+# 앞의 것이 아직 도는 중인 상황이 된다.
+if pgrep -f "Unity.app/Contents/MacOS/Unity" >/dev/null; then
+  echo "✗ Unity 가 이미 실행 중이다. 끝나기를 기다리거나 에디터를 닫을 것:" >&2
+  pgrep -fl "Unity.app/Contents/MacOS/Unity" | head -3 >&2
+  exit 1
 fi
 
 mkdir -p Logs

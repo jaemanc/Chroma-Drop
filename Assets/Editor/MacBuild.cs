@@ -72,6 +72,7 @@ public static class MacBuild
 
         PlayerSettings.companyName = "jaemanc";
         PlayerSettings.productName = "Chroma Drop";
+        PlayerSettings.bundleVersion = ChromaVersion.Value;
         PlayerSettings.SetApplicationIdentifier(standalone, "com.jaemanc.chromadrop");
         PlayerSettings.SetScriptingBackend(standalone, ScriptingImplementation.Mono2x);
 

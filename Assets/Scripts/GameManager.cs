@@ -160,6 +160,7 @@ public class GameManager : MonoBehaviour
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
 
         view.Build();
+        view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
         view.SetVisible(true);
         view.Refresh(board, palette);
         ui.ShowGame();

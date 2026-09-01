@@ -23,7 +23,8 @@ public class BoardView : MonoBehaviour
     SpriteRenderer[] ghostRing;   // 고스트 테두리 — 타일 색과 무관하게 위치를 읽히게 한다
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
-    Sprite tile;                  // 둥근 모서리 + 세로 그라데이션 (타일/고스트)
+    Sprite tile;                  // 현재 스킨의 타일 (타일/고스트 공용)
+    TileSkin currentSkin = TileSkin.Glossy;
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
     Sprite soft;                  // 파티클용 소프트 원
     Sprite[] obstacle;               // 내구도별 콘크리트 (금 0/1/2줄)
@@ -51,7 +52,8 @@ public class BoardView : MonoBehaviour
         if (built) return;
         built = true;
 
-        tile = MakeTileSprite();
+        currentSkin = Wallet.Skin;
+        tile = MakeTileSprite(currentSkin);
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
         // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
@@ -705,6 +707,99 @@ public class BoardView : MonoBehaviour
         }
     }
 
+    // 보석: 각진 컷과 면(facet). 위쪽 면이 밝고 아래가 어두워 입체가 선다.
+    static Sprite MakeGemSprite()
+    {
+        const int S = 32; const float r = 5f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        float c = (S - 1) * 0.5f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(r - dist + 0.5f);
+
+                // 네 모서리에서 중심으로 모이는 컷 — 대각선이 면의 경계가 된다
+                float u = (fx - c) / c, v = (fy - c) / c;
+                float g;
+                if (Mathf.Abs(u) < Mathf.Abs(v))
+                    g = v > 0 ? 1.0f : 0.68f;        // 위 면 / 아래 면
+                else
+                    g = u < 0 ? 0.90f : 0.78f;       // 좌 면 / 우 면
+
+                // 중앙 테이블(평평한 윗면) — 살짝 밝게 띄운다
+                float table = Mathf.Clamp01(1f - (Mathf.Abs(u) + Mathf.Abs(v)) / 0.72f);
+                g = Mathf.Lerp(g, 1f, 0.45f * table);
+
+                // 컷 선을 옅은 그늘로 그어 면을 나눈다
+                float cut = Mathf.Clamp01(1f - Mathf.Abs(Mathf.Abs(u) - Mathf.Abs(v)) * 9f);
+                g *= Mathf.Lerp(1f, 0.86f, cut);
+
+                float edge = r - dist;
+                g *= Mathf.Lerp(1f, RimDark, Mathf.Clamp01((RimPx - edge) / 1.3f));
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 크레파스: tile-crayon.png 참고. 삐뚤한 손그림 테두리 + 대각선 결.
+    // 회색조라 팔레트 색이 그대로 곱해진다 — 바탕을 낮게 깔아야 결이 밝게 도드라진다.
+    static Sprite MakeCrayonSprite()
+    {
+        const int S = 64; const float r = 15f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+
+                // 삐뚤빼뚤한 외곽 — 사인 두 개를 겹쳐 손으로 그은 흔들림을 만든다
+                float wob = Mathf.Sin(fy * 0.30f + 0.7f) * 0.9f
+                          + Mathf.Sin(fx * 0.37f + 2.1f) * 0.7f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy) + wob * 0.5f;
+                float edge = r - dist;                      // 안쪽일수록 크다
+                float a = Mathf.Clamp01(edge + 0.5f);
+                if (a <= 0f) { px[y * S + x] = Color.clear; continue; }
+
+                // 대각선 크레파스 결 — 굵기·간격이 제각각이라야 손맛이 난다
+                // 결 간격을 넓게 잡고, 저주파 변조로 굵기를 들쭉날쭉하게 만든다.
+                // 간격이 촘촘하면 손그림이 아니라 줄무늬 천으로 보인다.
+                float diag = (fx - fy) * 0.72f;
+                float jitter = Mathf.Sin(diag * 0.07f + 0.9f) * 1.6f;
+                float band = Mathf.Sin(diag * 0.26f + jitter) * 0.5f + 0.5f;
+                float wide = Mathf.Sin(diag * 0.09f + 2.4f) * 0.5f + 0.5f;
+                float grain = Frac(Mathf.Sin(x * 17.31f + y * 39.77f) * 8123.31f);
+
+                // 바탕은 낮게, 결이 지나가는 자리만 밝게
+                float g = 0.70f + 0.14f * wide + 0.05f * grain;
+                float streak = Mathf.Pow(band, 5f);                 // 성기고 또렷한 밝은 줄
+                g = Mathf.Lerp(g, 1.0f, 0.80f * streak);
+
+                // 군데군데 덜 칠해진 자리 — 종이가 비친다
+                if (grain > 0.90f) a *= 0.72f;
+
+                // 손으로 두른 테두리. 끊기듯 진해져야 그린 느낌이 난다.
+                float rimStrength = Mathf.Clamp01((4.0f - edge) / 3.0f);
+                float rimGap = Frac(Mathf.Sin(fx * 0.9f + fy * 1.7f) * 431.7f);
+                g *= Mathf.Lerp(1f, 0.42f + 0.14f * rimGap, rimStrength);
+
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
     // 보드 판용 둥근 사각. radiusFrac 은 한 변에 대한 모서리 반경 비율.
     static Sprite MakePanelSprite(float radiusFrac)
     {
@@ -730,9 +825,34 @@ public class BoardView : MonoBehaviour
     const float RimPx = 3.4f;      // 테두리 두께 (32px 스프라이트 기준 ≈ 11%)
     const float RimDark = 0.62f;   // 테두리 명도 배수 — 작을수록 진하다
 
-    // 둥근 모서리 + 위가 밝은 세로 그라데이션 + 같은 색 진한 테두리 (SpriteRenderer.color로 틴트)
-    // GameUI 의 배경 블록도 같은 모양을 쓴다.
-    public static Sprite MakeTileSprite()
+    /// <summary>기본(광택) 스킨. 스킨을 지정하지 않는 곳에서 쓴다.</summary>
+    public static Sprite MakeTileSprite() { return MakeTileSprite(TileSkin.Glossy); }
+
+    /// <summary>스킨별 타일. 전부 회색조로 굽고 SpriteRenderer.color 로 색을 곱한다 —
+    /// 그래서 어떤 팔레트를 써도 그 색의 재질이 된다.</summary>
+    public static Sprite MakeTileSprite(TileSkin skin)
+    {
+        switch (skin)
+        {
+            case TileSkin.Gem: return MakeGemSprite();
+            case TileSkin.Crayon: return MakeCrayonSprite();
+            default: return MakeGlossySprite();
+        }
+    }
+
+    /// <summary>현재 스킨으로 모든 타일 스프라이트를 갈아끼운다.</summary>
+    public void ApplySkin(TileSkin skin)
+    {
+        if (!built || skin == currentSkin) return;
+        currentSkin = skin;
+        tile = MakeTileSprite(skin);
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (tiles[x, y].sprite != null) tiles[x, y].sprite = tile;
+        foreach (var g in ghost) g.sprite = tile;
+    }
+
+    static Sprite MakeGlossySprite()
     {
         const int S = 32; const float r = 11f;   // 한 변의 34% — 레퍼런스와 같은 둥글기
         var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };

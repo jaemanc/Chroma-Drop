@@ -102,8 +102,9 @@ public static class AndroidBuild
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         }
 
+        // -appVersion 이 없으면 코드에 적힌 버전을 쓴다. 버전은 한곳에서만 정한다.
         var appVersion = Arg("-appVersion");
-        if (!string.IsNullOrEmpty(appVersion)) PlayerSettings.bundleVersion = appVersion;
+        PlayerSettings.bundleVersion = string.IsNullOrEmpty(appVersion) ? ChromaVersion.Value : appVersion;
 
         var versionCode = Arg("-versionCode");
         if (!string.IsNullOrEmpty(versionCode) && int.TryParse(versionCode, out var code))

@@ -39,6 +39,21 @@ public static class Shop
         },
     };
 
+    /// <summary>타일 스킨 — 한 번 사면 계속 쓴다.</summary>
+    public struct SkinEntry
+    {
+        public TileSkin Skin;
+        public string Name;
+        public int Price;
+    }
+
+    public static readonly SkinEntry[] Skins =
+    {
+        new SkinEntry { Skin = TileSkin.Glossy, Name = "GLOSSY", Price = 0 },
+        new SkinEntry { Skin = TileSkin.Gem,    Name = "GEM",    Price = 300 },
+        new SkinEntry { Skin = TileSkin.Crayon, Name = "CRAYON", Price = 300 },
+    };
+
     public static ShopEntry Get(ShopItem it)
     {
         foreach (var e in Items) if (e.Item == it) return e;
