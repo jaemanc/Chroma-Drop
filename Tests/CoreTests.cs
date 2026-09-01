@@ -139,13 +139,49 @@ class CoreTests
         Assert(rotOk, "모든 조각 4회 회전 복귀");
 
         // 10. 난이도/타이머 규칙
-        Assert(Rules.Table["hard"].Goal == 13000 && Rules.Table["hard"].Moves == 50, "횟수 모드 = 50수/13000");
+        Assert(Rules.Table["hard"].Goal == 13000 && Rules.Table["hard"].Moves == 20, "횟수 모드 = " + Rules.Table["hard"].Moves + "수/" + Rules.Table["hard"].Goal);
 
         Console.WriteLine();
+        // 조각 제한 시간
+        int totalMv = Rules.Table["hard"].Moves;
+        Assert(Rules.PieceTimeMs(totalMv, totalMv) == Rules.PieceTimeMaxMs, "첫 조각 = " + Rules.PieceTimeMaxMs + "ms");
+        Assert(Rules.PieceTimeMs(1, totalMv) == Rules.PieceTimeMinMs, "마지막 조각 = " + Rules.PieceTimeMinMs + "ms");
+        bool mono = true; int prev = int.MaxValue;
+        for (int m = totalMv; m >= 1; m--) { int t = Rules.PieceTimeMs(m, totalMv); if (t > prev) mono = false; prev = t; }
+        Assert(mono, "타이머 단조 감소");
+
+        InitialDistributionTest();
         BrickTests();
 
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
+    }
+
+    // 초기 보드가 특정 색으로 치우치지 않는지.
+    // int[,] 기본값 0 때문에 미충전 칸이 '색0' 으로 읽혀 색0 만 재추첨당하던 결함이 있었다.
+    static void InitialDistributionTest()
+    {
+        int expected = Board.W * Board.H / Rules.ColorCount;   // 균등했을 때 색당 칸 수
+        int lo = expected / 2, hi = expected * 3 / 2;          // ±50% 안에는 들어와야 한다
+        bool even = true;
+        int worst = 0;
+        for (int seed = 1; seed <= 30 && even; seed++)
+        {
+            var b = new Board(Rules.ColorCount, seed);
+            var n = new int[Rules.ColorCount];
+            for (int x = 0; x < Board.W; x++)
+                for (int y = 0; y < Board.H; y++)
+                {
+                    int t = b.GetTile(x, y);
+                    if (t >= 0) n[t]++;
+                }
+            foreach (var v in n)
+            {
+                if (v < lo || v > hi) { even = false; worst = v; }
+            }
+        }
+        Assert(even, "초기 보드 색 분포가 고름 (색당 " + lo + "~" + hi + "칸"
+                     + (even ? "" : ", 실제 " + worst) + ")");
     }
 
     // ── 벽돌 ──
@@ -165,7 +201,7 @@ class CoreTests
         int hp0 = b4.GetBrickHp(7, 5);
         Fill(b4, 4, 4, 3, 1);
         b4.Resolve();
-        Assert(hp0 == Rules.BrickHp && hp0 >= 5, "벽돌 초기 내구도 " + Rules.BrickHp);
+        Assert(hp0 == Rules.BrickHp && hp0 >= 2, "벽돌 초기 내구도 " + Rules.BrickHp);
 
         var b5 = CheckerBoard();
         b5.SetBrick(7, 5, 1);                          // 마지막 한 대만 남은 벽돌

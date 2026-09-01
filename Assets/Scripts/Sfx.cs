@@ -7,7 +7,7 @@ public class Sfx : MonoBehaviour
     const int SR = 22050;
 
     AudioSource src;
-    AudioClip stamp, boom, item, win, lose;
+    AudioClip stamp, boom, item, expire, win, lose;
 
     void Awake()
     {
@@ -15,6 +15,7 @@ public class Sfx : MonoBehaviour
         src.playOnAwake = false;
         stamp = Tone("sfx_stamp", 380, 0.07f, 0.55f);
         boom = NoiseBurst("sfx_boom", 0.22f, 0.7f);
+        expire = Slide("sfx_expire", 340, 150, 0.20f, 0.5f);
         item = Arp("sfx_item", new[] { 780f, 1240f }, 0.07f, 0.45f);
         win = Arp("sfx_win", new[] { 523f, 659f, 784f, 1047f }, 0.11f, 0.5f);
         lose = Arp("sfx_lose", new[] { 392f, 311f, 262f }, 0.16f, 0.5f);
@@ -24,6 +25,7 @@ public class Sfx : MonoBehaviour
     /// <summary>연쇄 단계가 높을수록 피치 상승</summary>
     public void PlayDestroy(int chain) { Play(boom, 1f + 0.14f * Mathf.Clamp(chain - 1, 0, 6)); }
     public void PlayItem() { Play(item, 1f); }
+    public void PlayExpire() { Play(expire, 1f); }
     public void PlayWin() { Play(win, 1f); }
     public void PlayLose() { Play(lose, 1f); }
 

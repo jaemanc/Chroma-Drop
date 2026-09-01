@@ -509,6 +509,12 @@ namespace ColorMatcher.Core
 
         void FillNoInitialMatch()
         {
+            // 먼저 전부 Empty 로 둔다. int[,] 기본값이 0 이라 그냥 채우면
+            // 아직 안 채운 칸이 '색0' 으로 읽혀 Makes2x2At 이 가짜 2x2 를 잡는다.
+            // 그러면 색0 만 계속 재추첨당해 분포가 크게 치우친다 (196칸 중 7칸 수준).
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) tiles[x, y] = Empty;
+
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < H; y++)
                 {
@@ -548,8 +554,24 @@ namespace ColorMatcher.Core
     {
         public const int ColorCount = 4;            // 랜덤 팔레트 색 수
         public const int TimeAttackMs = 180000;     // 타임어택 3분
+        // 두 값이 같으면 조각 제한시간이 3초로 고정된다.
+        // 뒤로 갈수록 조여들게 하려면 Max 를 올리면 된다 (남은 수에 선형 비례).
+        public const int PieceTimeMaxMs = 4000;     // 첫 조각
+        public const int PieceTimeMinMs = 4000;     // 마지막 조각
 
-        public const int BrickHp = 5;               // 암석은 5번 금이 가야 부서진다
+        /// <summary>남은 수에 선형 비례하는 조각 제한 시간(ms). 첫 조각 MAX, 마지막 MIN.
+        /// 시간이 다 되면 그 조각은 버려지고 기회도 한 번 소모된다.</summary>
+        public static int PieceTimeMs(int movesLeft, int totalMoves)
+        {
+            if (totalMoves <= 1) return PieceTimeMinMs;
+            double t = PieceTimeMinMs + (PieceTimeMaxMs - PieceTimeMinMs)
+                       * (double)(movesLeft - 1) / (totalMoves - 1);
+            if (t < PieceTimeMinMs) t = PieceTimeMinMs;
+            if (t > PieceTimeMaxMs) t = PieceTimeMaxMs;
+            return (int)t;
+        }
+
+        public const int BrickHp = 2;               // 암석은 2번 금이 가야 부서진다
 
         /// <summary>이번 수가 끝난 뒤 새로 놓을 벽돌 수. 진행할수록 늘어난다.</summary>
         public static int BricksAfterMove(int movesUsed, int totalMoves)
@@ -567,7 +589,7 @@ namespace ColorMatcher.Core
             { "easy",   new Difficulty { Moves = 30, Goal = 15000, Label = "하" } },
             { "normal", new Difficulty { Moves = 25, Goal = 25000, Label = "중" } },
             // 봇 측정(50수 중앙값 11,690 / 상위10% 14,060) 기준 잠정치. 실제 플레이로 확인 후 조정할 것.
-            { "hard",   new Difficulty { Moves = 50, Goal = 13000, Label = "상" } },
+            { "hard",   new Difficulty { Moves = 20, Goal = 13000, Label = "상" } },
         };
 
     }
