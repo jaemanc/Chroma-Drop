@@ -96,12 +96,12 @@ public static class PlayerAccount
 
     static readonly Dictionary<string, string> Names = new Dictionary<string, string>
     {
-        { "KR", "대한민국" }, { "JP", "일본" }, { "CN", "중국" }, { "TW", "대만" },
-        { "US", "미국" }, { "GB", "영국" }, { "FR", "프랑스" }, { "DE", "독일" },
-        { "ZZ", "미상" },
+        { "KR", "Korea" }, { "JP", "Japan" }, { "CN", "China" }, { "TW", "Taiwan" },
+        { "US", "USA" }, { "GB", "UK" }, { "FR", "France" }, { "DE", "Germany" },
+        { "BR", "Brazil" }, { "IN", "India" }, { "ZZ", "Unknown" },
     };
 
-    /// <summary>한국어 국가명이 있으면 그것, 없으면 코드 그대로.</summary>
+    /// <summary>표시용 국가명. 목록에 없으면 코드 그대로.</summary>
     public static string DisplayName(string code)
     {
         string n;

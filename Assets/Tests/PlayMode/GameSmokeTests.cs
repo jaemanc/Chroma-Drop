@@ -21,8 +21,8 @@ public class GameSmokeTests
         var go = new GameObject("GM_under_test");
         var g = go.AddComponent<GameManager>();
         // 테스트 가속: 연출 대기 최소화
-        g.stampPop = g.destroyFlash = g.fallTime = 0.01f;
-        g.chainStep = g.chainFall = g.glowTime = 0.01f;
+        g.stampTime = g.destroyFlash = g.fallTime = 0.02f;
+        g.chainStep = g.chainFall = g.landTime = 0.01f;
         return g;
     }
 
@@ -65,6 +65,28 @@ public class GameSmokeTests
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
                 Assert.AreNotEqual(Board.Empty, b.GetTile(x, y), "해소 후 빈 칸 없음");
+    }
+
+    [UnityTest]
+    public IEnumerator 제한시간이_지나면_조각이_버려지고_기회를_쓴다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 4321);
+        yield return null;
+
+        int moves = gm.MovesLeft;
+        var piece = gm.CurrentPiece;
+        Assert.Greater(gm.PieceTimerFrac, 0.9f, "시작 직후엔 제한시간이 거의 남아 있어야 함");
+
+        // 아무것도 놓지 않고 첫 조각의 제한시간(최대 8초)이 지나기를 기다린다
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.MovesLeft == moves && Time.realtimeSinceStartup - t0 < 15f)
+            yield return null;
+
+        Assert.AreEqual(moves - 1, gm.MovesLeft, "만료되면 기회를 하나 쓴다");
+        Assert.AreNotSame(piece, gm.CurrentPiece, "다음 조각으로 넘어간다");
+        Assert.Greater(gm.PieceTimerFrac, 0.5f, "새 조각은 제한시간이 다시 채워진다");
     }
 
     [UnityTest]

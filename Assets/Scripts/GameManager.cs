@@ -22,11 +22,11 @@ public class GameManager : MonoBehaviour
     public int seed = 0;                   // 0 = 랜덤
 
     [Header("연출 시간(초)")]
-    public float stampPop = 0.13f;
+    public float stampTime = 0.34f;        // 들어올림 → 내려찍기 → 버팀 → 복원 전체
     public float destroyFlash = 0.22f;
     public float chainStep = 0.19f;        // 연쇄 한 단계가 터지는 간격
     public float chainFall = 0.19f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
-    public float glowTime = 0.20f;         // 새로 내려온 칸 반짝임
+    public float landTime = 0.15f;         // 착지 스쿼시·복원
     public float fallTime = 0.24f;
     public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
@@ -37,6 +37,8 @@ public class GameManager : MonoBehaviour
     public int MovesLeft { get { return movesLeft; } }
     public bool TimeAttackMode { get { return taRunning; } }
     public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
+    /// <summary>조각 제한시간 남은 비율 (1 → 0). 타임어택에서는 쓰지 않는다.</summary>
+    public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((pieceDeadline - Time.time) / pieceTimeTotal); } }
     public Board BoardRef { get { return board; } }
     public Piece CurrentPiece { get { return current; } }
 
@@ -57,8 +59,10 @@ public class GameManager : MonoBehaviour
 
     int score, movesLeft, totalMoves, goal;
     bool busy, taRunning, touchActive;
-    float taDeadline;
+    float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
+    int pendingScore, pendingSeed;
+    bool pendingTa;
     Vector3 camBase;
     Coroutine shakeCo;
 
@@ -137,6 +141,7 @@ public class GameManager : MonoBehaviour
 
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
+        else StartPieceTimer();
     }
 
     void EndGame(bool win)
@@ -153,15 +158,36 @@ public class GameManager : MonoBehaviour
         if (win || taRunning) sfx.PlayWin(); else sfx.PlayLose();
         ui.ShowResult(win, taRunning, score, best, newBest);
 
-        // 랭킹 자동 제출 — 설정이 없거나 오프라인이면 조용히 넘어간다.
-        var lb = Leaderboard.I;
-        if (lb != null && lb.Configured && score > 0)
+        // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
+        pendingScore = score;
+        pendingTa = taRunning;
+        pendingSeed = curSeed;
+        ui.SetSubmitState(CanSubmit ? GameUI.SubmitState.Pending : GameUI.SubmitState.Off);
+    }
+
+    /// <summary>아직 올리지 않은 점수가 있는가 (랭킹이 설정돼 있고 0점이 아닐 때).</summary>
+    public bool CanSubmit
+    {
+        get
         {
-            ui.SetSubmitState(GameUI.SubmitState.Sending);
-            StartCoroutine(lb.Submit(taRunning, difficulty, score, curSeed,
-                ok => ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed)));
+            var lb = Leaderboard.I;
+            return lb != null && lb.Configured && pendingScore > 0;
         }
-        else ui.SetSubmitState(GameUI.SubmitState.Off);
+    }
+
+    public int PendingScore { get { return pendingScore; } }
+
+    /// <summary>직전 게임 점수를 랭킹에 올린다. 광고를 본 뒤 호출된다.</summary>
+    public void SubmitPending(System.Action<bool> done)
+    {
+        var lb = Leaderboard.I;
+        if (!CanSubmit) { if (done != null) done(false); return; }
+        ui.SetSubmitState(GameUI.SubmitState.Sending);
+        StartCoroutine(lb.Submit(pendingTa, Difficulty, pendingScore, pendingSeed, ok =>
+        {
+            ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed);
+            if (done != null) done(ok);
+        }));
     }
 
     public static string BestKey(bool ta, string diff) { return ta ? "best_ta" : "best_score_" + diff; }
@@ -174,7 +200,15 @@ public class GameManager : MonoBehaviour
         if (Screen.width != lastW || Screen.height != lastH) FitCamera();
         if (Phase != GamePhase.Playing) return;
 
-        if (taRunning && !busy && Time.time >= taDeadline) { EndGame(false); return; }
+        if (taRunning)
+        {
+            if (!busy && Time.time >= taDeadline) { EndGame(false); return; }
+        }
+        else if (!busy && Time.time >= pieceDeadline)
+        {
+            StartCoroutine(ExpirePiece());
+            return;
+        }
 
         ui.UpdateHud(this);
         if (busy) { view.HideGhost(); return; }
@@ -256,10 +290,12 @@ public class GameManager : MonoBehaviour
         var result = board.Stamp(current, ax, ay);
         if (!taRunning) movesLeft--;
 
-        // 1) 스탬프
-        sfx.PlayStamp();
-        view.PaintCells(stamped, palette[current.Color]);
-        yield return new WaitForSeconds(stampPop);
+        // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
+        yield return view.StampCells(stamped, palette[current.Color], stampTime, () =>
+        {
+            sfx.PlayStamp();
+            Shake(0.22f, 0.14f, true);
+        });
 
         // 2) 파괴 — 연쇄 단계별로 순차 폭발
         if (result.Destroyed.Count > 0)
@@ -292,7 +328,33 @@ public class GameManager : MonoBehaviour
         {
             if (score >= goal) { EndGame(true); yield break; }
             if (movesLeft <= 0) { EndGame(false); yield break; }
+            StartPieceTimer();
         }
+    }
+
+    /// <summary>제한 시간이 다 된 조각은 버려진다. 기회도 한 번 소모한다 —
+    /// 아니면 가만히 두는 것만으로 조각을 공짜로 넘길 수 있다.</summary>
+    IEnumerator ExpirePiece()
+    {
+        busy = true;
+        view.HideGhost();
+        sfx.PlayExpire();
+        yield return new WaitForSeconds(0.15f);
+
+        movesLeft--;
+        current = queue.Dequeue();
+        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        ui.SetNext(new List<Piece>(queue), palette);
+
+        busy = false;
+        if (movesLeft <= 0) EndGame(false);
+        else StartPieceTimer();
+    }
+
+    void StartPieceTimer()
+    {
+        pieceTimeTotal = Rules.PieceTimeMs(movesLeft, totalMoves) / 1000f;
+        pieceDeadline = Time.time + pieceTimeTotal;
     }
 
     /// <summary>연쇄 단계(웨이브)를 하나씩 터뜨린다. 각 웨이브 안에서도 매칭 → 아이템 발동 순.</summary>
@@ -344,7 +406,12 @@ public class GameManager : MonoBehaviour
         if (!any) yield break;
 
         yield return view.FallIn(changed, dur, stagger);
-        yield return view.GlowNew(newCells, glowTime);
+
+        // 착지 타격: 8~12px 로 시작해 0.15초 안에 급격히 잦아든다.
+        // 화면 높이 19 월드유닛 / 960px 이므로 1px ≈ 0.0198 유닛.
+        float impact = Mathf.Clamp01(view.LastMaxDrop / 6f);
+        if (impact > 0.1f) Shake(Mathf.Lerp(0.158f, 0.238f, impact), 0.15f, true);
+        yield return view.LandCells(newCells, landTime);
     }
 
     IEnumerator BurstSegment(ResolveResult result, int[,] visual, int from, int to,
@@ -386,22 +453,28 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>카메라 흔들림 (타격감). 파괴 규모/연쇄에 비례해 호출.</summary>
-    public void Shake(float magnitude, float duration)
+    public void Shake(float magnitude, float duration) { Shake(magnitude, duration, false); }
+
+    /// <summary>카메라 흔들림. sharp=true 면 처음에 세게 때리고 급격히 잦아든다 (착지 타격용).</summary>
+    public void Shake(float magnitude, float duration, bool sharp)
     {
         if (!isActiveAndEnabled || cam == null) return;
         if (shakeCo != null) StopCoroutine(shakeCo);
-        shakeCo = StartCoroutine(ShakeCo(magnitude, duration));
+        shakeCo = StartCoroutine(ShakeCo(magnitude, duration, sharp));
     }
 
-    IEnumerator ShakeCo(float mag, float dur)
+    IEnumerator ShakeCo(float mag, float dur, bool sharp)
     {
         float t = 0;
         while (t < dur)
         {
             t += Time.deltaTime;
-            float damper = 1f - Mathf.Clamp01(t / dur);
-            Vector2 r = UnityEngine.Random.insideUnitCircle * (mag * damper);
-            cam.transform.position = camBase + new Vector3(r.x, r.y, 0);
+            float k = 1f - Mathf.Clamp01(t / dur);
+            // 선형 감쇠는 '흔들린다'로 읽히고, 제곱 감쇠는 '맞았다'로 읽힌다
+            float damper = sharp ? k * k * k : k;
+            Vector2 r = UnityEngine.Random.insideUnitCircle;
+            if (sharp) r.y = Mathf.Abs(r.y) * (UnityEngine.Random.value < 0.5f ? -1.4f : 1.4f); // 세로 성분 강조
+            cam.transform.position = camBase + (Vector3)(r * (mag * damper));
             yield return null;
         }
         cam.transform.position = camBase;
