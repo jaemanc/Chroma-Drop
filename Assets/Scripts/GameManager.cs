@@ -33,7 +33,6 @@ public class GameManager : MonoBehaviour
     public GamePhase Phase { get; private set; }
     public bool Busy { get { return busy; } }
     public int Score { get { return score; } }
-    public int Goal { get { return goal; } }
     public int MovesLeft { get { return movesLeft; } }
     public bool TimeAttackMode { get { return taRunning; } }
     public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
@@ -56,8 +55,9 @@ public class GameManager : MonoBehaviour
     GameUI ui;
     Sfx sfx;
     Camera cam;
+    SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
 
-    int score, movesLeft, totalMoves, goal;
+    int score, movesLeft, totalMoves;
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
@@ -80,15 +80,38 @@ public class GameManager : MonoBehaviour
         }
         cam.orthographic = true;
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.09f, 0.09f, 0.12f);
+        cam.backgroundColor = Palette.Hex(0xCBE4CF);   // 배경 스프라이트 밖 여백
 
         Leaderboard.Create();
+        BuildBackground();
         view = new GameObject("BoardView").AddComponent<BoardView>();
         sfx = gameObject.AddComponent<Sfx>();
         ui = GameUI.Create(this);
 
         FitCamera();
         GoHome();
+    }
+
+
+    /// <summary>플레이 화면 배경. 보드 프레임(-2)보다 뒤에 오도록 -20 에 둔다.</summary>
+    void BuildBackground()
+    {
+        var go = new GameObject("Background");
+        go.transform.SetParent(transform, false);
+        bg = go.AddComponent<SpriteRenderer>();
+        bg.sprite = PlayBackdrop.Make(540, 1170);   // 코드로 그린다 — 이미지 파일 불필요
+        bg.sortingOrder = -20;
+    }
+
+    void FitBackground()
+    {
+        if (bg == null || cam == null) return;
+        float h = cam.orthographicSize * 2f;
+        float w = h * cam.aspect;
+        var sz = bg.sprite.bounds.size;
+        float k = Mathf.Max(w / sz.x, h / sz.y);      // contain 이 아니라 cover
+        bg.transform.localScale = Vector3.one * k;
+        bg.transform.position = new Vector3(cam.transform.position.x, cam.transform.position.y, 10);
     }
 
     // ---------- 화면 전환 ----------
@@ -122,8 +145,7 @@ public class GameManager : MonoBehaviour
 
         var d = Rules.Table[difficulty];
         taRunning = timeAttack;
-        if (timeAttack) { totalMoves = movesLeft = 9999; goal = 0; }
-        else { totalMoves = movesLeft = d.Moves; goal = d.Goal; }
+        totalMoves = movesLeft = timeAttack ? 9999 : d.Moves;
         score = 0;
         busy = false;
         touchActive = false;
@@ -144,7 +166,7 @@ public class GameManager : MonoBehaviour
         else StartPieceTimer();
     }
 
-    void EndGame(bool win)
+    void EndGame()
     {
         Phase = GamePhase.Result;
         busy = false;
@@ -155,8 +177,8 @@ public class GameManager : MonoBehaviour
         bool newBest = score > best;
         if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
 
-        if (win || taRunning) sfx.PlayWin(); else sfx.PlayLose();
-        ui.ShowResult(win, taRunning, score, best, newBest);
+        if (newBest) sfx.PlayWin(); else sfx.PlayLose();
+        ui.ShowResult(taRunning, score, best, newBest);
 
         // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
         pendingScore = score;
@@ -202,7 +224,7 @@ public class GameManager : MonoBehaviour
 
         if (taRunning)
         {
-            if (!busy && Time.time >= taDeadline) { EndGame(false); return; }
+            if (!busy && Time.time >= taDeadline) { EndGame(); return; }
         }
         else if (!busy && Time.time >= pieceDeadline)
         {
@@ -309,12 +331,12 @@ public class GameManager : MonoBehaviour
 
         score += result.ScoreGained;
 
-        // 3) 벽돌 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
+        // 3) 얼음 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
         if (!taRunning)
         {
             int used = totalMoves - movesLeft;
-            int add = Rules.BricksAfterMove(used, totalMoves);
-            if (add > 0 && board.SpawnBricks(add) > 0) sfx.PlayItem();
+            int add = Rules.IceAfterMove(used, totalMoves);
+            if (add > 0 && board.SpawnIce(add) > 0) sfx.PlayItem();
         }
         view.Refresh(board, palette);
 
@@ -326,8 +348,7 @@ public class GameManager : MonoBehaviour
         busy = false;
         if (!taRunning)
         {
-            if (score >= goal) { EndGame(true); yield break; }
-            if (movesLeft <= 0) { EndGame(false); yield break; }
+            if (movesLeft <= 0) { EndGame(); yield break; }
             StartPieceTimer();
         }
     }
@@ -347,7 +368,7 @@ public class GameManager : MonoBehaviour
         ui.SetNext(new List<Piece>(queue), palette);
 
         busy = false;
-        if (movesLeft <= 0) EndGame(false);
+        if (movesLeft <= 0) EndGame();
         else StartPieceTimer();
     }
 
@@ -402,7 +423,7 @@ public class GameManager : MonoBehaviour
                 visual[x, y] = after;
             }
 
-        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.BrickHpAfter, palette);
+        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.IceHpAfter, palette);
         if (!any) yield break;
 
         yield return view.FallIn(changed, dur, stagger);
@@ -450,6 +471,7 @@ public class GameManager : MonoBehaviour
         cam.orthographicSize = half;
         camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.10f, -10);
         if (shakeCo == null) cam.transform.position = camBase;
+        FitBackground();
     }
 
     /// <summary>카메라 흔들림 (타격감). 파괴 규모/연쇄에 비례해 호출.</summary>

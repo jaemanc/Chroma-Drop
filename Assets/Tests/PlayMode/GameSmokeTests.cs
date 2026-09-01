@@ -29,8 +29,14 @@ public class GameSmokeTests
     [TearDown]
     public void Cleanup()
     {
-        if (gm != null) Object.Destroy(gm.gameObject);
+        // GameUI / BoardView 는 GameManager 가 따로 만드는 오브젝트라 같이 지워야 한다.
+        // 안 그러면 다음 테스트가 이전 화면의 버튼을 잡고, 그 화면은 이미 파괴된
+        // GameManager 를 붙들고 있어 MissingReferenceException 이 난다.
+        if (gm != null) Object.DestroyImmediate(gm.gameObject);
         gm = null;
+        foreach (var n in new[] { "GameUI", "BoardView" })
+            for (var g = GameObject.Find(n); g != null; g = GameObject.Find(n))
+                Object.DestroyImmediate(g);
     }
 
     [UnityTest]
@@ -87,6 +93,31 @@ public class GameSmokeTests
         Assert.AreEqual(moves - 1, gm.MovesLeft, "만료되면 기회를 하나 쓴다");
         Assert.AreNotSame(piece, gm.CurrentPiece, "다음 조각으로 넘어간다");
         Assert.Greater(gm.PieceTimerFrac, 0.5f, "새 조각은 제한시간이 다시 채워진다");
+    }
+
+    [UnityTest]
+    public IEnumerator 홈_시작버튼을_눌렀다_떼면_게임이_시작된다()
+    {
+        gm = NewGm();
+        yield return null;   // 홈 화면 구성
+
+        var start = GameObject.Find("start");
+        Assert.IsNotNull(start, "시작 버튼을 찾지 못했다");
+        var rt = (RectTransform)start.transform;
+        var before = rt.anchoredPosition;
+
+        var press = start.GetComponent<UiPressImage>();
+        var ev = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current);
+        press.OnPointerDown(ev);
+        yield return null;
+        // 눌린 동안에도 원래 자리 근처에 머물러야 한다 (예전엔 (0,0) 으로 튀었다)
+        Assert.Less(Vector2.Distance(rt.anchoredPosition, before), 20f,
+                    "누르는 순간 버튼이 제자리를 벗어났다");
+
+        press.OnPointerUp(ev);
+        start.GetComponent<UnityEngine.UI.Button>().onClick.Invoke();
+        yield return null;
+        Assert.AreEqual(GamePhase.Playing, gm.Phase, "시작 버튼이 게임을 시작하지 못했다");
     }
 
     [UnityTest]

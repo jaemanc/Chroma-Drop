@@ -22,13 +22,24 @@ public static class Palette
 
     public static readonly string[] SetNames = { "색맹 안전", "선셋", "캔디", "쿨 아날로거스" };
 
+    // 배경이 숲 파스텔이라 원색 그대로면 블록만 튄다. 회색 쪽으로 당기고 살짝 밝힌다.
+    public const float Desaturate = 0.1f;   // 0 = 원색, 1 = 무채색
+    public const float Soften     = 0.10f;   // 흰색 쪽으로
+
+    static Color Mute(Color c)
+    {
+        float l = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
+        var m = Color.Lerp(c, new Color(l, l, l), Desaturate);
+        return Color.Lerp(m, Color.white, Soften);
+    }
+
     /// <summary>세트를 하나 뽑아 앞에서 n색을 돌려준다.
     /// n 이 세트 길이보다 크면 색이 반복되므로, 게임 색 수는 세트 길이 이하로 유지할 것.</summary>
     public static Color[] Generate(int n, System.Random r)
     {
         var set = Sets[r.Next(Sets.Length)];
         var outp = new Color[n];
-        for (int i = 0; i < n; i++) outp[i] = set[i % set.Length];
+        for (int i = 0; i < n; i++) outp[i] = Mute(set[i % set.Length]);
         return outp;
     }
 

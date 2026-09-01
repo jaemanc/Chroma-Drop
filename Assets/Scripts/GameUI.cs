@@ -27,7 +27,6 @@ public class GameUI : MonoBehaviour
     Coroutine chainCo;
     Image timerFill;
     GameObject timerBar;      // 타임어택=남은 시간 / 횟수 모드=조각 제한시간
-    UiButton[] modeBtns;
 
     // 랭킹
     public enum SubmitState { Off, Pending, Sending, Done, Failed }
@@ -67,10 +66,15 @@ public class GameUI : MonoBehaviour
 
     void LoadFont()
     {
+        // 캐주얼 퍼즐에 어울리는 둥근/기하 계열을 먼저 찾는다.
+        // 기본 내장 폰트(LegacyRuntime)는 사무용 산세리프라 게임에 안 어울린다.
         string[] prefer = {
-            "Apple SD Gothic Neo", "AppleSDGothicNeo",       // iOS/macOS
-            "Noto Sans CJK KR", "Noto Sans KR", "NotoSansCJKkr-Regular", // Android
-            "Malgun Gothic", "NanumGothic", "Droid Sans Fallback"
+            "SF Pro Rounded", "SFProRounded", "SF Compact Rounded",   // iOS/macOS
+            "Avenir Next", "AvenirNext-DemiBold", "Avenir",
+            "Arial Rounded MT Bold",
+            "Nunito", "Poppins", "Quicksand",                         // 있으면 더 좋다
+            "SF Pro Display", "Helvetica Neue",
+            "Noto Sans", "Roboto", "Droid Sans"                       // Android 폴백
         };
         var installed = new HashSet<string>(Font.GetOSInstalledFontNames() ?? new string[0]);
         foreach (var n in prefer)
@@ -142,13 +146,13 @@ public class GameUI : MonoBehaviour
         adPanel.SetActive(false);
     }
 
-    public void ShowResult(bool win, bool ta, int score, int best, bool newBest)
+    public void ShowResult(bool ta, int score, int best, bool newBest)
     {
         resultPanel.SetActive(true);
-        resultTitle.text = ta ? "TIME'S UP!"
-                              : (win ? "CLEAR!" : "FAILED");
-        resultTitle.color = ta || win ? Accent : new Color(0.9f, 0.45f, 0.4f);
-        resultScore.text = score.ToString("N0") + (newBest ? "  ★" + "NEW BEST!" : "");
+        // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
+        resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
+        resultTitle.color = newBest ? Accent : new Color(1, 1, 1, 0.9f);
+        resultScore.text = score.ToString("N0") + (newBest ? "  ★ NEW BEST!" : "");
         resultBest.text = "BEST " + best.ToString("N0");
 
         // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
@@ -158,6 +162,12 @@ public class GameUI : MonoBehaviour
 
     // ---------- 게임 HUD ----------
 
+    // ---------- 게임 HUD (chroma-drop.html) ----------
+    static readonly Color Lilac     = Palette.Hex(0x9B8FE0);
+    static readonly Color StatLabel = Palette.Hex(0x5F6A90);
+    static readonly Color MintInk   = Palette.Hex(0x2B5148);
+    static readonly Color Mint      = Palette.Hex(0x8FD6C4);
+
     void BuildGamePanel()
     {
         gamePanel = NewRT("game", transform).gameObject;
@@ -166,42 +176,70 @@ public class GameUI : MonoBehaviour
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        var top = NewImage("top", safe, new Color(0, 0, 0, 0.35f));
-        Place(top.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1), Vector2.zero, new Vector2(0, 240));
+        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 26, 342, 20);
 
-        scoreText = NewText("score", top.transform, "0", 92, TextAnchor.UpperLeft, Color.white);
-        Place(scoreText.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1), new Vector2(36, -24), new Vector2(620, 105));
+        // ---- 점수 / 남은 수 카드 ----
+        float cw = (390f - 48f - 14f) / 2f;
+        var scoreCard = Card(safe, "statscore", 24, 54, cw, 78, Cream, 22);
+        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 12, TextAnchor.UpperLeft, StatLabel, 0, 0, 0, 0);
+        Anchor(sl.transform, 0, 1, 16, -12, cw - 32, 18);
+        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
+        scoreText.fontStyle = FontStyle.Bold;
+        Anchor(scoreText.transform, 0, 1, 16, -30, cw - 32, 46);
 
-        subText = NewText("sub", top.transform, "", 42, TextAnchor.UpperLeft, new Color(1, 1, 1, 0.75f));
-        Place(subText.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, 1), new Vector2(38, -138), new Vector2(620, 60));
+        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 54, cw, 78, Mint, 22);
+        subText = Label(movesCard.transform, "l", "", 12, TextAnchor.UpperRight, MintInk, 0, 0, 0, 0);
+        Anchor(subText.transform, 1, 1, -16, -12, cw - 32, 18);
+        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(34 * PS), TextAnchor.UpperRight, Ink);
+        rightText.fontStyle = FontStyle.Bold;
+        Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
 
-        rightText = NewText("right", top.transform, "", 54, TextAnchor.UpperRight, Color.white);
-        Place(rightText.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1), new Vector2(-36, -28), new Vector2(500, 66));
+        // ---- 다음 조각 ----
+        Label(safe, "nextlabel", Spaced("NEXT"), 11, TextAnchor.MiddleCenter, Muted, 24, 146, 342, 18);
+        nextRoot = NewRT("next", safe);
+        Place(nextRoot, Top, Top, new Vector2(0.5f, 1), P(195, 166), Sz(320, 60));
 
-        nextRoot = NewRT("next", top.transform);
-        Place(nextRoot, new Vector2(1, 1), new Vector2(1, 1), new Vector2(1, 1), new Vector2(-36, -112), new Vector2(320, 110));
-
-
-        var barBg = NewImage("barbg", top.transform, new Color(1, 1, 1, 0.12f));
-        Place(barBg.rectTransform, new Vector2(0, 0), new Vector2(1, 0), new Vector2(0.5f, 0), Vector2.zero, new Vector2(0, 12));
-        timerBar = barBg.gameObject;
-        timerFill = NewImage("fill", barBg.transform, Accent);
+        // ---- 제한시간 바 ----
+        var bar = Card(safe, "bar", 24, 232, 342, 16, Cream, 8);
+        timerBar = bar.transform.parent.gameObject;
+        timerFill = NewImage("fill", bar.transform, Coral);
+        timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
         Stretch(timerFill.rectTransform);
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
 
-        var rot = NewButton("rotate", safe, "ROTATE", UiKind.Secondary, () => gm.RotateCurrent());
-        Place((RectTransform)rot.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(1, 0), new Vector2(-36, 44), new Vector2(280, 150));
+        // ---- 하단 조작 ----
+        HookButton(Card(safe, "home", 24, 762, cw, 58, Cream, 22), () => gm.GoHome(), "HOME", 19);
+        HookButton(Card(safe, "rotate", 24 + cw + 14, 762, cw, 58, Lilac, 22), () => gm.RotateCurrent(), "ROTATE", 19);
 
-        var home = NewButton("home", safe, "HOME", UiKind.Secondary, () => gm.GoHome());
-        Place((RectTransform)home.transform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(0, 0), new Vector2(36, 44), new Vector2(170, 110));
-
-        // 연쇄/득점 팝업 (보드 중앙 근처에서 튀어오르며 사라짐)
-        chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Accent);
-        Place(chainPopup.rectTransform, new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
+        chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
+        Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
         chainPopup.gameObject.SetActive(false);
     }
 
-    /// <summary>연쇄/큰 득점 시 튀어오르는 팝업 (타격감). GameManager가 파괴 직후 호출.</summary>
+    /// <summary>카드 바깥(테두리 오브젝트)에 버튼과 눌림 반응, 가운데 글자를 붙인다.</summary>
+    void HookButton(Image cardFill, UnityAction onClick, string text, float size)
+    {
+        var outer = cardFill.transform.parent.gameObject;
+        var b = outer.AddComponent<Button>();
+        b.targetGraphic = outer.GetComponent<Image>();
+        b.transition = Selectable.Transition.None;
+        b.onClick.AddListener(onClick);
+        outer.AddComponent<UiPressImage>().target = (RectTransform)outer.transform;
+
+        var t = NewText("l", cardFill.transform, text, Mathf.RoundToInt(size * PS), TextAnchor.MiddleCenter, Ink);
+        t.fontStyle = FontStyle.Bold;
+        Stretch(t.rectTransform);
+    }
+
+    /// <summary>부모 모서리 기준으로 자식을 배치한다 (프로토타입 좌표).</summary>
+    static void Anchor(Transform t, float ax, float ay, float x, float y, float w, float h)
+    {
+        var rt = (RectTransform)t;
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(ax, ay);
+        rt.sizeDelta = Sz(w, h);
+        rt.anchoredPosition = new Vector2(x * PS, y * PS);
+    }
+
     public void ShowChainPopup(int chain, int scoreGained)
     {
         if (chainPopup == null) return;
@@ -242,20 +280,20 @@ public class GameUI : MonoBehaviour
         float frac;
         if (g.TimeAttackMode)
         {
-            subText.text = "TIME ATTACK";
+            subText.text = Spaced("TIME LEFT");
             int sec = Mathf.CeilToInt(g.TimeLeftSec);
             rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
             frac = g.TimeLeftSec / (Rules.TimeAttackMs / 1000f);
         }
         else
         {
-            subText.text = "GOAL " + g.Goal.ToString("N0");
-            rightText.text = "MOVES " + g.MovesLeft;
+            subText.text = Spaced("MOVES LEFT");
+            rightText.text = g.MovesLeft.ToString();
             frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
         }
         frac = Mathf.Clamp01(frac);
         timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
-        timerFill.color = Color.Lerp(new Color(0.9f, 0.4f, 0.35f), Accent, frac);
+        timerFill.color = Color.Lerp(Coral, Palette.Hex(0x7FCFC0), frac);
     }
 
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
@@ -280,7 +318,7 @@ public class GameUI : MonoBehaviour
                 var img = nextCells[idx++];
                 img.gameObject.SetActive(true);
                 img.color = palette[p.Color];
-                img.rectTransform.anchoredPosition = new Vector2(-(i * 130) - (3 - c.X) * 24, -(3 - c.Y) * 24);
+                img.rectTransform.anchoredPosition = new Vector2(-(i * 150) - (3 - c.X) * 30, -(3 - c.Y) * 30);
             }
         }
         for (int i = idx; i < nextCells.Count; i++) nextCells[i].gameObject.SetActive(false);
@@ -288,75 +326,303 @@ public class GameUI : MonoBehaviour
 
     // ---------- 홈 ----------
 
+    // chroma_drop_title.html 의 배색·구성을 옮긴 것.
+
+    // ---------- 홈 (chroma_drop_prototype.html) ----------
+    //
+    // 프로토타입은 390x844 기준이라 그 좌표를 그대로 옮기고 스케일만 맞춘다.
+    // 세로를 기준으로 맞춰야 비율이 유지된다 (1920/844). 남는 가로 여백은 양옆으로 간다.
+    // 상단 노치는 실기기에 이미 있으므로 그리지 않는다.
+
+    const float PS = 1920f / 844f;      // 프로토타입 → 캔버스 배율
+    const float ProtoW = 390f;
+    const float Bd = 3f;                // 테두리 굵기 (프로토타입 단위)
+
+    static readonly Color Ink        = Palette.Hex(0x14162B);
+    static readonly Color ScreenBg   = Palette.Hex(0xE4EEF2);
+    static readonly Color BlobYellow = Palette.Hex(0xF0D97A);
+    static readonly Color BlobPurple = Palette.Hex(0xC9BFEC);
+    static readonly Color Coral      = Palette.Hex(0xE4795A);
+    static readonly Color CoralLip   = Palette.Hex(0xB5573B);
+    static readonly Color Purple     = Palette.Hex(0x8B84D6);
+    static readonly Color Teal       = Palette.Hex(0x7FCFC0);
+    static readonly Color Yellow     = Palette.Hex(0xF0C64D);
+    static readonly Color Cream      = Palette.Hex(0xFBF8EE);
+    static readonly Color SwatchBg   = Palette.Hex(0xE7EEF0);
+    static readonly Color Muted      = Palette.Hex(0x6B7094);
+    static readonly Color Body       = Palette.Hex(0x5B6088);
+    static readonly Color TealInk    = Palette.Hex(0x0E4A3E);
+
+    readonly Dictionary<int, Sprite> roundCache = new Dictionary<int, Sprite>();
+    Sprite circleSprite;
+    Image[] modeFill;
+    Text[] modeEyebrow;
+    Text selectedModeText;
+
+    Sprite Rounded(float protoRadius)
+    {
+        int r = Mathf.Max(2, Mathf.RoundToInt(protoRadius * PS));
+        Sprite sp;
+        if (!roundCache.TryGetValue(r, out sp)) roundCache[r] = sp = UiTheme.RoundedSprite(r);
+        return sp;
+    }
+
+    /// <summary>프로토타입 좌표(좌상단 기준)를 캔버스 앵커 좌표로.</summary>
+    static Vector2 P(float x, float y) { return new Vector2((x - ProtoW * 0.5f) * PS, -y * PS); }
+    static Vector2 Sz(float w, float h) { return new Vector2(w * PS, h * PS); }
+
+    /// <summary>굵은 잉크 테두리를 가진 둥근 카드. 자식은 반환된 안쪽 Image 에 붙인다.</summary>
+    Image Card(Transform parent, string name, float x, float y, float w, float h, Color fill, float radius)
+    {
+        var outer = NewImage(name, parent, Ink);
+        outer.sprite = Rounded(radius); outer.type = Image.Type.Sliced;
+        Place(outer.rectTransform, Top, Top, new Vector2(0, 1), P(x, y), Sz(w, h));
+
+        var inner = NewImage("fill", outer.transform, fill);
+        inner.sprite = Rounded(Mathf.Max(2f, radius - Bd)); inner.type = Image.Type.Sliced;
+        inner.raycastTarget = false;
+        var rt = inner.rectTransform;
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = new Vector2(Bd * PS, Bd * PS);
+        rt.offsetMax = new Vector2(-Bd * PS, -Bd * PS);
+        return inner;
+    }
+
+    Text Label(Transform parent, string name, string text, float size, TextAnchor anchor, Color c,
+               float x, float y, float w, float h)
+    {
+        var t = NewText(name, parent, text, Mathf.RoundToInt(size * PS), anchor, c);
+        t.fontStyle = FontStyle.Bold;
+        Place(t.rectTransform, Top, Top, new Vector2(0, 1), P(x, y), Sz(w, h));
+        return t;
+    }
+
     void BuildHomePanel()
     {
-        var homeBg = NewImage("homebg", transform, Color.white);
-        homeBg.sprite = MakeGradientSprite(new Color(0.10f, 0.09f, 0.19f),   // 위: 짙은 남보라
-                                           new Color(0.04f, 0.04f, 0.07f));  // 아래: 거의 검정
-        homeBg.type = Image.Type.Simple;
-        homePanel = homeBg.gameObject;
+        homePanel = NewImage("homebg", transform, ScreenBg).gameObject;
         Stretch((RectTransform)homePanel.transform);
-
-        // 게임 블록이 천천히 떠다니는 배경. 팔레트와 같은 방식으로 색을 만들어 게임과 톤을 맞춘다.
-        var blocksRoot = NewRT("bgblocks", homePanel.transform);
-        Stretch(blocksRoot);
-        blocksRoot.gameObject.AddComponent<BgBlocks>().Build(BoardView.MakeTileSprite());
 
         var safe = NewRT("safe", homePanel.transform);
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        var title = NewText("title", safe, "CHROMA DROP", 104, TextAnchor.MiddleCenter, Color.white);
-        Place(title.rectTransform, new Vector2(0.5f, 0.80f), new Vector2(0.5f, 0.80f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1000, 130));
-        title.gameObject.AddComponent<UiPulse>();
+        if (circleSprite == null) circleSprite = MakeCircleSprite();
 
-        var underline = NewImage("titleline", safe, Accent);
-        Place(underline.rectTransform, new Vector2(0.5f, 0.775f), new Vector2(0.5f, 0.775f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(360, 8));
+        // ---- 장식: 원형 얼룩 두 개 + 기울어진 칩 두 개 ----
+        Blob(safe, "blobY", BlobYellow, 0.55f, -40, 90, 300);
+        Blob(safe, "blobP", BlobPurple, 0.60f, ProtoW - 200, 844 - 200, 260);
+        Chip(safe, "chipC", Coral, 18, 150, -14f);
+        Chip(safe, "chipP", Purple, ProtoW - 18 - 64, 165, 12f);
 
-        var sub = NewText("subtitle", safe, "COLOR MATCHER", 46, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.55f));
-        Place(sub.rectTransform, new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.74f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 70));
+        // ---- 상단 바 (노치는 그리지 않는다) ----
+        var menu = Card(safe, "menu", 20, 22, 44, 44, Color.white, 14);
+        var menuBtn = menu.transform.parent.gameObject.AddComponent<Button>();
+        menuBtn.targetGraphic = menu.transform.parent.GetComponent<Image>();
+        menuBtn.transition = Selectable.Transition.None;
+        menuBtn.onClick.AddListener(ShowCountryPicker);
+        var dotCols = new[] { Coral, Yellow, Purple, Teal };
+        for (int i = 0; i < 4; i++)
+        {
+            var d = NewImage("dot" + i, menu.transform, dotCols[i]);
+            d.sprite = Rounded(4); d.type = Image.Type.Sliced; d.raycastTarget = false;
+            var rt = d.rectTransform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
+            rt.sizeDelta = Sz(12, 12);
+            rt.anchoredPosition = new Vector2((5 + (i % 2) * 16) * PS, -(5 + (i / 2) * 16) * PS);
+            if (i == 3) homeBadge = d;                       // 국가 색이 여기 들어간다
+        }
 
-        modeBtns = new UiButton[2];
-        string[] modeLabels = { "MOVES", "TIME ATTACK" };
+        homeBadgeText = Label(safe, "acct", "", 11, TextAnchor.MiddleLeft, Muted, 72, 34, 160, 20);
+
+        var ranks = Card(safe, "ranks", ProtoW - 20 - 108, 22, 108, 44, Color.white, 20);
+        var ranksBtn = ranks.transform.parent.gameObject.AddComponent<Button>();
+        ranksBtn.targetGraphic = ranks.transform.parent.GetComponent<Image>();
+        ranksBtn.transition = Selectable.Transition.None;
+        ranksBtn.onClick.AddListener(() => ShowRanking(false));
+        var rl = NewText("l", ranks.transform, "RANKINGS", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink);
+        rl.fontStyle = FontStyle.Bold;
+        Stretch(rl.rectTransform);
+
+        // ---- 타이틀 ----
+        Label(safe, "eyebrow", Spaced("COLOR MATCHER"), 11, TextAnchor.MiddleCenter, Muted, 20, 94, 350, 20);
+        var title = Label(safe, "title", "", 42, TextAnchor.MiddleCenter, Ink, 20, 114, 350, 96);
+        title.supportRichText = true;
+        title.lineSpacing = 1.02f;
+        title.text = "CHROMA\n<color=#E4795A>DROP</color>";
+        Label(safe, "tagline", "Match. Pop. Beat your best.", 14, TextAnchor.MiddleCenter, Body, 20, 216, 350, 24);
+
+        // ---- 모드 카드 ----
+        modeFill = new Image[2];
+        modeEyebrow = new Text[2];
+        string[] eyebrows = { "CLASSIC", "RUSH" };
+        string[] labels = { "Moves", "Time Attack" };
         for (int i = 0; i < 2; i++)
         {
             bool ta = i == 1;
-            var b = NewButton("mode" + i, safe, modeLabels[i], UiKind.Secondary, () => { gm.timeAttack = ta; RefreshHomeButtons(); });
-            Place((RectTransform)b.transform, new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.60f), new Vector2(0.5f, 0.5f), new Vector2(i == 0 ? -190 : 190, 0), new Vector2(350, 110));
-            modeBtns[i] = b.GetComponent<UiButton>();
+            float cw = (ProtoW - 40 - 12) / 2f;
+            var card = Card(safe, "mode" + i, 20 + i * (cw + 12), 268, cw, 78, Color.white, 18);
+            var b = card.transform.parent.gameObject.AddComponent<Button>();
+            b.targetGraphic = card.transform.parent.GetComponent<Image>();
+            b.transition = Selectable.Transition.None;
+            b.onClick.AddListener(() => { gm.timeAttack = ta; RefreshHomeButtons(); });
+            card.transform.parent.gameObject.AddComponent<UiPressImage>().target = (RectTransform)card.transform.parent;
+
+            modeEyebrow[i] = Label(card.transform, "eb", eyebrows[i], 10, TextAnchor.UpperLeft, Muted, 0, 0, 0, 0);
+            var er = modeEyebrow[i].rectTransform;
+            er.anchorMin = er.anchorMax = er.pivot = new Vector2(0, 1);
+            er.sizeDelta = Sz(cw - 28, 16); er.anchoredPosition = new Vector2(14 * PS, -12 * PS);
+
+            var ml = NewText("ml", card.transform, labels[i], Mathf.RoundToInt(17 * PS), TextAnchor.UpperLeft, Ink);
+            ml.fontStyle = FontStyle.Bold;
+            var mr = ml.rectTransform;
+            mr.anchorMin = mr.anchorMax = mr.pivot = new Vector2(0, 1);
+            mr.sizeDelta = Sz(cw - 28, 44); mr.anchoredPosition = new Vector2(14 * PS, -32 * PS);
+            modeFill[i] = card;
         }
 
-        bestHomeText = NewText("best", safe, "", 42, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.65f));
-        Place(bestHomeText.rectTransform, new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 60));
+        // ---- 시작 버튼 (아래 두께가 있는 카드) ----
+        var startRoot = NewRT("start", safe);
+        Place(startRoot, Top, Top, new Vector2(0, 1), P(20, 362), Sz(350, 60));
+        var lip = NewImage("lip", startRoot, CoralLip);
+        lip.sprite = Rounded(18); lip.type = Image.Type.Sliced; lip.raycastTarget = false;
+        var lrt = lip.rectTransform;
+        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+        lrt.offsetMin = new Vector2(0, -5 * PS); lrt.offsetMax = Vector2.zero;
 
-        var start = NewButton("start", safe, "START", UiKind.Primary, () => gm.StartGame());
-        Place((RectTransform)start.transform, new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.29f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(520, 150));
-        start.gameObject.AddComponent<UiPulse>();
+        var faceRt = NewRT("face", startRoot);
+        faceRt.anchorMin = Vector2.zero; faceRt.anchorMax = Vector2.one;
+        faceRt.offsetMin = faceRt.offsetMax = Vector2.zero;
+        var faceOuter = faceRt.gameObject.AddComponent<Image>();
+        faceOuter.sprite = Rounded(18); faceOuter.type = Image.Type.Sliced; faceOuter.color = Ink;
+        var faceIn = NewImage("fill", faceRt, Coral);
+        faceIn.sprite = Rounded(15); faceIn.type = Image.Type.Sliced; faceIn.raycastTarget = false;
+        var fir = faceIn.rectTransform;
+        fir.anchorMin = Vector2.zero; fir.anchorMax = Vector2.one;
+        fir.offsetMin = new Vector2(Bd * PS, Bd * PS); fir.offsetMax = new Vector2(-Bd * PS, -Bd * PS);
 
-        // 국가 배지 — 누르면 국가를 바꿀 수 있다 (기본값은 기기 로케일에서 추정).
-        var badgeBtn = NewPlainButton("country", safe, new Color(1, 1, 1, 0.05f), () => ShowCountryPicker());
-        Place((RectTransform)badgeBtn.transform, new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.19f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 96));
-        homeBadge = NewImage("badge", badgeBtn.transform, Color.white);
-        Place(homeBadge.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0, 0), new Vector2(96, 68));
-        homeBadgeText = NewText("badgecode", homeBadge.transform, "", 40, TextAnchor.MiddleCenter, Color.white);
-        Stretch(homeBadgeText.rectTransform);
-        var nameText = NewText("acctname", badgeBtn.transform, "", 38, TextAnchor.MiddleLeft, new Color(1, 1, 1, 0.7f));
-        Place(nameText.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(112, 0), new Vector2(320, 60));
-        nameText.text = PlayerAccount.Name;
+        var sl = NewText("l", faceIn.transform, "START GAME", Mathf.RoundToInt(17 * PS), TextAnchor.MiddleLeft, Color.white);
+        sl.fontStyle = FontStyle.Bold;
+        Place(sl.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(24 * PS, 0), Sz(240, 30));
+        var ar = NewText("arrow", faceIn.transform, "\u2192", Mathf.RoundToInt(20 * PS), TextAnchor.MiddleRight, Color.white);
+        ar.fontStyle = FontStyle.Bold;
+        Place(ar.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-24 * PS, 0), Sz(40, 32));
 
-        var rankBtn = NewButton("rankhome", safe, "LEADERBOARD", UiKind.Secondary, () => ShowRanking(false));
-        Place((RectTransform)rankBtn.transform, new Vector2(0.5f, 0.115f), new Vector2(0.5f, 0.115f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(430, 96));
+        var sb = startRoot.gameObject.AddComponent<Button>();
+        sb.targetGraphic = faceOuter;
+        sb.transition = Selectable.Transition.None;
+        sb.onClick.AddListener(() => gm.StartGame());
+        startRoot.gameObject.AddComponent<UiPressImage>().target = faceRt;
 
-        var footer = NewText("footer", safe, "v1.0.0  ·  jaemanc", 34, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.35f));
-        Place(footer.rectTransform, new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.06f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800, 50));
+        selectedModeText = Label(safe, "selmode", "", 13, TextAnchor.MiddleLeft, Body, 20, 434, 350, 20);
+
+        // ---- 최고 기록 카드 ----
+        var best = Card(safe, "bestcard", 20, 472, 350, 328, Cream, 22);
+        Label(best.transform, "bl", Spaced("PERSONAL BEST"), 11, TextAnchor.UpperLeft, Muted, 0, 0, 0, 0);
+        var blr = best.transform.Find("bl").GetComponent<RectTransform>();
+        blr.anchorMin = blr.anchorMax = blr.pivot = new Vector2(0, 1);
+        blr.sizeDelta = Sz(220, 18); blr.anchoredPosition = new Vector2(18 * PS, -18 * PS);
+
+        bestHomeText = NewText("bv", best.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
+        bestHomeText.fontStyle = FontStyle.Bold;
+        var bvr = bestHomeText.rectTransform;
+        bvr.anchorMin = bvr.anchorMax = bvr.pivot = new Vector2(0, 1);
+        bvr.sizeDelta = Sz(240, 46); bvr.anchoredPosition = new Vector2(18 * PS, -34 * PS);
+
+        var star = Card(best.transform, "star", 0, 0, 40, 40, Yellow, 12);
+        var srt2 = (RectTransform)star.transform.parent;
+        srt2.anchorMin = srt2.anchorMax = srt2.pivot = new Vector2(1, 1);
+        srt2.sizeDelta = Sz(40, 40); srt2.anchoredPosition = new Vector2(-18 * PS, -18 * PS);
+        var st = NewText("s", star.transform, "\u2605", Mathf.RoundToInt(18 * PS), TextAnchor.MiddleCenter, Ink);
+        Stretch(st.rectTransform);
+
+        // 색 견본 그리드 — 팔레트를 미리 보여준다
+        var grid = NewImage("swatches", best.transform, SwatchBg);
+        grid.sprite = Rounded(14); grid.type = Image.Type.Sliced; grid.raycastTarget = false;
+        var gr = grid.rectTransform;
+        gr.anchorMin = gr.anchorMax = gr.pivot = new Vector2(0, 1);
+        gr.sizeDelta = Sz(314, 162); gr.anchoredPosition = new Vector2(18 * PS, -86 * PS);
+        var sw = new[] { Coral, Yellow, Teal, Purple, Coral, Teal,
+                         Yellow, Purple, Coral, Yellow, Teal, Purple,
+                         Teal, Coral, Yellow, Purple, Teal, Coral };
+        for (int i = 0; i < sw.Length; i++)
+        {
+            var q = NewImage("sw" + i, grid.transform, sw[i]);
+            q.sprite = Rounded(8); q.type = Image.Type.Sliced; q.raycastTarget = false;
+            var qr = q.rectTransform;
+            qr.anchorMin = qr.anchorMax = qr.pivot = new Vector2(0, 1);
+            qr.sizeDelta = Sz(42, 42);
+            qr.anchoredPosition = new Vector2((10 + (i % 6) * 50) * PS, -(10 + (i / 6) * 50) * PS);
+        }
+
+        var lb = Card(best.transform, "lbbtn", 0, 0, 314, 48, Color.white, 16);
+        var lbr = (RectTransform)lb.transform.parent;
+        lbr.anchorMin = lbr.anchorMax = lbr.pivot = new Vector2(0, 1);
+        lbr.sizeDelta = Sz(314, 48); lbr.anchoredPosition = new Vector2(18 * PS, -262 * PS);
+        var lbBtn = lb.transform.parent.gameObject.AddComponent<Button>();
+        lbBtn.targetGraphic = lb.transform.parent.GetComponent<Image>();
+        lbBtn.transition = Selectable.Transition.None;
+        lbBtn.onClick.AddListener(() => ShowRanking(false));
+        lb.transform.parent.gameObject.AddComponent<UiPressImage>().target = lbr;
+        var lbl = NewText("l", lb.transform, "LEADERBOARD", Mathf.RoundToInt(15 * PS), TextAnchor.MiddleCenter, Ink);
+        lbl.fontStyle = FontStyle.Bold;
+        Stretch(lbl.rectTransform);
+    }
+
+    void Blob(Transform parent, string name, Color c, float alpha, float x, float y, float d)
+    {
+        var img = NewImage(name, parent, new Color(c.r, c.g, c.b, alpha));
+        img.sprite = circleSprite; img.raycastTarget = false;
+        Place(img.rectTransform, Top, Top, new Vector2(0, 1), P(x, y), Sz(d, d));
+    }
+
+    void Chip(Transform parent, string name, Color c, float x, float y, float deg)
+    {
+        var chip = Card(parent, name, x, y, 64, 64, c, 16);
+        var rt = (RectTransform)chip.transform.parent;
+        rt.localRotation = Quaternion.Euler(0, 0, deg);
+        chip.raycastTarget = false;
+        chip.transform.parent.GetComponent<Image>().raycastTarget = false;
+    }
+
+    static Sprite MakeCircleSprite()
+    {
+        const int S = 128;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        float c = (S - 1) / 2f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                px[y * S + x] = new Color(1, 1, 1, Mathf.Clamp01(c - d));
+            }
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    static readonly Vector2 Top = new Vector2(0.5f, 1f);
+
+    /// <summary>글자 사이에 공백을 끼워 자간을 넓힌다 (uGUI 에는 letter-spacing 이 없다).</summary>
+    static string Spaced(string t)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in t) { sb.Append(ch); sb.Append(' '); }
+        return sb.ToString().TrimEnd();
     }
 
     void RefreshHomeButtons()
     {
-        if (modeBtns == null) return;
+        if (modeFill == null) return;
         for (int i = 0; i < 2; i++)
-            modeBtns[i].SetKind((i == 1) == gm.timeAttack ? UiKind.Primary : UiKind.Secondary);
-        bestHomeText.text = "BEST " + gm.BestForSelection().ToString("N0");
+        {
+            bool on = (i == 1) == gm.timeAttack;
+            modeFill[i].color = on ? Teal : Color.white;
+            modeEyebrow[i].color = on ? TealInk : Muted;
+        }
+        bestHomeText.text = gm.BestForSelection().ToString("N0");
+        selectedModeText.text = gm.timeAttack
+            ? "Selected mode: time attack · 3 min"
+            : "Selected mode: " + Rules.Table[GameManager.Difficulty].Moves + " moves";
         RefreshBadge();
     }
 
@@ -424,7 +690,7 @@ public class GameUI : MonoBehaviour
         Place(sub.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0, -98), new Vector2(860, 44));
         rankSubTitle = sub;
 
-        var meBtn = NewButton("tabme", card.transform, "PLAYERS", UiKind.Primary, () => { rankNationTab = false; RefreshRank(); });
+        var meBtn = NewButton("tabme", card.transform, "PLAYERS", UiKind.Selected, () => { rankNationTab = false; RefreshRank(); });
         Place((RectTransform)meBtn.transform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(-158, -168), new Vector2(300, 84));
         rankTabMe = meBtn.GetComponent<UiButton>();
 
@@ -514,9 +780,9 @@ public class GameUI : MonoBehaviour
 
     void RefreshRank()
     {
-        rankTabMe.SetKind(rankNationTab ? UiKind.Secondary : UiKind.Primary);
-        rankTabNation.SetKind(rankNationTab ? UiKind.Primary : UiKind.Secondary);
-        rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "MOVES  ·  GOAL " + gm.Goal.ToString("N0");
+        rankTabMe.SetKind(rankNationTab ? UiKind.Secondary : UiKind.Selected);
+        rankTabNation.SetKind(rankNationTab ? UiKind.Selected : UiKind.Secondary);
+        rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "MOVES";
         foreach (var r in rankRows) r.SetActive(false);
         RefreshMyRow(0);
         RefreshAdButton();
@@ -713,6 +979,7 @@ public class GameUI : MonoBehaviour
         return img;
     }
 
+
     Text NewText(string name, Transform parent, string s, int size, TextAnchor anchor, Color c)
     {
         var rt = NewRT(name, parent);
@@ -728,6 +995,7 @@ public class GameUI : MonoBehaviour
         t.raycastTarget = false;
         return t;
     }
+
 
     /// <summary>국가 배지처럼 자체 그림을 갖는 곳에 쓰는 단순 버튼 (입체 처리 없음).</summary>
     Button NewPlainButton(string name, Transform parent, Color bg, UnityAction onClick)
@@ -803,24 +1071,6 @@ public class GameUI : MonoBehaviour
         }
     }
 
-    // 세로 그라데이션 스프라이트 (에셋 없이 런타임 생성)
-    static Sprite MakeGradientSprite(Color top, Color bottom)
-    {
-        const int H = 128;
-        var tex = new Texture2D(2, H) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-        var px = new Color[2 * H];
-        for (int y = 0; y < H; y++)
-        {
-            // 위쪽이 더 오래 밝게 남도록 살짝 휘어준 보간
-            float k = y / (float)(H - 1);
-            var c = Color.Lerp(bottom, top, k * k * (3f - 2f * k));
-            px[y * 2] = px[y * 2 + 1] = c;
-        }
-        tex.SetPixels(px);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, 2, H), new Vector2(0.5f, 0.5f), 100f);
-    }
-
     static void Stretch(RectTransform rt)
     {
         rt.anchorMin = Vector2.zero;
@@ -835,63 +1085,6 @@ public class GameUI : MonoBehaviour
         rt.pivot = pivot;
         rt.anchoredPosition = pos;
         rt.sizeDelta = size;
-    }
-}
-
-/// <summary>홈 배경: 게임 블록 모양이 천천히 떠오르며 회전. 화면 위로 나가면 아래에서 다시 들어온다.</summary>
-public class BgBlocks : MonoBehaviour
-{
-    const int Count = 16;
-
-    RectTransform[] rts;
-    float[] speed, spin, size;
-
-    public void Build(Sprite tile)
-    {
-        var rng = new System.Random(7);                      // 실행마다 같은 배치
-        var palette = Palette.Generate(4, new System.Random(7));
-        rts = new RectTransform[Count];
-        speed = new float[Count]; spin = new float[Count]; size = new float[Count];
-
-        for (int i = 0; i < Count; i++)
-        {
-            var go = new GameObject("blk" + i, typeof(RectTransform));
-            var rt = (RectTransform)go.transform;
-            rt.SetParent(transform, false);
-            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0f);
-            rt.pivot = new Vector2(0.5f, 0.5f);
-
-            size[i] = 70f + (float)rng.NextDouble() * 150f;
-            rt.sizeDelta = new Vector2(size[i], size[i]);
-            rt.anchoredPosition = new Vector2(((float)rng.NextDouble() - 0.5f) * 1100f,
-                                              (float)rng.NextDouble() * 2100f);
-            rt.localRotation = Quaternion.Euler(0, 0, (float)rng.NextDouble() * 360f);
-
-            var img = go.AddComponent<Image>();
-            img.sprite = tile;
-            var c = palette[rng.Next(palette.Length)];
-            // 큰 블록일수록 더 흐리게 — 배경이 앞을 잡아먹지 않게
-            img.color = new Color(c.r, c.g, c.b, Mathf.Lerp(0.13f, 0.05f, (size[i] - 70f) / 150f));
-            img.raycastTarget = false;
-
-            rts[i] = rt;
-            speed[i] = 8f + (float)rng.NextDouble() * 18f;
-            spin[i] = ((float)rng.NextDouble() - 0.5f) * 7f;
-        }
-    }
-
-    void Update()
-    {
-        if (rts == null) return;
-        float dt = Time.unscaledDeltaTime;
-        for (int i = 0; i < rts.Length; i++)
-        {
-            var p = rts[i].anchoredPosition;
-            p.y += speed[i] * dt;
-            if (p.y - size[i] > 2200f) p.y = -size[i];       // 위로 나가면 아래에서 재진입
-            rts[i].anchoredPosition = p;
-            rts[i].Rotate(0, 0, spin[i] * dt);
-        }
     }
 }
 

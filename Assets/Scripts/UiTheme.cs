@@ -9,12 +9,12 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
-public enum UiKind { Primary, Secondary, Destructive }
+public enum UiKind { Primary, Secondary, Selected, Destructive }
 
 public static class UiTheme
 {
     // ---- 치수 (캔버스 기준 1080x1920) ----
-    public const float Radius     = 14f;   // 그리드 타일보다 크게 — UI 와 보드를 형태로 구분
+    public const float Radius     = 16f;   // 그리드 타일보다 크게 — UI 와 보드를 형태로 구분
     public const float Lip        = 8f;    // 평소 드러나는 아래 두께
     public const float LipPressed = 2f;    // 눌렀을 때
     public const float HiBar      = 9f;    // 상단 하이라이트 바 높이
@@ -28,29 +28,42 @@ public static class UiTheme
     {
         switch (k)
         {
-            case UiKind.Primary:     return Palette.Hex(0x25B573);   // 초록
-            case UiKind.Destructive: return Palette.Hex(0xE0625C);   // 붉은
-            default:                 return Palette.Hex(0x596170);   // 무채색 계열
+            case UiKind.Primary:     return Palette.Hex(0xFF6FA5);   // 핑크 — 시작/확인
+            case UiKind.Selected:    return Palette.Hex(0x34386A);   // 선택된 탭·모드
+            case UiKind.Destructive: return Palette.Hex(0xE0625C);
+            default:                 return Palette.Hex(0x2A2E52);   // 기본 — 짙은 남색
         }
     }
 
     /// <summary>눌렀을 때의 face — 한 단계 어둡게.</summary>
-    public static Color FacePressed(UiKind k) { return Darken(Face(k), 0.14f); }
+    public static Color FacePressed(UiKind k) { return Darken(Face(k), 0.12f); }
 
-    /// <summary>lip = face 명도의 65%.</summary>
-    public static Color LipColor(UiKind k) { return Darken(Face(k), 0.35f); }
+    /// <summary>아래 두께. 어두운 UI 라 일괄 비율보다 지정 색이 낫다.</summary>
+    public static Color LipColor(UiKind k)
+    {
+        switch (k)
+        {
+            case UiKind.Primary:     return Palette.Hex(0xB23E6E);
+            case UiKind.Destructive: return Palette.Hex(0x8E3A36);
+            default:                 return Palette.Hex(0x1A1C36);
+        }
+    }
 
-    /// <summary>face 상단 하이라이트 — face 보다 밝게.</summary>
-    public static Color Highlight(UiKind k) { return Lighten(Face(k), 0.18f); }
+    /// <summary>face 상단 하이라이트 — 안쪽에 얇게 깔리는 빛.</summary>
+    public static Color Highlight(UiKind k)
+    {
+        return Lighten(Face(k), k == UiKind.Primary ? 0.30f : 0.14f);
+    }
 
-    /// <summary>글자색 — 같은 계열의 가장 어두운 톤. 검정/흰색을 쓰지 않는다.</summary>
+    /// <summary>글자색. 밝은 face 위에는 어둡게, 어두운 face 위에는 밝게.</summary>
     public static Color Text(UiKind k)
     {
         switch (k)
         {
-            case UiKind.Primary:     return Palette.Hex(0x0B3D28);
+            case UiKind.Primary:     return Palette.Hex(0x3A0A1E);
+            case UiKind.Selected:    return Palette.Hex(0x5DD9C1);   // 민트 — 선택됨이 색으로 읽힌다
             case UiKind.Destructive: return Palette.Hex(0x4A1614);
-            default:                 return Palette.Hex(0x151A22);
+            default:                 return Palette.Hex(0xB8BCE0);
         }
     }
 
@@ -77,6 +90,36 @@ public static class UiTheme
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f,
                              0, SpriteMeshType.FullRect, new Vector4(r, r, r, r));
+    }
+}
+
+/// <summary>이미지 한 장으로 된 버튼. 그림에 두께가 이미 그려져 있으므로
+/// 누를 때 살짝 내려앉게만 한다.</summary>
+public class UiPressImage : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
+{
+    public RectTransform target;
+    public float drop = 5f;
+
+    Vector2 home;
+    bool pressed;
+    float t;
+
+    public void OnPointerDown(PointerEventData e)
+    {
+        // 기준 위치는 누르는 순간에 잡는다. Awake 에서 잡으면 아직 배치 전이라
+        // (0,0) 을 기억하고, 누를 때 버튼이 그리로 튀어 올라간다.
+        if (t <= 0f && target != null) home = target.anchoredPosition;
+        pressed = true;
+    }
+    public void OnPointerUp(PointerEventData e) { pressed = false; }
+
+    void Update()
+    {
+        float goal = pressed ? 1f : 0f;
+        if (Mathf.Approximately(t, goal) || target == null) return;
+        t = Mathf.MoveTowards(t, goal, Time.unscaledDeltaTime / UiTheme.PressTime);
+        float e = 1f - (1f - t) * (1f - t);
+        target.anchoredPosition = home + new Vector2(0, -drop * e);
     }
 }
 
