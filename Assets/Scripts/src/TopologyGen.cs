@@ -154,10 +154,13 @@ namespace ChromaDrop.Engine
                 Cells = new Cell[n * n],
             };
 
+            // 축 좌표(q, r) 로 이웃을 정의하되, 저장은 열마다 r 을 밀어 직사각형이 되게 한다.
+            // 그냥 q,r 을 0..n 으로 두면 판이 마름모가 되어 구석이 크게 빈다.
             for (int q = 0; q < n; q++)
-                for (int r = 0; r < n; r++)
+                for (int rr = 0; rr < n; rr++)
                 {
-                    int id = q * n + r;
+                    int r = rr - (q >> 1);
+                    int id = q * n + rr;
                     var c = new Cell { Id = id, Neighbors = new int[6] };
 
                     c.Neighbors[0] = Idx(n, q, r + 1);       // 위        (0,+1)
@@ -168,7 +171,7 @@ namespace ChromaDrop.Engine
                     c.Neighbors[5] = Idx(n, q - 1, r + 1);   // 좌상      (-1,+1)
 
                     c.FallTarget = c.Neighbors[1];           // 같은 열 아래
-                    c.IsSpawn = r == n - 1;
+                    c.IsSpawn = rr == n - 1;
                     c.AxisForward = new[] { c.Neighbors[0], c.Neighbors[2], c.Neighbors[4] };
                     c.AxisBackward = new[] { c.Neighbors[1], c.Neighbors[3], c.Neighbors[5] };
 
@@ -188,9 +191,12 @@ namespace ChromaDrop.Engine
             return t;
         }
 
+        /// <summary>축 좌표 → 저장 인덱스. 열마다 r 을 밀어 직사각형 판을 만든다.</summary>
         static int Idx(int n, int q, int r)
         {
-            return q >= 0 && q < n && r >= 0 && r < n ? q * n + r : -1;
+            if (q < 0 || q >= n) return -1;
+            int rr = r + (q >> 1);
+            return rr >= 0 && rr < n ? q * n + rr : -1;
         }
 
         public static Vec2 Centroid(Vec2[] poly)

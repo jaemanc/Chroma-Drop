@@ -9,13 +9,17 @@ using UnityEngine;
 
 public class GraphBoardView : MonoBehaviour
 {
-    public float CellInset = 0.90f;      // 셀 사이 간격 — 경계가 보이도록 살짝 줄인다
+    public float CellInset = 0.94f;      // 셀 사이 간격 — 경계가 보이도록 살짝 줄인다
+    const float FaceInset = 0.82f;       // 테두리 안쪽 면
+    const float GlossInset = 0.52f;      // 광택 조각
 
     Topology topo;
     Vec2[][] layout;                     // 루트 로컬 좌표계로 옮겨둔 다각형 (터치 판정에 그대로 쓴다)
     Transform root;
-    MeshRenderer[] fills;
-    MeshRenderer[] overlays;
+    MeshRenderer[] rims;     // 같은 색 진한 테두리
+    MeshRenderer[] fills;    // 블록 면
+    MeshRenderer[] gloss;    // 위쪽 광택
+    MeshRenderer[] overlays; // 강조·장애물 표시
     Color[] palette;
 
     Material mat;
@@ -34,10 +38,10 @@ public class GraphBoardView : MonoBehaviour
         layout = Render.Layout(t, areaW, areaH, out scale, out cell);
         cellSize = (float)cell;
 
-        // 화면 중앙에 오도록 원점을 옮긴다
-        var b = Render.Bounds(t);
-        float offX = -(float)(b.Width * scale) * 0.5f;
-        float offY = -(float)(b.Height * scale) * 0.5f;
+        // Layout 이 이미 areaW x areaH 안에서 가운데로 맞춰 놨다.
+        // 여기서는 그 영역의 중심을 원점으로 옮기기만 한다 (두 번 밀면 판이 한쪽으로 쏠린다).
+        float offX = -areaW * 0.5f;
+        float offY = -areaH * 0.5f;
 
         root = new GameObject("cells").transform;
         root.SetParent(transform, false);
@@ -52,48 +56,161 @@ public class GraphBoardView : MonoBehaviour
             for (int j = 0; j < layout[i].Length; j++)
                 layout[i][j] = new Vec2(layout[i][j].X + offX, layout[i][j].Y + offY);
 
+        BuildPanel();
+
+        rims = new MeshRenderer[t.Count];
+        gloss = new MeshRenderer[t.Count];
+
         for (int i = 0; i < t.Count; i++)
         {
             var center = Centroid(layout[i]);
-            fills[i] = MakeCell("cell_" + i, layout[i], center, 0);
-            overlays[i] = MakeCell("ov_" + i, layout[i], center, 1);
-            overlays[i].transform.localScale = Vector3.one * 0.55f;
+            // 테두리 → 면 → 광택 순으로 쌓아 블록처럼 보이게 한다
+            rims[i] = MakeCell("rim_" + i, layout[i], center, 0, CellInset);
+            fills[i] = MakeCell("cell_" + i, layout[i], center, 1, CellInset * FaceInset);
+            gloss[i] = MakeCell("gl_" + i, layout[i], center, 2, CellInset * GlossInset);
+            gloss[i].transform.localPosition += new Vector3(0, (float)cell * 0.14f, 0);
+            overlays[i] = MakeCell("ov_" + i, layout[i], center, 3, CellInset * 0.5f);
             overlays[i].enabled = false;
         }
     }
 
-    MeshRenderer MakeCell(string name, Vec2[] poly, Vec2 center, int order)
+    MeshRenderer MakeCell(string name, Vec2[] poly, Vec2 center, int order, float inset)
     {
         var go = new GameObject(name);
         go.transform.SetParent(root, false);
-        go.transform.localPosition = new Vector3((float)center.X, (float)center.Y, 0);
+        go.transform.localPosition = new Vector3((float)center.X, (float)center.Y, -order * 0.01f);
+
+        var mf = go.AddComponent<MeshFilter>();
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.sortingOrder = order;
+        mf.mesh = RoundedMesh(poly, center, inset, CellCut);
+        return mr;
+    }
+
+    /// <summary>보드 판. 배경 일러스트에 묻히지 않도록 그림자 → 테두리 → 바닥 순으로 깐다.</summary>
+    void BuildPanel()
+    {
+        // 요청 영역이 아니라 셀이 실제로 차지한 범위에 맞춘다.
+        // 토폴로지에 따라 가로·세로 중 한쪽만 꽉 차기 때문이다.
+        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+        foreach (var poly in layout)
+            foreach (var p in poly)
+            {
+                if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+            }
+
+        float w = (float)(maxX - minX) + PanelPad * 2f;
+        float h = (float)(maxY - minY) + PanelPad * 2f;
+        panelX = (float)(minX + maxX) * 0.5f;
+        panelY = (float)(minY + maxY) * 0.5f;
+
+        Quad("halo", w + PanelBorder * 4f, h + PanelBorder * 4f, panelX, panelY, -4, HaloColor);
+        Quad("shadow", w + PanelBorder * 2f, h + PanelBorder * 2f, panelX, panelY - PanelBorder * 1.6f, -3, ShadowColor);
+        Quad("border", w + PanelBorder * 2f, h + PanelBorder * 2f, panelX, panelY, -2, BorderColor);
+        Quad("surface", w, h, panelX, panelY, -1, SurfaceColor);
+    }
+
+    void Quad(string name, float w, float h, float x, float y, int order, Color c)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(root, false);
+        go.transform.localPosition = new Vector3(x, y, -order * 0.01f + 0.1f);
 
         var mf = go.AddComponent<MeshFilter>();
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterial = mat;
         mr.sortingOrder = order;
 
-        // 중심 기준 상대 좌표로 만들어야 셀마다 위치를 바꿔도 모양이 유지된다
-        var verts = new Vector3[poly.Length + 1];
-        verts[0] = Vector3.zero;
-        for (int i = 0; i < poly.Length; i++)
-            verts[i + 1] = new Vector3((float)(poly[i].X - center.X) * CellInset,
-                                       (float)(poly[i].Y - center.Y) * CellInset, 0);
+        var poly = new[]
+        {
+            new Vec2(-w * 0.5, -h * 0.5), new Vec2(w * 0.5, -h * 0.5),
+            new Vec2(w * 0.5, h * 0.5), new Vec2(-w * 0.5, h * 0.5),
+        };
+        mf.mesh = RoundedMesh(poly, new Vec2(0, 0), 1f, -PanelRadius);
+        Paint(mr, c);
+    }
 
-        var tris = new int[poly.Length * 3];
-        for (int i = 0; i < poly.Length; i++)
+    float panelX, panelY;
+    const float PanelPad = 0.16f;      // 셀 바깥 여백
+    const float PanelBorder = 0.16f;   // 테두리 두께
+
+    static readonly Color SurfaceColor = new Color(0.99f, 0.98f, 0.95f, 0.96f);
+    static readonly Color BorderColor = new Color(0.106f, 0.129f, 0.255f);
+    static readonly Color ShadowColor = new Color(0.106f, 0.129f, 0.255f, 0.35f);
+    static readonly Color HaloColor = new Color(1f, 1f, 1f, 0.22f);
+
+    /// <summary>모서리를 깎은 다각형 메시. 각 꼭짓점을 두 점으로 나눠 둥글게 만든다.
+    /// 스프라이트를 못 쓰는 대신 형태로 블록 느낌을 낸다.</summary>
+    Mesh RoundedMesh(Vec2[] poly, Vec2 center, float inset, float cut)
+    {
+        int n = poly.Length;
+        var pts = new System.Collections.Generic.List<Vector3>(n * 3);
+
+        for (int i = 0; i < n; i++)
+        {
+            var prev = poly[(i - 1 + n) % n];
+            var cur = poly[i];
+            var next = poly[(i + 1) % n];
+
+            // 꼭짓점에서 양옆으로 물러난 두 점 — 그 사이를 몇 조각으로 이어 둥글게
+            // 변 길이에 비례해 깎되, 긴 변에서는 고정 폭을 넘지 않게 한다
+            var a = Lerp(cur, prev, CutFor(cur, prev, cut));
+            var b = Lerp(cur, next, CutFor(cur, next, cut));
+            var mid = Lerp(a, b, 0.5f);
+            var pull = new Vec2(mid.X + (cur.X - mid.X) * 0.45,
+                                mid.Y + (cur.Y - mid.Y) * 0.45);
+
+            pts.Add(Rel(a, center, inset));
+            pts.Add(Rel(pull, center, inset));
+            pts.Add(Rel(b, center, inset));
+        }
+
+        var verts = new Vector3[pts.Count + 1];
+        verts[0] = Vector3.zero;
+        for (int i = 0; i < pts.Count; i++) verts[i + 1] = pts[i];
+
+        var tris = new int[pts.Count * 3];
+        for (int i = 0; i < pts.Count; i++)
         {
             tris[i * 3] = 0;
             tris[i * 3 + 1] = i + 1;
-            tris[i * 3 + 2] = (i + 1) % poly.Length + 1;
+            tris[i * 3 + 2] = (i + 1) % pts.Count + 1;
         }
 
         var mesh = new Mesh();
         mesh.vertices = verts;
         mesh.triangles = tris;
         mesh.RecalculateBounds();
-        mf.mesh = mesh;
-        return mr;
+        return mesh;
+    }
+
+    /// <summary>칸의 모서리를 얼마나 깎을지 (변 길이 대비).</summary>
+    const float CellCut = 0.26f;
+
+    /// <summary>판의 모서리 반경 (월드 단위). 변 길이와 무관하게 일정해야 판처럼 보인다.</summary>
+    const float PanelRadius = 0.42f;
+
+    /// <summary>cut 이 양수면 비율, 음수면 그 절대값을 월드 거리로 본다.</summary>
+    static double CutFor(Vec2 from, Vec2 to, float cut)
+    {
+        if (cut >= 0) return cut;
+        double dx = to.X - from.X, dy = to.Y - from.Y;
+        double len = System.Math.Sqrt(dx * dx + dy * dy);
+        if (len < 1e-9) return 0;
+        double t = -cut / len;
+        return t > 0.5 ? 0.5 : t;
+    }
+
+    static Vec2 Lerp(Vec2 a, Vec2 b, double t)
+    {
+        return new Vec2(a.X + (b.X - a.X) * t, a.Y + (b.Y - a.Y) * t);
+    }
+
+    static Vector3 Rel(Vec2 p, Vec2 center, float inset)
+    {
+        return new Vector3((float)(p.X - center.X) * inset, (float)(p.Y - center.Y) * inset, 0);
     }
 
     static Vec2 Centroid(Vec2[] poly)
@@ -114,26 +231,45 @@ public class GraphBoardView : MonoBehaviour
         for (int i = 0; i < fills.Length && i < eng.Count; i++)
         {
             int v = eng.Get(i);
-            fills[i].enabled = true;
+            bool solid = v != CellState.Empty;
 
-            if (v == CellState.Empty) { Paint(fills[i], EmptyColor); overlays[i].enabled = false; }
-            else if (v == CellState.Locked) { Paint(fills[i], LockedColor); overlays[i].enabled = false; }
-            else if (v == CellState.Brick)
+            rims[i].enabled = solid;
+            fills[i].enabled = true;
+            gloss[i].enabled = solid;
+            overlays[i].enabled = false;
+
+            if (v == CellState.Empty)
             {
-                Paint(fills[i], BrickColor);
+                Paint(fills[i], EmptyColor);
+                gloss[i].enabled = false;
+                continue;
+            }
+
+            Color face;
+            if (v == CellState.Locked) face = LockedColor;
+            else if (v == CellState.Brick) face = BrickColor;
+            else if (v == CellState.Frozen) face = FrozenColor;
+            else face = ColorOf(v);
+
+            // 테두리는 같은 색을 진하게 — 블록마다 경계가 또렷해진다
+            Paint(rims[i], Darken(face, RimDark));
+            Paint(fills[i], face);
+            Paint(gloss[i], new Color(1f, 1f, 1f, 0.18f));
+
+            if (v == CellState.Brick)
+            {
                 overlays[i].enabled = true;
                 Paint(overlays[i], BrickCore(eng.BrickHp(i)));
             }
             else if (v == CellState.Frozen)
             {
-                Paint(fills[i], FrozenColor);
                 overlays[i].enabled = true;
                 Paint(overlays[i], FrozenCore);
             }
-            else
+            else if (v == CellState.Locked)
             {
-                Paint(fills[i], ColorOf(v));
-                overlays[i].enabled = false;
+                overlays[i].enabled = true;
+                Paint(overlays[i], LockedCore);
             }
         }
     }
@@ -144,7 +280,12 @@ public class GraphBoardView : MonoBehaviour
         return palette[index];
     }
 
-    static readonly Color EmptyColor = new Color(0.90f, 0.94f, 0.93f, 0.35f);
+    const float RimDark = 0.72f;   // 테두리는 면보다 이만큼 어둡다
+
+    static Color Darken(Color c, float k) { return new Color(c.r * k, c.g * k, c.b * k, c.a); }
+
+    static readonly Color EmptyColor = new Color(0.92f, 0.96f, 0.95f, 0.55f);
+    static readonly Color LockedCore = new Color(0.72f, 0.76f, 0.82f, 0.9f);
     static readonly Color LockedColor = new Color(0.24f, 0.27f, 0.33f);
     static readonly Color BrickColor = new Color(0.66f, 0.47f, 0.42f);
     static readonly Color FrozenColor = new Color(0.62f, 0.82f, 0.90f);

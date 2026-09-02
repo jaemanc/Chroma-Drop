@@ -96,6 +96,12 @@ public class GameManager : MonoBehaviour
 
     static readonly Color BackgroundColor = new Color(0.80f, 0.89f, 0.93f);
 
+    // 보드가 화면에서 차지하는 자리 (세로 844 기준 프로토타입 비율).
+    // 위쪽 HUD 와 아래쪽 버튼 줄을 피해 예전 판이 있던 곳에 맞춘다.
+    const float BoardWidthFrac = 0.88f;
+    const float BoardHeightFrac = 0.53f;
+    const float BoardCenterFrac = 0.53f;   // 화면 위에서부터의 비율
+
     void BuildBackground()
     {
         var tex = Resources.Load<Texture2D>("jungle_bg");
@@ -437,10 +443,14 @@ public class GameManager : MonoBehaviour
 
         if (inst != null && view != null)
         {
-            float aspect = Screen.height <= 0 ? 1f : Screen.width / (float)Screen.height;
-            float h = cam.orthographicSize * 2f * 0.62f;      // 보드에 쓸 세로 비율
-            float w = h * aspect;
+            // 보드가 차지하는 자리. 예전 화면에서 판이 있던 비율을 그대로 쓴다.
+            float visH = cam.orthographicSize * 2f;
+            float visW = visH * (Screen.height <= 0 ? 1f : Screen.width / (float)Screen.height);
+
+            float w = visW * BoardWidthFrac;
+            float h = visH * BoardHeightFrac;
             view.Build(inst.Topo, w, h);
+            view.transform.position = new Vector3(0, visH * (0.5f - BoardCenterFrac), 0);
             view.SetPalette(PaletteBridge.ToUnity(inst.Palette));
             view.Refresh(inst.Engine);
         }
