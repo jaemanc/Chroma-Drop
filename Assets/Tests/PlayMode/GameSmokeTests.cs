@@ -268,4 +268,31 @@ public class GameSmokeTests
         while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
         Assert.AreEqual(GamePhase.Playing, gm.Phase, "타임어택은 수 소진으로 끝나지 않음");
     }
+
+    // 회귀: 블록이 터지면 위에 있던 것이 실제로 '떨어져야' 한다.
+    // 터진 칸을 시각 상태에서 안 비우면 낙하 전/후가 같은 것으로 보여
+    // 이동 거리가 전부 0 이 되고, 애니메이션 없이 칸만 갈아끼우는 것처럼 보인다.
+    [UnityTest]
+    public IEnumerator 소거되면_위_블록이_실제로_떨어진다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 4242);
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        Assert.IsNotNull(view, "BoardView 를 찾지 못했다");
+
+        // 확실히 터지도록 2x2 한 귀퉁이만 남겨 둔다
+        var board = gm.BoardRef;
+        int c = board.GetTile(0, 0);
+        board.SetTile(5, 5, c); board.SetTile(6, 5, c); board.SetTile(5, 6, c);
+
+        Assert.IsTrue(gm.TryStamp(6, 6), "놓지 못했다");
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.Busy && Time.realtimeSinceStartup - t0 < 20) yield return null;
+
+        Assert.Greater(view.LastMaxDrop, 0f,
+                       "아무 블록도 떨어지지 않았다 — 낙하 연출이 사라진 상태다");
+    }
 }

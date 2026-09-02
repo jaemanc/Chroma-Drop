@@ -25,9 +25,9 @@ public class GameManager : MonoBehaviour
     public float stampTime = 0.34f;        // 들어올림 → 내려찍기 → 버팀 → 복원 전체
     public float destroyFlash = 0.22f;
     public float chainStep = 0.19f;        // 연쇄 한 단계가 터지는 간격
-    public float chainFall = 0.28f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
+    public float chainFall = 0.32f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
     public float landTime = 0.18f;         // 착지 스쿼시·복원
-    public float fallTime = 0.36f;
+    public float fallTime = 0.42f;
     public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
     public GamePhase Phase { get; private set; }
@@ -481,6 +481,7 @@ public class GameManager : MonoBehaviour
                 bool barrier = y == Board.H || w.TilesAfter[x * Board.H + y] == Board.Obstacle
                                             || visual[x, y] == Board.Obstacle;
                 if (!barrier) continue;
+                int segEnd = y;   // 이 구간의 위 경계
 
                 var before = new List<int>();
                 var after = new List<int>();
@@ -496,7 +497,7 @@ public class GameManager : MonoBehaviour
                     int ny = after[i];
                     float drop;
                     if (i < before.Count) drop = before[i] - ny;            // 미끄러진 거리
-                    else drop = (y + (i - before.Count)) - ny;              // 구간 위에서 새로 들어옴
+                    else drop = (segEnd + (i - before.Count)) - ny;         // 구간 위에서 새로 들어옴
 
                     if (drop <= 0.001f) continue;                           // 안 움직인 블록은 건드리지 않는다
                     cells.Add(new Point(x, ny));
@@ -534,6 +535,10 @@ public class GameManager : MonoBehaviour
             pts.Add(p);
             int ci = visual[p.X, p.Y];
             colors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
+
+            // 눈에서 터졌으니 시각 상태에서도 비운다.
+            // 안 비우면 ApplyWave 가 낙하 전/후를 같은 것으로 봐서 이동 거리가 전부 0 이 된다.
+            visual[p.X, p.Y] = Board.Empty;
         }
 
         view.FlashCells(pts, flash);

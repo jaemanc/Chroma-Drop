@@ -646,37 +646,68 @@ public class BoardView : MonoBehaviour
         if (cells == null || cells.Count == 0) yield break;
 
         var delays = new List<float>(cells.Count);
+        var baseColor = new List<Color>(cells.Count);
         float maxDelay = 0f;
+
         for (int i = 0; i < cells.Count; i++)
         {
             float d = drops[i];
             LastDrop[cells[i].X * Board.H + cells[i].Y] = d;
             if (d > LastMaxDrop) LastMaxDrop = d;
+            // 아래쪽이 먼저 자리를 잡아야 위가 따라 내려오는 것으로 보인다
             float delay = (Board.H - 1 - cells[i].Y) * stagger;
             delays.Add(delay);
             if (delay > maxDelay) maxDelay = delay;
+            baseColor.Add(tiles[cells[i].X, cells[i].Y].color);
         }
 
-        float t = 0, total = dur + maxDelay;
-        while (t < total)
+        // 낙하 거리가 길수록 오래 걸린다. 전부 같은 시간에 도착하면 물체 같지 않다.
+        var times = new List<float>(cells.Count);
+        float longest = 0f;
+        for (int i = 0; i < cells.Count; i++)
         {
-            t += Time.deltaTime;
+            float t = dur * Mathf.Sqrt(Mathf.Max(0.35f, drops[i]) / Mathf.Max(1f, LastMaxDrop));
+            times.Add(t);
+            if (delays[i] + t > longest) longest = delays[i] + t;
+        }
+
+        float clock = 0;
+        while (clock < longest)
+        {
+            clock += Time.deltaTime;
             for (int i = 0; i < cells.Count; i++)
             {
-                float k = Mathf.Clamp01((t - delays[i]) / dur);
-                k = 1 - (1 - k) * (1 - k);   // ease-out — 끝에서 부드럽게 멈춘다
-                float off = (1 - k) * drops[i];
-                int x = cells[i].X, y = cells[i].Y;
-                tiles[x, y].transform.localPosition = new Vector3(x, y + off, 0);
-                overlays[x, y].transform.localPosition = new Vector3(x, y + off, -0.5f);
+                float k = Mathf.Clamp01((clock - delays[i]) / times[i]);
+                // 중력 낙하: 처음엔 느리고 갈수록 빨라진다 (거리 ∝ t²)
+                float off = drops[i] * (1f - k * k);
+                Place(cells[i], off, baseColor[i]);
             }
             yield return null;
         }
-        for (int i = 0; i < cells.Count; i++)
+        for (int i = 0; i < cells.Count; i++) Place(cells[i], 0f, baseColor[i]);
+    }
+
+    /// <summary>낙하 중인 칸을 옮겨 그린다. 보드 위쪽 밖으로 나간 부분은 서서히 사라진다 —
+    /// 안 그러면 판 밖 허공에 타일이 떠 있는 것처럼 보인다.</summary>
+    void Place(Point p, float off, Color baseCol)
+    {
+        int x = p.X, y = p.Y;
+        float wy = y + off;
+
+        // 맨 윗줄 위로 한 칸을 걸쳐 사라지게 한다
+        float top = Board.H - 1 + 0.5f;
+        float a = Mathf.Clamp01(1f - (wy - top));
+
+        var sr = tiles[x, y];
+        sr.transform.localPosition = new Vector3(x, wy, 0);
+        sr.color = new Color(baseCol.r, baseCol.g, baseCol.b, baseCol.a * a);
+
+        var ov = overlays[x, y];
+        ov.transform.localPosition = new Vector3(x, wy, -0.5f);
+        if (ov.enabled)
         {
-            int x = cells[i].X, y = cells[i].Y;
-            tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
-            overlays[x, y].transform.localPosition = new Vector3(x, y, -0.5f);
+            var oc = ov.color;
+            ov.color = new Color(oc.r, oc.g, oc.b, a);
         }
     }
 
