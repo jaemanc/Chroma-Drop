@@ -9,7 +9,7 @@ using UnityEngine;
 
 public class GraphBoardView : MonoBehaviour
 {
-    public float CellInset = 0.94f;      // 셀 사이 간격 — 경계가 보이도록 살짝 줄인다
+    public float CellInset = 0.97f;      // 셀 사이 간격 — 경계가 보이도록 살짝 줄인다
     const float FaceInset = 0.82f;       // 테두리 안쪽 면
     const float GlossInset = 0.52f;      // 광택 조각
 
@@ -19,7 +19,8 @@ public class GraphBoardView : MonoBehaviour
     MeshRenderer[] rims;     // 같은 색 진한 테두리
     MeshRenderer[] fills;    // 블록 면
     MeshRenderer[] gloss;    // 위쪽 광택
-    MeshRenderer[] overlays; // 강조·장애물 표시
+    MeshRenderer[] overlays; // 장애물 속 표시
+    MeshRenderer[] ghosts;   // 고스트·예고 (칸 전체를 덮는다)
     Color[] palette;
 
     Material mat;
@@ -60,6 +61,7 @@ public class GraphBoardView : MonoBehaviour
 
         rims = new MeshRenderer[t.Count];
         gloss = new MeshRenderer[t.Count];
+        ghosts = new MeshRenderer[t.Count];
 
         for (int i = 0; i < t.Count; i++)
         {
@@ -71,6 +73,8 @@ public class GraphBoardView : MonoBehaviour
             gloss[i].transform.localPosition += new Vector3(0, (float)cell * 0.14f, 0);
             overlays[i] = MakeCell("ov_" + i, layout[i], center, 3, CellInset * 0.5f);
             overlays[i].enabled = false;
+            ghosts[i] = MakeCell("gh_" + i, layout[i], center, 4, CellInset);
+            ghosts[i].enabled = false;
         }
     }
 
@@ -322,22 +326,164 @@ public class GraphBoardView : MonoBehaviour
         return root.TransformPoint(new Vector3((float)c.X, (float)c.Y, 0));
     }
 
-    /// <summary>강조 표시 — 조각 고스트나 아이템 범위 미리보기에 쓴다.</summary>
-    public void Highlight(IList<int> cells, Color c)
+    // ---------- 강조 ----------
+    // 고스트(조각이 놓일 자리)와 예고(그래서 사라질 칸)를 나눈다.
+    // 예고는 깜빡여야 '여기가 없어진다' 가 바로 읽힌다.
+
+    readonly List<int> ghostCells = new List<int>();
+    readonly List<int> doomedCells = new List<int>();
+    Color ghostColor = Color.white;
+    Color doomedColor = Color.white;
+
+    public void ShowGhost(IList<int> cells, Color c)
     {
-        if (overlays == null) return;
-        if (cells == null) return;
+        ghostCells.Clear();
+        if (cells != null) ghostCells.AddRange(cells);
+        ghostColor = c;
+    }
+
+    public void ShowDoomed(IList<int> cells, Color c)
+    {
+        doomedCells.Clear();
+        if (cells != null) doomedCells.AddRange(cells);
+        doomedColor = c;
+    }
+
+    public void ClearHighlight() { ghostCells.Clear(); doomedCells.Clear(); }
+
+    void LateUpdate()
+    {
+        if (ghosts == null) return;
+
+        for (int i = 0; i < ghosts.Length; i++) ghosts[i].enabled = false;
+
+        // 사라질 칸은 흰색으로 빠르게 깜빡인다 (예전 예고와 같은 박자)
+        float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 17f);
+        var doom = Color.Lerp(new Color(doomedColor.r, doomedColor.g, doomedColor.b, 0.25f),
+                              new Color(doomedColor.r, doomedColor.g, doomedColor.b, 0.92f), k);
+
+        foreach (int id in doomedCells)
+        {
+            if (id < 0 || id >= ghosts.Length) continue;
+            ghosts[id].enabled = true;
+            Paint(ghosts[id], doom);
+        }
+
+        // 조각이 놓일 자리는 또렷하게 — 깜빡이지 않는다
+        foreach (int id in ghostCells)
+        {
+            if (id < 0 || id >= ghosts.Length) continue;
+            ghosts[id].enabled = true;
+            Paint(ghosts[id], ghostColor);
+        }
+    }
+
+    // ---------- 연출 ----------
+    //
+    // 스프라이트가 없으므로 크기와 색으로 표현한다.
+    // 핵심은 '부드러움'이 아니라 순간적인 타격감이라, 이징을 급격한 곡선으로 쓴다.
+
+    /// <summary>들어올렸다가 내려찍는다. onImpact 는 꽂히는 순간에 부른다.</summary>
+    public IEnumerator StampCells(IList<int> cells, float total, System.Action onImpact)
+    {
+        float lift = total * 0.34f;     // 들어올림
+        float slam = total * 0.16f;     // 내려찍기 — 짧을수록 세게 보인다
+        float hold = total * 0.10f;     // 눌린 채 버팀
+        float back = total - lift - slam - hold;
+
+        // 1) 들어올림
+        for (float t = 0; t < lift; t += Time.deltaTime)
+        {
+            float k = t / lift;
+            k = 1f - (1f - k) * (1f - k);
+            SetScale(cells, Mathf.Lerp(1f, LiftScale, k));
+            yield return null;
+        }
+        // 2) 내려찍기 — 가속
+        for (float t = 0; t < slam; t += Time.deltaTime)
+        {
+            float k = t / slam;
+            SetScale(cells, Mathf.Lerp(LiftScale, SquashScale, k * k));
+            yield return null;
+        }
+        if (onImpact != null) onImpact();
+        // 3) 버팀
+        SetScale(cells, SquashScale);
+        yield return new WaitForSeconds(hold);
+        // 4) 복원 — 감쇠 진동
+        for (float t = 0; t < back; t += Time.deltaTime)
+        {
+            float k = t / back;
+            float damp = Mathf.Exp(-6f * k) * Mathf.Cos(k * Mathf.PI * 3.2f);
+            SetScale(cells, 1f + (SquashScale - 1f) * damp);
+            yield return null;
+        }
+        SetScale(cells, 1f);
+    }
+
+    const float LiftScale = 1.24f;
+    const float SquashScale = 0.82f;
+
+    /// <summary>사라지기 직전 번쩍인다. 직접 터진 칸과 연계로 터진 칸을 색으로 나눈다.</summary>
+    public IEnumerator FlashCells(IList<int> cells, Color flash, float dur)
+    {
+        if (cells == null || cells.Count == 0) yield break;
+        for (float t = 0; t < dur; t += Time.deltaTime)
+        {
+            float k = t / dur;
+            foreach (int id in cells)
+            {
+                if (id < 0 || id >= fills.Length) continue;
+                ghosts[id].enabled = true;
+                Paint(ghosts[id], new Color(flash.r, flash.g, flash.b, 1f - k));
+                float sc = 1f + 0.18f * (1f - k);
+                fills[id].transform.localScale = Vector3.one * sc;
+                rims[id].transform.localScale = Vector3.one * sc;
+            }
+            yield return null;
+        }
         foreach (int id in cells)
         {
-            if (id < 0 || id >= overlays.Length) continue;
-            overlays[id].enabled = true;
-            Paint(overlays[id], c);
+            if (id < 0 || id >= fills.Length) continue;
+            ghosts[id].enabled = false;
+            fills[id].transform.localScale = Vector3.one;
+            rims[id].transform.localScale = Vector3.one;
+        }
+    }
+
+    /// <summary>새로 내려온 칸이 튀어 들어온다.</summary>
+    public IEnumerator DropIn(IList<int> cells, float dur)
+    {
+        if (cells == null || cells.Count == 0) yield break;
+        for (float t = 0; t < dur; t += Time.deltaTime)
+        {
+            float k = t / dur;
+            // 살짝 넘겼다가 돌아온다
+            float sc = 1f + 0.35f * Mathf.Sin(k * Mathf.PI) - 0.35f * (1f - k);
+            SetScale(cells, Mathf.Max(0.05f, sc));
+            yield return null;
+        }
+        SetScale(cells, 1f);
+    }
+
+    void SetScale(IList<int> cells, float s)
+    {
+        if (cells == null || fills == null) return;
+        foreach (int id in cells)
+        {
+            if (id < 0 || id >= fills.Length) continue;
+            var v = Vector3.one * s;
+            fills[id].transform.localScale = v;
+            rims[id].transform.localScale = v;
+            gloss[id].transform.localScale = v;
         }
     }
 
     public void Clear()
     {
         if (root != null) DestroyImmediate(root.gameObject);
-        root = null; fills = null; overlays = null; topo = null; layout = null;
+        root = null; fills = null; overlays = null; rims = null; gloss = null; ghosts = null;
+        topo = null; layout = null;
+        ghostCells.Clear(); doomedCells.Clear();
     }
 }

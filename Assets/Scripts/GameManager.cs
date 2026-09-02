@@ -18,8 +18,9 @@ public class GameManager : MonoBehaviour
     public bool timeAttack = false;
 
     // ---------- 연출 속도 ----------
-    public float placeTime = 0.16f;
-    public float clearTime = 0.22f;
+    public float stampTime = 0.34f;    // 들어올림 → 내려찍기 → 버팀 → 복원
+    public float flashTime = 0.20f;    // 사라지기 직전 번쩍임
+    public float chainStep = 0.14f;    // 연쇄 한 단계 사이 간격
     public float fallTime = 0.18f;
 
     public GamePhase Phase { get; private set; }
@@ -98,8 +99,8 @@ public class GameManager : MonoBehaviour
 
     // 보드가 화면에서 차지하는 자리 (세로 844 기준 프로토타입 비율).
     // 위쪽 HUD 와 아래쪽 버튼 줄을 피해 예전 판이 있던 곳에 맞춘다.
-    const float BoardWidthFrac = 0.88f;
-    const float BoardHeightFrac = 0.53f;
+    const float BoardWidthFrac = 0.94f;
+    const float BoardHeightFrac = 0.58f;
     const float BoardCenterFrac = 0.53f;   // 화면 위에서부터의 비율
 
     void BuildBackground()
@@ -189,7 +190,7 @@ public class GameManager : MonoBehaviour
         if (taRunning && !busy && Time.time >= deadline) { EndGame(); return; }
 
         ui.UpdateHud(this);
-        if (busy) { view.Highlight(null, Color.white); return; }
+        if (busy) { view.ClearHighlight(); return; }
         HandleInput();
     }
 
@@ -214,39 +215,64 @@ public class GameManager : MonoBehaviour
 
         Vector3 world = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
         int cell = view.HitTest(world);
-        if (cell < 0) { view.Highlight(null, Color.white); return; }
+        if (cell < 0) { view.ClearHighlight(); return; }
 
         // 아이템이 장전돼 있으면 아이템 범위를, 아니면 조각이 놓일 자리를 보여준다.
         // 프리뷰와 실행이 같은 함수를 쓰므로 어긋날 수 없다.
         if (armed != null)
         {
-            view.Highlight(ItemSystem.Affected(inst.Engine, armed, cell, armedAxis), ItemPreview);
+            view.ShowGhost(null, Color.white);
+            view.ShowDoomed(ItemSystem.Affected(inst.Engine, armed, cell, armedAxis), ItemPreview);
             if (commit) StartCoroutine(FireItem(cell));
             return;
         }
 
         var place = inst.Turn.PlacementAt(cell);
-        view.Highlight(place, place != null ? GhostOk : GhostNo);
-        if (commit && place != null) StartCoroutine(DoPlace(place));
+        if (place == null)
+        {
+            view.ShowGhost(null, Color.white);
+            view.ShowDoomed(null, Color.white);
+            return;
+        }
+
+        // 여기 놓으면 어느 칸이 사라지는지 흰색으로 예고한다.
+        // 조각이 놓일 칸도 그 안에 들면 같이 깜빡인다.
+        var pal = PaletteBridge.ToUnity(inst.Palette);
+        int color = inst.Turn.CurrentColor;
+        var doomed = inst.Engine.PreviewPlace(place, color);
+
+        var doomedSet = new HashSet<int>(doomed);
+        var ghostOnly = new List<int>();
+        foreach (int id in place) if (!doomedSet.Contains(id)) ghostOnly.Add(id);
+
+        view.ShowGhost(ghostOnly, new Color(pal[color].r, pal[color].g, pal[color].b, 0.9f));
+        view.ShowDoomed(doomed, MatchPreview);
+
+        if (commit) StartCoroutine(DoPlace(place));
     }
 
-    static readonly Color GhostOk = new Color(1f, 1f, 1f, 0.85f);
-    static readonly Color GhostNo = new Color(1f, 0.35f, 0.30f, 0.7f);
-    static readonly Color ItemPreview = new Color(1f, 0.10f, 0.06f, 0.85f);
+    static readonly Color MatchPreview = new Color(1f, 1f, 1f);          // 사라질 칸 — 흰색
+    static readonly Color ItemPreview = new Color(1f, 0.10f, 0.06f);     // 아이템 범위 — 빨강
+    static readonly Color DirectFlash = new Color(1f, 1f, 1f);           // 직접 터진 칸
+    static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);      // 연계로 터진 칸
 
     // ---------- 한 수 ----------
 
     IEnumerator DoPlace(List<int> cells)
     {
         busy = true;
-        view.Highlight(null, Color.white);
+        view.ClearHighlight();
 
         int color = inst.Turn.CurrentColor;
         foreach (int id in cells) inst.Engine.Set(id, color);
         view.Refresh(inst.Engine);
-        sfx.PlayStamp();
-        Shake(0.16f, 0.10f);
-        yield return new WaitForSeconds(placeTime);
+
+        // 들어올렸다가 내려찍는다. 소리와 셰이크는 꽂히는 순간에 맞춘다.
+        yield return view.StampCells(cells, stampTime, () =>
+        {
+            sfx.PlayStamp();
+            Shake(0.26f, 0.14f);
+        });
 
         movesLeft--;
         yield return Resolve(false);
@@ -287,9 +313,9 @@ public class GameManager : MonoBehaviour
         score += res.Score;
         inst.Objectives.Apply(res, score, true);
         sfx.PlayItem();
-        Shake(0.30f, 0.18f);
+        Shake(0.34f, 0.20f);
+        yield return view.FlashCells(res.Cleared, DirectFlash, flashTime);
         view.Refresh(inst.Engine);
-        yield return new WaitForSeconds(clearTime);
 
         if (stage.ItemCostsMove) movesLeft--;
         yield return Resolve(true);
@@ -299,25 +325,36 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>연쇄가 멎을 때까지 소거·낙하·리필을 돌리며 단계마다 보여준다.</summary>
+    /// <summary>연쇄가 멎을 때까지 한 단계씩 보여준다.
+    /// 단계마다 '무엇이 사라지는지' 를 먼저 번쩍이고 나서 없앤다 — 인과가 읽혀야 한다.</summary>
     IEnumerator Resolve(bool fromItem)
     {
+        int chain = 0;
         while (true)
         {
-            var res = inst.Engine.ResolveAll();
+            var doomed = inst.Engine.Clearable();
+            if (doomed.Count == 0) break;
+            chain++;
+
+            // 첫 단계는 방금 놓은 수가 직접 만든 것, 이후는 무너져 생긴 연계다
+            yield return view.FlashCells(doomed, chain == 1 ? DirectFlash : ChainFlash, flashTime);
+
+            var res = inst.Engine.ResolveOnce();
             if (res.Cleared.Count == 0) break;
 
             score += res.Score;
             inst.Objectives.Apply(res, score, fromItem);
-            sfx.PlayDestroy(res.Chain);
-            Shake(0.12f * res.Chain, 0.12f);
+            sfx.PlayDestroy(chain);
+            Shake(0.14f + 0.06f * chain, 0.13f);
+
             view.Refresh(inst.Engine);
-            yield return new WaitForSeconds(clearTime);
+            yield return view.DropIn(res.Refilled, fallTime);
+            yield return new WaitForSeconds(chainStep);
 
             fromItem = false;   // 첫 단계만 아이템 발동이고 이후 연쇄는 일반 소거다
             if (!stage.ChainReaction) break;
         }
         view.Refresh(inst.Engine);
-        yield return new WaitForSeconds(fallTime);
     }
 
     void CheckEnd()
@@ -378,7 +415,7 @@ public class GameManager : MonoBehaviour
     {
         Phase = GamePhase.Result;
         busy = false;
-        view.Highlight(null, Color.white);
+        view.ClearHighlight();
 
         earnedCoins = Wallet.CoinsFor(score);
         Wallet.AddCoins(earnedCoins);

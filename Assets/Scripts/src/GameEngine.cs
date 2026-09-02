@@ -28,6 +28,8 @@ namespace ChromaDrop.Engine
         public int Chain;
         public int[] ClearedByColor = new int[0];
         public int LargestGroup;
+        /// <summary>이번에 새로 들어오거나 내려온 칸. 연출이 여기만 튀게 한다.</summary>
+        public readonly List<int> Refilled = new List<int>();
     }
 
     public sealed class GameEngine
@@ -226,12 +228,42 @@ namespace ChromaDrop.Engine
             return null;
         }
 
+        /// <summary>이 칸들에 이 색을 놓으면 어느 칸이 사라지는지 미리 계산한다.
+        /// 보드는 바꾸지 않는다. 실제로 놓아 보고 되돌리므로 판정이 어긋날 수 없다.</summary>
+        public List<int> PreviewPlace(IList<int> cells, int color)
+        {
+            var saved = new int[cells.Count];
+            for (int i = 0; i < cells.Count; i++)
+            {
+                saved[i] = this.cells[cells[i]];
+                this.cells[cells[i]] = color;
+            }
+
+            var acc = new List<int>();
+            var seen = new HashSet<int>();
+            foreach (var g in AllGroups())
+                foreach (int id in g) if (seen.Add(id)) acc.Add(id);
+
+            for (int i = 0; i < cells.Count; i++) this.cells[cells[i]] = saved[i];
+            return acc;
+        }
+
+        /// <summary>지금 이 순간 소거될 칸 전부. 보드는 바꾸지 않는다.</summary>
+        public List<int> Clearable()
+        {
+            var acc = new List<int>();
+            var seen = new HashSet<int>();
+            foreach (var g in AllGroups())
+                foreach (int id in g) if (seen.Add(id)) acc.Add(id);
+            return acc;
+        }
+
         /// <summary>지금 소거 가능한 그룹이 하나라도 있는가.</summary>
         public bool HasClearableGroup() { return FirstGroup() != null; }
 
         // ---------- 소거 ----------
 
-        /// <summary>모든 소거 가능 그룹을 없애고 중력·리필까지 돌린다.</summary>
+        /// <summary>모든 소거 가능 그룹을 없애고 중력·리필까지 돌린다 (연쇄 끝까지).</summary>
         public ClearResult ResolveAll()
         {
             var res = new ClearResult { ClearedByColor = new int[PaletteSize] };
@@ -239,23 +271,51 @@ namespace ChromaDrop.Engine
 
             while (guard-- > 0)
             {
-                var groups = AllGroups();
-                if (groups.Count == 0) break;
+                var step = ResolveOnce();
+                if (step.Cleared.Count == 0) break;
+
                 res.Chain++;
-
-                var doomed = new List<int>();
-                foreach (var g in groups)
-                {
-                    if (g.Count > res.LargestGroup) res.LargestGroup = g.Count;
-                    doomed.AddRange(g);
-                }
-
-                ClearCells(doomed, res);
-                ApplyGravity();
-                Refill();
+                res.Score += step.Score;
+                res.BricksBroken += step.BricksBroken;
+                res.FrozenThawed += step.FrozenThawed;
+                if (step.LargestGroup > res.LargestGroup) res.LargestGroup = step.LargestGroup;
+                res.Cleared.AddRange(step.Cleared);
+                res.Refilled.AddRange(step.Refilled);
+                for (int i = 0; i < res.ClearedByColor.Length && i < step.ClearedByColor.Length; i++)
+                    res.ClearedByColor[i] += step.ClearedByColor[i];
 
                 if (!chainReaction) break;
             }
+            return res;
+        }
+
+        /// <summary>연쇄 한 단계만 처리한다. 화면에 단계별로 보여주려면 이걸 쓴다.</summary>
+        public ClearResult ResolveOnce()
+        {
+            var res = new ClearResult { ClearedByColor = new int[PaletteSize], Chain = 1 };
+
+            var groups = AllGroups();
+            if (groups.Count == 0) { res.Chain = 0; return res; }
+
+            var doomed = new List<int>();
+            foreach (var g in groups)
+            {
+                if (g.Count > res.LargestGroup) res.LargestGroup = g.Count;
+                doomed.AddRange(g);
+            }
+
+            ClearCells(doomed, res);
+
+            // 낙하·리필 전후를 비교해 '새로 채워진 칸' 을 뽑는다
+            var before = new int[cells.Length];
+            for (int i = 0; i < cells.Length; i++) before[i] = cells[i];
+
+            ApplyGravity();
+            Refill();
+
+            for (int i = 0; i < cells.Length; i++)
+                if (before[i] != cells[i] && CellState.IsColor(cells[i])) res.Refilled.Add(i);
+
             return res;
         }
 
