@@ -252,7 +252,20 @@ static class Verify
         return stages;
     }
     const string StagePath = "stages/stages.json";
-    const int ForcedSquareUntil = 5;
+    const string CurvePath = "stages/curve.config.json";
+
+    /// <summary>사각 고정 구간은 설정값이다. 여기 숫자를 박으면 설정을 바꿔도 검사가 못 따라온다.</summary>
+    static int ForcedSquareUntil
+    {
+        get
+        {
+            var root = MiniJson.Parse(File.ReadAllText(CurvePath)) as System.Collections.Generic.Dictionary<string, object>;
+            var topo = root != null && root.ContainsKey("topology")
+                     ? root["topology"] as System.Collections.Generic.Dictionary<string, object> : null;
+            object v;
+            return topo != null && topo.TryGetValue("forcedSquareUntil", out v) && v is double ? (int)(double)v : 0;
+        }
+    }
 
     // V11 colorWeights 길이 == palette.size
     static void V11()
@@ -299,15 +312,24 @@ static class Verify
         Check("V13", bad.Count == 0, string.Join(" ", bad.ToArray()));
     }
 
-    // V14 스테이지 1~5 는 square
+    // V14 사각 고정 구간은 square, 그 뒤로는 세 토폴로지가 모두 나와야 한다
     static void V14()
     {
         var rep = Stages();
+        int until = ForcedSquareUntil;
         var bad = new List<string>();
+        var kinds = new HashSet<string>();
+
         foreach (var s in rep.Stages)
-            if (s.StageId <= ForcedSquareUntil && s.ResolveTopology() != TopologyGen.Square)
-                bad.Add("stage" + s.StageId + "=" + s.ResolveTopology());
-        Check("V14", bad.Count == 0, string.Join(" ", bad.ToArray()));
+        {
+            string k = s.ResolveTopology();
+            if (s.StageId <= until && k != TopologyGen.Square) bad.Add("stage" + s.StageId + "=" + k);
+            if (s.StageId > until) kinds.Add(k);
+        }
+        foreach (var k in TopologyGen.Kinds)
+            if (!kinds.Contains(k)) bad.Add("고정 구간 뒤에 " + k + " 가 한 번도 안 나온다");
+
+        Check("V14", bad.Count == 0, "고정 " + until + "판까지  " + string.Join(" ", bad.ToArray()));
     }
 
     // V15 스테이지당 변화 축 <= 2, paletteSize/minGroupSize 동시 상향 0건

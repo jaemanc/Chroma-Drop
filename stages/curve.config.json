@@ -3,10 +3,10 @@
   "stageCount": 30,
   "baseSeed": 20260902,
   "grid": {
-    "size": 8
+    "size": 14
   },
   "topology": {
-    "forcedSquareUntil": 5,
+    "forcedSquareUntil": 2,
     "allowed": [
       "square",
       "triangle",

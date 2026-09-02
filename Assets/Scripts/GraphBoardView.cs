@@ -378,6 +378,71 @@ public class GraphBoardView : MonoBehaviour
         }
     }
 
+    // ---------- 다음 조각 미리보기 ----------
+    //
+    // 조각은 그래프 위 모양이라 uGUI 로는 그리기 어렵다.
+    // 판과 같은 방식(다각형 메시)으로 작게 그려서 모양이 그대로 보이게 한다.
+
+    Transform nextRoot;
+
+    /// <summary>들고 있는 조각을 지정한 자리에 작게 그린다.</summary>
+    public void ShowNextPiece(Topology t, IList<int> cells, Vector3 worldPos, float size, Color color)
+    {
+        if (nextRoot != null) DestroyImmediate(nextRoot.gameObject);
+        if (cells == null || cells.Count == 0) return;
+
+        nextRoot = new GameObject("nextpiece").transform;
+        nextRoot.SetParent(transform.parent, false);
+        nextRoot.position = worldPos;
+
+        // 조각이 차지한 범위를 재서 size 안에 맞춘다
+        double minX = double.MaxValue, minY = double.MaxValue, maxX = double.MinValue, maxY = double.MinValue;
+        foreach (int id in cells)
+            foreach (var p in t.Cells[id].Poly)
+            {
+                if (p.X < minX) minX = p.X; if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y; if (p.Y > maxY) maxY = p.Y;
+            }
+
+        double w = maxX - minX, h = maxY - minY;
+        float scale = (float)(size / System.Math.Max(0.001, System.Math.Max(w, h)));
+        var mid = new Vec2((minX + maxX) * 0.5, (minY + maxY) * 0.5);
+
+        if (mat == null) mat = new Material(Shader.Find("Sprites/Default"));
+
+        foreach (int id in cells)
+        {
+            var src = t.Cells[id].Poly;
+            var poly = new Vec2[src.Length];
+            for (int i = 0; i < src.Length; i++)
+                poly[i] = new Vec2((src[i].X - mid.X) * scale, (src[i].Y - mid.Y) * scale);
+            var center = Centroid(poly);
+
+            MakeMini("nrim_" + id, poly, center, 20, CellInset, Darken(color, RimDark));
+            MakeMini("nface_" + id, poly, center, 21, CellInset * FaceInset, color);
+        }
+    }
+
+    void MakeMini(string name, Vec2[] poly, Vec2 center, int order, float inset, Color c)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(nextRoot, false);
+        go.transform.localPosition = new Vector3((float)center.X, (float)center.Y, -order * 0.01f);
+
+        var mf = go.AddComponent<MeshFilter>();
+        var mr = go.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = mat;
+        mr.sortingOrder = order;
+        mf.mesh = RoundedMesh(poly, center, inset, CellCut);
+        Paint(mr, c);
+    }
+
+    public void HideNextPiece()
+    {
+        if (nextRoot != null) DestroyImmediate(nextRoot.gameObject);
+        nextRoot = null;
+    }
+
     // ---------- 연출 ----------
     //
     // 스프라이트가 없으므로 크기와 색으로 표현한다.
@@ -482,6 +547,7 @@ public class GraphBoardView : MonoBehaviour
     public void Clear()
     {
         if (root != null) DestroyImmediate(root.gameObject);
+        HideNextPiece();
         root = null; fills = null; overlays = null; rims = null; gloss = null; ghosts = null;
         topo = null; layout = null;
         ghostCells.Clear(); doomedCells.Clear();

@@ -118,7 +118,7 @@ public class GameManager : MonoBehaviour
         Phase = GamePhase.Home;
         busy = false;
         armed = null;
-        if (view != null) { view.SetVisible(false); }
+        if (view != null) { view.SetVisible(false); view.HideNextPiece(); }
         ui.ShowHome();
     }
 
@@ -275,6 +275,15 @@ public class GameManager : MonoBehaviour
         });
 
         movesLeft--;
+
+        // 놓은 자리가 공중이면 여기서 내려앉는다. 위가 막혀 있으면 그대로 멈춘다.
+        var settled = inst.Engine.Settle();
+        if (settled.Count > 0)
+        {
+            view.Refresh(inst.Engine);
+            yield return view.DropIn(settled, fallTime);
+        }
+
         yield return Resolve(false);
 
         if (Phase != GamePhase.Playing) yield break;
@@ -292,16 +301,32 @@ public class GameManager : MonoBehaviour
         CheckEnd();
     }
 
+    /// <summary>들고 있는 조각을 보드 위쪽에 실제 모양으로 그린다.
+    /// 글자만으로는 무슨 모양인지 눈에 안 들어온다.</summary>
     void ShowNextPiece()
     {
         if (inst == null) return;
         var shape = inst.Turn.Current;
-        var cells = PieceShapes.Resolve(inst.Topo, shape, 0);
-        int n = cells != null ? cells.Count : shape.Steps.Length;
+
+        // 어디서든 잘리지 않는 기준 칸을 골라 모양을 편다
+        List<int> cells = null;
+        for (int i = 0; i < inst.Topo.Count && cells == null; i++)
+            cells = PieceShapes.Resolve(inst.Topo, shape, i);
+
         var pal = PaletteBridge.ToUnity(inst.Palette);
         int c = inst.Turn.CurrentColor;
-        ui.SetNext(shape.Name, n, c >= 0 && c < pal.Length ? pal[c] : Color.white);
+        var color = c >= 0 && c < pal.Length ? pal[c] : Color.white;
+
+        float visH = cam.orthographicSize * 2f;
+        float y = visH * (0.5f - NextCenterFrac);
+        view.ShowNextPiece(inst.Topo, cells, new Vector3(0, y, 0), visH * NextSizeFrac, color);
+
+        ui.SetNext(shape.Name, cells != null ? cells.Count : 0, color);
     }
+
+    // 다음 조각 미리보기 자리 (화면 세로 대비)
+    const float NextCenterFrac = 0.155f;
+    const float NextSizeFrac = 0.075f;
 
     IEnumerator FireItem(int cell)
     {

@@ -289,6 +289,22 @@ namespace ChromaDrop.Engine
             return res;
         }
 
+        /// <summary>중력과 리필을 한 번 돌리고 바뀐 칸을 돌려준다.
+        /// 조각을 놓은 직후에도 불러야 한다 — 안 그러면 빈칸 위에 놓인 블록이 공중에 뜬다.</summary>
+        public List<int> Settle()
+        {
+            var before = new int[cells.Length];
+            for (int i = 0; i < cells.Length; i++) before[i] = cells[i];
+
+            ApplyGravity();
+            Refill();
+
+            var changed = new List<int>();
+            for (int i = 0; i < cells.Length; i++)
+                if (before[i] != cells[i] && CellState.IsColor(cells[i])) changed.Add(i);
+            return changed;
+        }
+
         /// <summary>연쇄 한 단계만 처리한다. 화면에 단계별로 보여주려면 이걸 쓴다.</summary>
         public ClearResult ResolveOnce()
         {
@@ -305,17 +321,7 @@ namespace ChromaDrop.Engine
             }
 
             ClearCells(doomed, res);
-
-            // 낙하·리필 전후를 비교해 '새로 채워진 칸' 을 뽑는다
-            var before = new int[cells.Length];
-            for (int i = 0; i < cells.Length; i++) before[i] = cells[i];
-
-            ApplyGravity();
-            Refill();
-
-            for (int i = 0; i < cells.Length; i++)
-                if (before[i] != cells[i] && CellState.IsColor(cells[i])) res.Refilled.Add(i);
-
+            res.Refilled.AddRange(Settle());
             return res;
         }
 
