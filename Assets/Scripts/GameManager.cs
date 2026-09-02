@@ -20,6 +20,7 @@ public class GameManager : MonoBehaviour
     public string difficulty { get { return Difficulty; } }
     public bool timeAttack = false;
     public int seed = 0;                   // 0 = 랜덤
+    public int stageLevel = 1;             // 스테이지. 설정은 stages/stages.json 이 갖는다
 
     [Header("연출 시간(초)")]
     public float stampTime = 0.34f;        // 들어올림 → 내려찍기 → 버팀 → 복원 전체
@@ -46,6 +47,7 @@ public class GameManager : MonoBehaviour
     static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);
 
     Board board;
+    StageSetting stage = new StageSetting();   // 이 판의 설정
     Piece current;                                   // 지금 집은 조각 (트레이에서 고른 것)
     readonly Piece[] tray = new Piece[BoardView.TraySlots];
     int selectedSlot = -1;                           // -1 이면 아무것도 안 집은 상태
@@ -69,6 +71,9 @@ public class GameManager : MonoBehaviour
 
     /// <summary>폭탄 조각이 장전돼 있나.</summary>
     public bool BombArmed { get { return pendingBomb; } }
+
+    /// <summary>이 판의 설정. 값은 stages/stages.json 이 갖는다.</summary>
+    public StageSetting Stage { get { return stage; } }
 
     Vector3 camBase;
 
@@ -162,15 +167,18 @@ public class GameManager : MonoBehaviour
         if (cam != null) cam.transform.position = camBase;
         timeAttack = ta;
 
+        // 판을 만들기 전에 이 스테이지의 설정부터 정한다.
+        // 뒤에 대입하면 보드·팔레트가 이전 스테이지 값으로 만들어진다.
+        stage = StageTable.Get(stageLevel);
+
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         curSeed = s;
-        board = new Board(Rules.ColorCount, s);
+        board = new Board(stage.ColorCount, s);
         pieceRng = new System.Random(s + 1);
-        palette = Palette.Generate(Rules.ColorCount, new System.Random(s + 2));
+        palette = Palette.Generate(stage.ColorCount, new System.Random(s + 2));
 
-        var d = Rules.Table[difficulty];
         taRunning = timeAttack;
-        totalMoves = movesLeft = timeAttack ? 9999 : d.Moves;
+        totalMoves = movesLeft = timeAttack ? 9999 : stage.Moves;
         score = 0;
         busy = false;
         touchActive = false;
@@ -178,7 +186,7 @@ public class GameManager : MonoBehaviour
         pendingBomb = false;
         selectedSlot = -1;
         dragging = false;
-        for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+        for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, stage.ColorCount);
         selectedSlot = BoardView.CurrentSlot;
         current = tray[BoardView.CurrentSlot];
 
@@ -481,10 +489,10 @@ public class GameManager : MonoBehaviour
 
         // 아무 칸도 안 터진 수에는 벌칙으로 벽돌이 하나 생긴다.
         // 그 자리에 아이템이 있었으면 아이템은 사라진다.
-        if (result.Destroyed.Count == 0)
+        if (result.Destroyed.Count == 0 && stage.PenaltyObstacle)
         {
             Point put;
-            if (board.PenaltyObstacle(out put) >= 0)
+            if (board.PenaltyObstacle(stage.ObstacleHp, out put) >= 0)
             {
                 view.Refresh(board, palette);
                 yield return view.LandCells(new List<Point> { put }, landTime);
@@ -497,8 +505,8 @@ public class GameManager : MonoBehaviour
         if (!taRunning)
         {
             int used = totalMoves - movesLeft;
-            int add = Rules.ObstaclesAfterMove(used, totalMoves);
-            if (add > 0 && board.SpawnObstacles(add) > 0) sfx.PlayItem();
+            int add = stage.ObstaclesAfterMove(used, totalMoves);
+            if (add > 0 && board.SpawnObstacles(add, stage.ObstacleHp) > 0) sfx.PlayItem();
         }
         view.Refresh(board, palette);
 
@@ -529,7 +537,7 @@ public class GameManager : MonoBehaviour
     void AdvanceTray()
     {
         for (int i = 0; i < tray.Length - 1; i++) tray[i] = tray[i + 1];
-        tray[tray.Length - 1] = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+        tray[tray.Length - 1] = Piece.CreateRandom(pieceRng, stage.ColorCount);
         selectedSlot = BoardView.CurrentSlot;
         current = tray[BoardView.CurrentSlot];
         RefreshTray();
@@ -556,7 +564,7 @@ public class GameManager : MonoBehaviour
 
     void StartPieceTimer()
     {
-        pieceTimeTotal = Rules.PieceTimeMs(movesLeft, totalMoves) / 1000f;
+        pieceTimeTotal = stage.PieceTimeMs(movesLeft, totalMoves) / 1000f;
         pieceDeadline = Time.time + pieceTimeTotal;
     }
 

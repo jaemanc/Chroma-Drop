@@ -22,6 +22,14 @@ public static class Json
     }
 
     public static Dictionary<string, object> AsMap(object o) { return o as Dictionary<string, object>; }
+    public static List<object> AsList(object o) { return o as List<object>; }
+
+    public static bool Bool(Dictionary<string, object> m, string key, bool fallback)
+    {
+        object v;
+        if (m != null && m.TryGetValue(key, out v) && v is bool) return (bool)v;
+        return fallback;
+    }
 
     public static string Str(Dictionary<string, object> m, string key, string fallback)
     {

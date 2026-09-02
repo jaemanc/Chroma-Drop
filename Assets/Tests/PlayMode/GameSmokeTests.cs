@@ -13,8 +13,8 @@ public class GameSmokeTests
 {
     GameManager gm;
 
-    // 난이도 선택이 없어져 규칙표에서 가져온다
-    static int Moves { get { return Rules.Table[GameManager.Difficulty].Moves; } }
+    // 수 제한은 스테이지 설정이 갖는다
+    static int Moves { get { return StageTable.Get(1).Moves; } }
 
     GameManager NewGm()
     {
@@ -77,6 +77,7 @@ public class GameSmokeTests
     public IEnumerator 제한시간이_지나면_조각이_버려지고_기회를_쓴다()
     {
         gm = NewGm();
+        gm.stageLevel = StageTable.Count;   // 제한시간이 가장 짧은 스테이지
         yield return null;
         gm.StartGame(GameManager.Difficulty, false, 4321);
         yield return null;
@@ -88,7 +89,7 @@ public class GameSmokeTests
 
         // 아무것도 놓지 않고 제한시간이 지나기를 기다린다
         float t0 = Time.realtimeSinceStartup;
-        while (gm.MovesLeft == moves && Time.realtimeSinceStartup - t0 < 15f)
+        while (gm.MovesLeft == moves && Time.realtimeSinceStartup - t0 < 20f)
             yield return null;
 
         Assert.AreEqual(moves - 1, gm.MovesLeft, "만료되면 기회를 하나 쓴다");
@@ -169,6 +170,7 @@ public class GameSmokeTests
     public IEnumerator 조각이_만료되면_폭탄_장전도_풀린다()
     {
         gm = NewGm();
+        gm.stageLevel = StageTable.Count;   // 제한시간이 가장 짧은 스테이지
         yield return null;
         gm.StartGame(GameManager.Difficulty, false, 767);
         yield return null;
@@ -179,7 +181,7 @@ public class GameSmokeTests
 
         // 손대지 않고 만료를 기다린다
         float t0 = Time.realtimeSinceStartup;
-        while (gm.BombArmed && Time.realtimeSinceStartup - t0 < 12) yield return null;
+        while (gm.BombArmed && Time.realtimeSinceStartup - t0 < 20) yield return null;
         Assert.IsFalse(gm.BombArmed, "만료됐는데 폭탄 예약이 남아 있다");
         Assert.AreEqual(0, gm.SelectedSlot, "만료 뒤에도 지금 블록이 잡혀 있다");
     }
@@ -351,9 +353,11 @@ public class GameSmokeTests
     public IEnumerator 아무것도_안_터지면_벽돌이_생긴다()
     {
         gm = NewGm();
+        gm.stageLevel = FindLevelWithPenalty();
         yield return null;
         gm.StartGame(GameManager.Difficulty, false, 2468);
         yield return null;
+        Assert.IsTrue(gm.Stage.PenaltyObstacle, "벌칙 규칙이 켜진 스테이지를 못 찾았다");
 
         var board = gm.BoardRef;
         int before = board.CountObstacles();
@@ -425,6 +429,14 @@ public class GameSmokeTests
         Assert.GreaterOrEqual(Bottom(timer), boardTopY, "타이머가 보드를 덮는다");
         Assert.LessOrEqual(Top(items), boardBottomY, "아이템 줄이 보드를 덮는다");
         Assert.GreaterOrEqual(Bottom(items), trayTopY, "아이템 줄이 트레이를 덮는다");
+    }
+
+    /// <summary>벌칙 벽돌 규칙이 켜진 첫 스테이지.</summary>
+    static int FindLevelWithPenalty()
+    {
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+            if (StageTable.Get(lv).PenaltyObstacle) return lv;
+        return StageTable.Count;
     }
 
     static RectTransform FindRect(GameObject root, string name)

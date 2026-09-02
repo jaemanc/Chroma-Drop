@@ -43,6 +43,8 @@ fi
 mkdir -p Logs
 pkill -f "Builds/Mac/ChromaDrop.app" 2>/dev/null
 
+./Tools/sync-stages.sh >/dev/null
+
 if [ "$RUN_TESTS" = "1" ]; then
   echo "▶ 코어 규칙 테스트"
   if ! "$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe 2>&1 | grep -v warning; then :; fi

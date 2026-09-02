@@ -590,7 +590,9 @@ namespace ColorMatcher.Core
         /// <summary>아무 칸도 안 터진 수에 대한 벌칙으로 벽돌 하나를 놓는다.
         /// 그 자리에 아이템이 있었으면 아이템은 사라지고 벽돌이 대신 들어선다.
         /// 놓을 자리를 못 찾으면 -1.</summary>
-        public int PenaltyObstacle(out Point where)
+        public int PenaltyObstacle(out Point where) { return PenaltyObstacle(Rules.ObstacleHp, out where); }
+
+        public int PenaltyObstacle(int hp, out Point where)
         {
             where = new Point(0, 0);
             var open = new List<Point>();
@@ -601,19 +603,21 @@ namespace ColorMatcher.Core
 
             var p = open[rng.Next(open.Count)];
             bool hadItem = items[p.X, p.Y] != ItemType.None;
-            SetObstacle(p.X, p.Y, Rules.ObstacleHp);   // SetObstacle 이 아이템을 지운다
+            SetObstacle(p.X, p.Y, hp);   // SetObstacle 이 아이템을 지운다
             where = p;
             return hadItem ? 1 : 0;
         }
 
-        public int SpawnObstacles(int count)
+        public int SpawnObstacles(int count) { return SpawnObstacles(count, Rules.ObstacleHp); }
+
+        public int SpawnObstacles(int count, int hp)
         {
             int placed = 0;
             for (int t = 0; t < count * 40 && placed < count; t++)
             {
                 int x = rng.Next(W), y = rng.Next(H);
-                if (!IsColor(tiles[x, y])) continue;   // 빈칸/콘크리트 자리는 건너뛴다
-                SetObstacle(x, y, Rules.ObstacleHp);
+                if (!IsColor(tiles[x, y])) continue;   // 빈칸/벽돌 자리는 건너뛴다
+                SetObstacle(x, y, hp);
                 placed++;
             }
             return placed;
