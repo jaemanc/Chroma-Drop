@@ -61,6 +61,7 @@ public class GameUI : MonoBehaviour
     const int RankRowCount = 10;
     RectTransform itemRow, timerRow;
     Text gameEyebrow;
+    RectTransform nextBtn, retryBtn, homeBtn;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
 
@@ -175,7 +176,7 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 282, 18);
+        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 22, 282, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
@@ -183,14 +184,14 @@ public class GameUI : MonoBehaviour
         const float StatW = 94f, StatH = 38f, StatGap = 10f;
         float statLeft = (390f - (StatW * 2f + StatGap)) * 0.5f;
 
-        var scoreCard = Card(safe, "statscore", statLeft, 68, StatW, StatH, Cream, 18);
+        var scoreCard = Card(safe, "statscore", statLeft, 56, StatW, StatH, Cream, 18);
         var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 8, TextAnchor.UpperCenter, StatLabel, 0, 0, 0, 0);
         Anchor(sl.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
         scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
         scoreText.fontStyle = FontStyle.Bold;
         Anchor(scoreText.transform, 0.5f, 1, 0, -15, StatW - 10, 22);
 
-        var movesCard = Card(safe, "statmoves", statLeft + StatW + StatGap, 68, StatW, StatH, Mint, 18);
+        var movesCard = Card(safe, "statmoves", statLeft + StatW + StatGap, 56, StatW, StatH, Mint, 18);
         subText = Label(movesCard.transform, "l", "", 8, TextAnchor.UpperCenter, MintInk, 0, 0, 0, 0);
         Anchor(subText.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
         rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
@@ -242,7 +243,7 @@ public class GameUI : MonoBehaviour
 
         // ---- 하단 조작 ----
         // 하단은 트레이가 쓴다. 홈·회전은 상단 모서리에 작은 아이콘으로 둔다.
-        HookButton(Card(safe, "home", 24, 14, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
+        HookButton(Card(safe, "home", 24, 10, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
         Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
@@ -487,7 +488,8 @@ public class GameUI : MonoBehaviour
     Sprite circleSprite;
     Image[] modeFill;
     Text[] modeEyebrow;
-    Text selectedModeText, coinHomeText;
+    Text selectedModeText, coinHomeText, stageNumText;
+    Image stagePrev, stageNext;
 
     Sprite Rounded(float protoRadius)
     {
@@ -640,10 +642,23 @@ public class GameUI : MonoBehaviour
         var sb = startRoot.gameObject.AddComponent<Button>();
         sb.targetGraphic = faceOuter;
         sb.transition = Selectable.Transition.None;
-        sb.onClick.AddListener(() => gm.StartGame());
+        sb.onClick.AddListener(() =>
+        {
+            if (!gm.timeAttack) gm.stageLevel = Progress.Selected;
+            gm.StartGame();
+        });
         startRoot.gameObject.AddComponent<UiPressImage>().target = faceRt;
 
-        selectedModeText = Label(safe, "selmode", "", 13, TextAnchor.MiddleLeft, Body, 20, 434, 350, 20);
+        selectedModeText = Label(safe, "selmode", "", 12, TextAnchor.MiddleLeft, Body, 20, 434, 240, 20);
+
+        // ---- 스테이지 고르기 ----
+        // 깬 스테이지까지만 고를 수 있다. 진행은 PlayerPrefs 에 로컬 저장되므로
+        // 서버 없이도 앱을 껐다 켜면 그대로 남는다.
+        stagePrev = Card(safe, "stgprev", 262, 428, 40, 32, Color.white, 10);
+        HookButton(stagePrev, () => { Progress.Selected = Progress.Selected - 1; RefreshHomeButtons(); }, "\u25C0", 12);
+        stageNext = Card(safe, "stgnext", 330, 428, 40, 32, Color.white, 10);
+        HookButton(stageNext, () => { Progress.Selected = Progress.Selected + 1; RefreshHomeButtons(); }, "\u25B6", 12);
+        stageNumText = Label(safe, "stgnum", "", 14, TextAnchor.MiddleCenter, Ink, 300, 428, 32, 32);
 
         // ---- 최고 기록 카드 ----
         var best = Card(safe, "bestcard", 20, 472, 350, 328, Cream, 22);
@@ -764,10 +779,42 @@ public class GameUI : MonoBehaviour
         }
         bestHomeText.text = gm.BestForSelection().ToString("N0");
         if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0");
+
+        int lv = Progress.Selected;
+        var st = StageTable.Get(lv);
         selectedModeText.text = gm.timeAttack
-            ? "Selected mode: time attack · 3 min"
-            : "Selected mode: " + Rules.Table[GameManager.Difficulty].Moves + " moves";
+            ? "Time attack · 3 min"
+            : "Stage " + lv + " · clear " + st.ClearBlocks + " blocks in " + st.Moves + " moves";
+
+        // 타임어택에는 스테이지가 없다
+        bool stageMode = !gm.timeAttack;
+        SetActive(stagePrev, stageMode);
+        SetActive(stageNext, stageMode);
+        if (stageNumText != null)
+        {
+            stageNumText.gameObject.SetActive(stageMode);
+            stageNumText.text = lv.ToString();
+        }
+        if (stageMode)
+        {
+            // 안 깬 스테이지는 고를 수 없다
+            SetInteractable(stagePrev, lv > 1);
+            SetInteractable(stageNext, lv < Progress.Unlocked);
+        }
         RefreshBadge();
+    }
+
+    static void SetActive(Image cardFill, bool on)
+    {
+        if (cardFill != null) cardFill.transform.parent.gameObject.SetActive(on);
+    }
+
+    static void SetInteractable(Image cardFill, bool on)
+    {
+        if (cardFill == null) return;
+        var b = cardFill.transform.parent.GetComponent<Button>();
+        if (b != null) b.interactable = on;
+        cardFill.color = on ? Color.white : new Color(0.88f, 0.89f, 0.91f);
     }
 
     void RefreshBadge()
@@ -815,10 +862,17 @@ public class GameUI : MonoBehaviour
 
         HookButton(Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16),
                    () => ShowRanking(false), "LEADERBOARD", 14);
+        // 클리어했을 때만 NEXT 가 함께 뜬다. 자리 계산은 ShowResult 가 한다.
+        HookButton(Card(card.transform, "rnext", 22, 302, 136, 52, Teal, 18),
+                   () => gm.StartNextStage(), "NEXT", 16);
         HookButton(Card(card.transform, "retry", 22, 302, 136, 52, Coral, 18),
                    () => gm.StartGame(), "RETRY", 16);
         HookButton(Card(card.transform, "rhome", 172, 302, 136, 52, Color.white, 18),
                    () => gm.GoHome(), "HOME", 16);
+
+        nextBtn = (RectTransform)card.transform.Find("rnext");
+        retryBtn = (RectTransform)card.transform.Find("retry");
+        homeBtn = (RectTransform)card.transform.Find("rhome");
     }
 
     public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
@@ -836,6 +890,22 @@ public class GameUI : MonoBehaviour
         resultBest.text = newBest ? "NEW BEST!" : "BEST  " + best.ToString("N0");
         resultBest.color = newBest ? Coral : Body;
         resultCoins.text = "+" + coins.ToString("N0");
+
+        // 버튼 줄: 클리어면 NEXT / RETRY / HOME 셋, 아니면 RETRY / HOME 둘
+        bool showNext = !ta && cleared;
+        if (nextBtn != null) nextBtn.gameObject.SetActive(showNext);
+        if (showNext)
+        {
+            const float w = 88f, gap = 11f;
+            PlaceButton(nextBtn, 22, w);
+            PlaceButton(retryBtn, 22 + w + gap, w);
+            PlaceButton(homeBtn, 22 + (w + gap) * 2, w);
+        }
+        else
+        {
+            PlaceButton(retryBtn, 22, 136);
+            PlaceButton(homeBtn, 172, 136);
+        }
 
         // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
         if (Leaderboard.I != null && Leaderboard.I.Configured)
@@ -1030,6 +1100,36 @@ public class GameUI : MonoBehaviour
         bool canSubmit = gm.CanSubmit;
         adBtnLabel.text = canSubmit ? "WATCH AD  ·  SUBMIT SCORE" : "WATCH AD  ·  REFRESH";
         adBtn.gameObject.SetActive(Leaderboard.I != null && Leaderboard.I.Configured);
+    }
+
+    /// <summary>상단 HUD(점수·남은 수 카드)의 아래 끝 화면 좌표.
+    /// 보드는 이보다 아래에 있어야 한다.</summary>
+    public float HudBottomScreenY()
+    {
+        float lowest = float.MaxValue;
+        foreach (var name in new[] { "statscore", "statmoves" })
+        {
+            var rt = FindChild(name);
+            if (rt == null) continue;
+            rt.GetWorldCorners(rectCorners);
+            if (rectCorners[0].y < lowest) lowest = rectCorners[0].y;
+        }
+        return lowest == float.MaxValue ? 0f : lowest;
+    }
+
+    RectTransform FindChild(string name)
+    {
+        foreach (var rt in GetComponentsInChildren<RectTransform>(true))
+            if (rt.name == name) return rt;
+        return null;
+    }
+
+    /// <summary>결과 화면 버튼 한 칸을 옮긴다 (프로토 x, 너비).</summary>
+    static void PlaceButton(RectTransform rt, float x, float w)
+    {
+        if (rt == null) return;
+        rt.sizeDelta = Sz(w, 52);
+        rt.anchoredPosition = P(x, 302);
     }
 
     /// <summary>광고를 보고 나면 점수를 올리거나 목록을 새로고침한다.</summary>

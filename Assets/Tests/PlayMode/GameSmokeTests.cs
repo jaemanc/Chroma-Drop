@@ -427,6 +427,13 @@ public class GameSmokeTests
         Assert.IsNotNull(items, "아이템 줄이 없다");
 
         Assert.GreaterOrEqual(Bottom(timer), boardTopY, "타이머가 보드를 덮는다");
+
+        // 점수·남은 수 카드가 타이머 바와 겹치면 안 된다
+        var scoreCard = FindRect(ui.gameObject, "statscore");
+        var movesCard = FindRect(ui.gameObject, "statmoves");
+        Assert.IsNotNull(scoreCard); Assert.IsNotNull(movesCard);
+        Assert.GreaterOrEqual(Bottom(scoreCard), Top(timer), "점수 카드가 타이머와 겹친다");
+        Assert.GreaterOrEqual(Bottom(movesCard), Top(timer), "남은 수 카드가 타이머와 겹친다");
         Assert.LessOrEqual(Top(items), boardBottomY, "아이템 줄이 보드를 덮는다");
         Assert.GreaterOrEqual(Bottom(items), trayTopY, "아이템 줄이 트레이를 덮는다");
     }
@@ -505,4 +512,67 @@ public class GameSmokeTests
         Assert.Greater(StageTable.Get(11).SteelCount, 0, "11판에 강철이 없다");
         yield return null;
     }
+
+    // 안 깬 스테이지는 고를 수 없고, 진행은 앱을 껐다 켜도 남는다
+    [UnityTest]
+    public IEnumerator 깬_스테이지까지만_고를_수_있다()
+    {
+        Progress.ResetAll();
+        Assert.AreEqual(1, Progress.Unlocked, "처음엔 1스테이지만 열려 있다");
+        Assert.AreEqual(1, Progress.Selected);
+
+        // 안 열린 판은 고를 수 없다
+        Progress.Selected = 5;
+        Assert.AreEqual(1, Progress.Selected, "안 깬 스테이지가 선택됐다");
+
+        Progress.Clear(1);
+        Assert.AreEqual(2, Progress.Unlocked, "클리어했는데 다음이 안 열렸다");
+        Progress.Selected = 2;
+        Assert.AreEqual(2, Progress.Selected);
+
+        // 지난 판으로 되돌아가는 것은 된다
+        Progress.Selected = 1;
+        Assert.AreEqual(1, Progress.Selected);
+
+        // 이미 깬 판을 또 깨도 진행이 뒤로 가지 않는다
+        Progress.Clear(1);
+        Assert.AreEqual(2, Progress.Unlocked, "해금이 뒤로 갔다");
+
+        // PlayerPrefs 에 남으므로 새 인스턴스에서도 그대로 읽힌다
+        PlayerPrefs.Save();
+        Assert.AreEqual(2, Progress.Unlocked, "저장된 진행이 안 읽힌다");
+
+        Progress.ResetAll();
+        yield return null;
+    }
+
+    // 클리어하면 NEXT 버튼이 뜨고, 실패하면 안 뜬다
+    [UnityTest]
+    public IEnumerator 클리어하면_NEXT_버튼이_뜬다()
+    {
+        gm = NewGm();
+        yield return null;
+        var ui = Object.FindObjectOfType<GameUI>();
+
+        ui.ShowResult(false, 100, 0, false, 0, 3, true);
+        yield return null;
+        var next = FindRect(ui.gameObject, "rnext");
+        Assert.IsNotNull(next, "NEXT 버튼이 없다");
+        Assert.IsTrue(next.gameObject.activeSelf, "클리어했는데 NEXT 가 안 뜬다");
+
+        ui.ShowResult(false, 100, 0, false, 0, 3, false);
+        yield return null;
+        Assert.IsFalse(next.gameObject.activeSelf, "실패했는데 NEXT 가 뜬다");
+
+        // 세 버튼이 서로 겹치지 않아야 한다
+        ui.ShowResult(false, 100, 0, false, 0, 3, true);
+        yield return null;
+        var retry = FindRect(ui.gameObject, "retry");
+        var home = FindRect(ui.gameObject, "rhome");
+        Assert.LessOrEqual(Right(next), Left(retry), "NEXT 와 RETRY 가 겹친다");
+        Assert.LessOrEqual(Right(retry), Left(home), "RETRY 와 HOME 이 겹친다");
+    }
+
+    static float Left(RectTransform r) { r.GetWorldCorners(corners); return corners[0].x; }
+    static float Right(RectTransform r) { r.GetWorldCorners(corners); return corners[2].x; }
 }

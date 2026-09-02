@@ -111,6 +111,7 @@ public class GameManager : MonoBehaviour
         sfx = gameObject.AddComponent<Sfx>();
         ui = GameUI.Create(this);
 
+        stageLevel = Progress.Selected;   // 지난번에 고른 스테이지에서 이어간다
         FitCamera();
         GoHome();
     }
@@ -135,10 +136,30 @@ public class GameManager : MonoBehaviour
     void LayoutHud()
     {
         if (ui == null || cam == null) return;
+
         // 보드 판은 칸 범위(0 ~ H-1)보다 여백·테두리만큼 넓다
         const float PanelEdge = 0.85f;
-        ui.FollowWorld(cam, (Board.W - 1) / 2f, (Board.H - 1) + PanelEdge, -PanelEdge);
+        float boardTop = (Board.H - 1) + PanelEdge;
+
+        // 타이머가 들어갈 자리까지 포함해 보드가 상단 HUD 아래로 내려가야 한다.
+        // 화면 비율에 따라 필요한 양이 달라지므로 실제 HUD 위치를 재서 정한다.
+        float hudBottom = ui.HudBottomScreenY();
+        if (hudBottom > 0f)
+        {
+            float hudWorldY = cam.ScreenToWorldPoint(new Vector3(0, hudBottom, 10)).y;
+            float wanted = hudWorldY - TimerRoom;      // 타이머 줄이 들어갈 여유
+            if (boardTop > wanted && shakeCo == null)
+            {
+                camBase.y += boardTop - wanted;        // 카메라를 올리면 보드가 내려간다
+                cam.transform.position = camBase;
+            }
+        }
+
+        ui.FollowWorld(cam, (Board.W - 1) / 2f, boardTop, -PanelEdge);
     }
+
+    /// <summary>보드 위쪽에 타이머 줄이 들어갈 만큼의 여유 (칸 단위).</summary>
+    const float TimerRoom = 1.8f;
 
     void FitBackground()
     {
@@ -166,6 +187,14 @@ public class GameManager : MonoBehaviour
 
     /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
     public void StartGame() { StartGame(Difficulty, timeAttack, seed); }
+
+    /// <summary>클리어한 뒤 다음 스테이지로. 마지막 판이면 그 판을 다시 한다.</summary>
+    public void StartNextStage()
+    {
+        stageLevel = Mathf.Clamp(stageLevel + 1, 1, Mathf.Max(1, StageTable.Count));
+        Progress.Selected = stageLevel;
+        StartGame(Difficulty, false, seed);
+    }
 
     public void StartGame(string diff, bool ta, int seedOverride)
     {
