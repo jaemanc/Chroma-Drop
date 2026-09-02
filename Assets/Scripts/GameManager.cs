@@ -170,6 +170,7 @@ public class GameManager : MonoBehaviour
         view.Refresh(board, palette);
         ui.ShowGame();
         ui.SetNext(new List<Piece>(queue), palette);
+        ui.SetHolding(current, palette);
 
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
@@ -317,6 +318,7 @@ public class GameManager : MonoBehaviour
         }
 
         Wallet.Use(it);
+        ui.SetHolding(current, palette);   // 폭탄으로 바뀐 조각을 바로 보여준다
         sfx.PlayItem();
         // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
         if (!taRunning) StartPieceTimer();
@@ -327,6 +329,7 @@ public class GameManager : MonoBehaviour
     {
         if (Phase != GamePhase.Playing || busy) return;
         current = current.Rotated();
+        ui.SetHolding(current, palette);   // 돌린 모양이 바로 보여야 한다
     }
 
     /// <summary>프로그램/테스트용 스탬프 진입점. 성공 시 코루틴 시작.</summary>
@@ -399,6 +402,7 @@ public class GameManager : MonoBehaviour
         current = queue.Dequeue();
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
         ui.SetNext(new List<Piece>(queue), palette);
+        ui.SetHolding(current, palette);
 
         busy = false;
         if (!taRunning)
@@ -422,6 +426,7 @@ public class GameManager : MonoBehaviour
         current = queue.Dequeue();
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
         ui.SetNext(new List<Piece>(queue), palette);
+        ui.SetHolding(current, palette);
 
         busy = false;
         if (movesLeft <= 0) EndGame();

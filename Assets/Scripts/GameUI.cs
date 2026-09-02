@@ -59,8 +59,9 @@ public class GameUI : MonoBehaviour
     bool rankNationTab;
     Coroutine rankCo;
     const int RankRowCount = 10;
-    RectTransform nextRoot;
+    RectTransform nextRoot, holdRoot;
     readonly List<Image> nextCells = new List<Image>();
+    readonly List<Image> holdCells = new List<Image>();
 
     public static GameUI Create(GameManager gm)
     {
@@ -191,10 +192,16 @@ public class GameUI : MonoBehaviour
         rightText.fontStyle = FontStyle.Bold;
         Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
 
-        // ---- 다음 조각 ----
-        Label(safe, "nextlabel", Spaced("NEXT"), 10, TextAnchor.MiddleCenter, Muted, 24, 118, 342, 14);
+        // ---- 들고 있는 조각 / 다음 조각 ----
+        // 지금 손에 든 것이 무엇인지가 가장 중요하다. 왼쪽에 크고 쨍하게,
+        // 다음 것들은 오른쪽에 작고 흐리게 둬서 한눈에 갈린다.
+        Label(safe, "holdlabel", Spaced("HOLDING"), 10, TextAnchor.MiddleLeft, Ink, 24, 112, 160, 14);
+        holdRoot = NewRT("hold", safe);
+        Place(holdRoot, Top, Top, new Vector2(0.5f, 0.5f), P(94, 158), Sz(140, 60));
+
+        Label(safe, "nextlabel", Spaced("NEXT"), 10, TextAnchor.MiddleRight, Muted, 206, 112, 160, 14);
         nextRoot = NewRT("next", safe);
-        Place(nextRoot, Top, Top, new Vector2(0.5f, 1), P(195, 136), Sz(340, 62));
+        Place(nextRoot, Top, Top, new Vector2(0.5f, 0.5f), P(288, 158), Sz(160, 60));
 
         // ---- 제한시간 바 ----
         // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
@@ -347,6 +354,69 @@ public class GameUI : MonoBehaviour
     }
 
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
+    /// <summary>지금 들고 있는 조각. 크게, 채도를 올려 쨍하게 그린다.
+    /// 다음 조각과 섞이면 무엇을 들고 있는지 알 수 없다.</summary>
+    public void SetHolding(Piece piece, Color[] palette)
+    {
+        if (piece == null) { foreach (var img in holdCells) img.gameObject.SetActive(false); return; }
+
+        while (holdCells.Count < piece.Cells.Count)
+        {
+            var img = NewImage("h" + holdCells.Count, holdRoot, Color.white);
+            img.sprite = roundSmall; img.type = Image.Type.Sliced;
+            var rt = img.rectTransform;
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(HoldCell, HoldCell);
+            holdCells.Add(img);
+        }
+
+        // 조각 모양의 한가운데를 상자 한가운데에 맞춘다.
+        // 좌표를 그대로 쓰면 조각마다 위치가 들쭉날쭉해진다.
+        float cx, cy;
+        Center(piece, out cx, out cy);
+
+        var c = Vivid(palette[piece.Color]);
+        int idx = 0;
+        foreach (var cell in piece.Cells)
+        {
+            var img = holdCells[idx++];
+            img.gameObject.SetActive(true);
+            img.color = c;
+            img.rectTransform.anchoredPosition =
+                new Vector2((cell.X - cx) * HoldStep, (cell.Y - cy) * HoldStep);
+        }
+        for (int i = idx; i < holdCells.Count; i++) holdCells[i].gameObject.SetActive(false);
+    }
+
+    /// <summary>조각이 차지한 칸의 한가운데.</summary>
+    static void Center(Piece p, out float cx, out float cy)
+    {
+        int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+        foreach (var c in p.Cells)
+        {
+            if (c.X < minX) minX = c.X; if (c.X > maxX) maxX = c.X;
+            if (c.Y < minY) minY = c.Y; if (c.Y > maxY) maxY = c.Y;
+        }
+        cx = (minX + maxX) * 0.5f;
+        cy = (minY + maxY) * 0.5f;
+    }
+
+    const float HoldCell = 56f;   // 들고 있는 조각 — 크게
+    const float HoldStep = 60f;
+    const float NextCell = 24f;   // 다음 조각 — 작게
+    const float NextStep = 27f;
+
+    /// <summary>채도와 밝기를 올려 쨍하게. 판 위 블록은 채도를 낮춰 그리므로
+    /// 그대로 쓰면 손에 든 것이 배경에 묻힌다.</summary>
+    static Color Vivid(Color c)
+    {
+        float h, s, v;
+        Color.RGBToHSV(c, out h, out s, out v);
+        s = Mathf.Clamp01(s * 2.1f + 0.18f);
+        v = Mathf.Clamp01(v * 1.06f + 0.04f);
+        return Color.HSVToRGB(h, s, v);
+    }
+
     public void SetNext(IReadOnlyList<Piece> pieces, Color[] palette)
     {
         int need = 0;
@@ -355,20 +425,26 @@ public class GameUI : MonoBehaviour
         {
             var img = NewImage("n" + nextCells.Count, nextRoot, Color.white);
             var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1, 1);
-            rt.sizeDelta = new Vector2(30, 30);
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+            rt.sizeDelta = new Vector2(NextCell, NextCell);
             nextCells.Add(img);
         }
         int idx = 0;
         for (int i = 0; i < pieces.Count && i < 2; i++)
         {
             var p = pieces[i];
+            var col = palette[p.Color];
+            col.a = 0.65f;                      // 다음 것은 흐리게 — 지금 든 것과 헷갈리지 않게
+            float cx, cy;
+            Center(p, out cx, out cy);
+            float slot = (i - 0.5f) * 150f;     // 두 조각을 좌우로 나눠 놓는다
             foreach (var c in p.Cells)
             {
                 var img = nextCells[idx++];
                 img.gameObject.SetActive(true);
-                img.color = palette[p.Color];
-                img.rectTransform.anchoredPosition = new Vector2(-(i * 190) - (3 - c.X) * 42, -(3 - c.Y) * 42);
+                img.color = col;
+                img.rectTransform.anchoredPosition =
+                    new Vector2(slot + (c.X - cx) * NextStep, (c.Y - cy) * NextStep);
             }
         }
         for (int i = idx; i < nextCells.Count; i++) nextCells[i].gameObject.SetActive(false);
