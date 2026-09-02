@@ -15,42 +15,24 @@
 Unity **6000.5.2f1**, 최종 목표는 iOS/Android 배포.
 
 ```
-stages/                   # 난이도의 유일한 출처. 코드 없음, 순수 데이터
-  stages.json             #   스테이지 1~30
-  stage-schema.json       #   스키마 (필드 설명은 description 으로)
-  curve.config.json       #   난이도 곡선 파라미터
 Assets/
-  StreamingAssets/stages/ # stages/ 의 빌드용 사본 (Tools/sync-stages.sh 가 맞춘다)
   Scripts/
-    src/                  # 규칙 엔진 — UnityEngine 비의존 (§2)
-      Topology/TopologyGen  보드를 그래프로 정의 (square/triangle/hex)
-      GameEngine            연결 그룹 소거·중력·리필. 좌표를 모른다
-      ItemSystem            line/burst/ring/color/cross, 축 인덱스와 홉 기반
-      Rng                   시드 스트림 분리
-      PaletteGen            절차 팔레트 (CIELAB ΔE)
-      StageData/StageBuilder/StageValidator/CurveGen
-      Render                다각형 배치·point-in-polygon
+    ColorMatcherCore.cs   # 게임 규칙 — UnityEngine 비의존. 수정 금지 자산 (§2)
     GameManager.cs        # 게임 흐름/입력
-    GraphBoardView.cs     # 다각형 보드 렌더링
-    GameUI.cs             # 홈/HUD/결과/지도/상점 (uGUI 런타임 생성)
-    StageCatalog.cs       # 런타임 stages.json 로드
+    BoardView.cs          # 보드 렌더링/연출
+    GameUI.cs             # 홈/HUD/결과 (uGUI 런타임 생성)
     Sfx.cs                # 절차 생성 PCM 효과음
   Editor/
-    StageTools.cs         # 스테이지 생성·검증·동기화
     ProjectBootstrap.cs   # 씬/빌드 설정 구성 (멱등)
     AndroidBuild.cs       # APK/AAB 빌드 진입점
   Tests/PlayMode/         # PlayMode 스모크 테스트
-Verify/                   # Assets 밖 — 규칙 검증·생성·디버그 콘솔 진입점
-Tools/                    # 빌드/검증/키스토어 스크립트
+Tests/CoreTests.cs        # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
+Tools/                    # 빌드/키스토어 스크립트
 ```
 
-**로직/표현/데이터 분리**가 이 구조의 핵심이다.
-
-- `Assets/Scripts/src/` 는 `UnityEngine` 에 의존하지 않는다. 서버 검증·오프라인 툴에 그대로 쓴다.
-  여기에 `using UnityEngine` 을 넣는 변경은 거절하고 사용자에게 되물어라.
-- `GameEngine` 은 x/y/width/height/column 을 참조하지 않는다. 보드는 그래프다.
-- 난이도는 코드가 아니라 `stages/stages.json` 이 갖는다. `if (stageId == N)` 같은 분기를 만들지 말 것.
-- 중력은 위→아래 **상수**다. 설정값이나 변수로 만들지 않는다. ROTATE 는 조각만 회전시킨다.
+**로직/표현 분리**가 이 구조의 핵심이다. `ColorMatcherCore` 는 엔진에 의존하지 않으므로
+서버 검증·리플레이·엔진 교체에 재사용 가능하다. 이 경계를 무너뜨리지 말 것 —
+코어에 `UnityEngine` using 을 추가하는 변경은 거절하고 사용자에게 되물어라.
 
 ---
 
@@ -58,8 +40,7 @@ Tools/                    # 빌드/검증/키스토어 스크립트
 
 | 대상 | 규칙 |
 |---|---|
-| `Assets/Scripts/src/**` | **규칙 엔진.** VERIFY 24항목으로 검증된다. 고쳤으면 `./Tools/verify.sh` 를 다시 돌려 결과를 보고한다. |
-| `stages/*.json` | 난이도의 유일한 출처. 코드에 스테이지별 분기를 만들지 말고 여기를 고친다. |
+| `Assets/Scripts/ColorMatcherCore.cs` | **수정 금지 자산.** 테스트 23/23 로 검증된 규칙 엔진. 사용자가 명시적으로 요청할 때만 수정하고, 수정했으면 코어 테스트 전체를 다시 돌려 결과를 보고한다. |
 | `ProjectSettings/*.asset` | 손으로 편집하지 말 것. 플레이어 설정은 `ProjectBootstrap.cs` / `AndroidBuild.cs` 에 **코드로** 넣는다. |
 | `*.meta` 파일 | 직접 만들거나 지우지 말 것. Unity 가 임포트할 때 생성한다. 스크립트를 옮기면 `.meta` 도 같이 옮긴다. |
 | `Library/`, `Logs/`, `UserSettings/`, `Builds/` | 생성물. 커밋 대상 아님. |
@@ -92,14 +73,15 @@ Tools/                    # 빌드/검증/키스토어 스크립트
 이 저장소의 머신에는 dotnet/mono 가 없다. Unity 내장 mono 를 쓴다.
 
 ```bash
-# (1) 규칙 검증 — 가장 빠른 확인. 엔진이나 스테이지 설정을 건드렸으면 필수.
-./Tools/verify.sh              # VERIFY 24항목. 항목번호 + PASS/FAIL 만 출력
+# (1) 코어 규칙 테스트 — 가장 빠른 확인. 코어를 건드렸으면 필수.
+MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
+"$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mono" /tmp/core_tests.exe
 
-# (2) 임의 스테이지 열어보기 — 목표 진행도·연결 영역·사장 영역 출력
-./Tools/debug-stage.sh 12 --play 30
-
-# (3) 전체 — 검증 + PlayMode + 맥 빌드 + 실행
-./Tools/dev.sh
+# (2) PlayMode 스모크 테스트 — 표현 계층을 건드렸으면 필수.
+/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode -runTests -testPlatform PlayMode -projectPath . \
+  -testResults /tmp/playmode_results.xml
 ```
 
 - 배치모드는 **에디터가 열려 있으면 실패**한다. 실패하면 사용자에게 Unity 종료를 요청한다.

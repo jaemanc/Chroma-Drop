@@ -22,29 +22,6 @@ public static class Json
     }
 
     public static Dictionary<string, object> AsMap(object o) { return o as Dictionary<string, object>; }
-    public static List<object> AsList(object o) { return o as List<object>; }
-
-    /// <summary>실수 값. 없거나 형이 다르면 fallback.</summary>
-    public static double Real(Dictionary<string, object> m, string key, double fallback)
-    {
-        object v;
-        if (m != null && m.TryGetValue(key, out v) && v is double) return (double)v;
-        return fallback;
-    }
-
-    public static bool Bool(Dictionary<string, object> m, string key, bool fallback)
-    {
-        object v;
-        if (m != null && m.TryGetValue(key, out v) && v is bool) return (bool)v;
-        return fallback;
-    }
-
-    /// <summary>키가 있고 null 이 아닌가. limits.moves 처럼 null 이 의미를 갖는 필드에 쓴다.</summary>
-    public static bool Has(Dictionary<string, object> m, string key)
-    {
-        object v;
-        return m != null && m.TryGetValue(key, out v) && v != null;
-    }
 
     public static string Str(Dictionary<string, object> m, string key, string fallback)
     {

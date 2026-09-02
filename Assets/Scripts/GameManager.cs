@@ -1,73 +1,74 @@
-// GameManager.cs — 게임 흐름. 규칙은 전부 ChromaDrop.Engine 이 갖고,
-// 난이도는 전부 stages.json 이 갖는다. 여기에는 스테이지별 분기가 없다.
+// GameManager.cs — 게임 흐름/입력 오케스트레이션 (v5 규칙).
+// 씬에는 이 컴포넌트 하나(+카메라)만 있으면 됨 — BoardView/GameUI/Sfx는 런타임 생성.
 //
-// 조작: 셀을 누르면 지금 조각을 그 자리에 놓는다. ROTATE 는 조각만 바꾼다 —
-// 보드도 중력도 회전하지 않는다 (중력은 위→아래 상수).
+// 입력: 터치(드래그로 고스트, 떼면 스탬프, 손가락 위로 띄운 프리뷰) + 마우스(호버 프리뷰, 클릭 스탬프).
+// 회전: 화면 버튼 또는 R 키.
 
 using System.Collections;
 using System.Collections.Generic;
-using ChromaDrop.Engine;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using ColorMatcher.Core;
 
 public enum GamePhase { Home, Playing, Result }
 
 public class GameManager : MonoBehaviour
 {
-    public int seed = 0;
+    [Header("모드 (홈 화면 초기값)")]
+    // 난이도 선택은 없앴다. 규칙표는 그대로 두고 '상' 하나만 쓴다.
+    public const string Difficulty = "hard";
+    public string difficulty { get { return Difficulty; } }
     public bool timeAttack = false;
+    public int seed = 0;                   // 0 = 랜덤
 
-    // ---------- 연출 속도 ----------
-    public float stampTime = 0.34f;    // 들어올림 → 내려찍기 → 버팀 → 복원
-    public float flashTime = 0.20f;    // 사라지기 직전 번쩍임
-    public float chainStep = 0.14f;    // 연쇄 한 단계 사이 간격
-    public float fallTime = 0.18f;
+    [Header("연출 시간(초)")]
+    public float stampTime = 0.34f;        // 들어올림 → 내려찍기 → 버팀 → 복원 전체
+    public float destroyFlash = 0.22f;
+    public float chainStep = 0.19f;        // 연쇄 한 단계가 터지는 간격
+    public float chainFall = 0.28f;        // 연쇄 단계 사이 낙하 시간 (마지막 낙하는 fallTime)
+    public float landTime = 0.18f;         // 착지 스쿼시·복원
+    public float fallTime = 0.36f;
+    public float ghostLiftCells = 2.5f;    // 터치 시 손가락 위로 띄우는 칸 수
 
     public GamePhase Phase { get; private set; }
     public bool Busy { get { return busy; } }
     public int Score { get { return score; } }
     public int MovesLeft { get { return movesLeft; } }
     public bool TimeAttackMode { get { return taRunning; } }
-    public float TimeLeftSec { get { return deadline > 0 ? Mathf.Max(0, deadline - Time.time) : 0; } }
+    public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
+    /// <summary>조각 제한시간 남은 비율 (1 → 0). 타임어택에서는 쓰지 않는다.</summary>
+    public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((pieceDeadline - Time.time) / pieceTimeTotal); } }
+    public Board BoardRef { get { return board; } }
+    public Piece CurrentPiece { get { return current; } }
 
-    public int StageLevel { get { return stageLevel; } }
-    public StageDef Stage { get { return stage; } }
-    public StageInstance Instance { get { return inst; } }
-    public bool StageCleared { get { return cleared; } }
-    public int RerollsLeft { get { return inst != null ? inst.Turn.RerollsLeft : 0; } }
+    // 스탬프로 바로 터진 칸 / 연계(아이템 발동·후속 연쇄)로 터진 칸을 색으로 구분한다.
+    static readonly Color DirectFlash = new Color(1f, 1f, 1f);
+    static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);
 
-    public List<ObjectiveProgress> Objectives
-    {
-        get { return inst != null ? inst.Objectives.Snapshot() : new List<ObjectiveProgress>(); }
-    }
+    Board board;
+    Piece current;
+    readonly Queue<Piece> queue = new Queue<Piece>();
+    System.Random pieceRng;
+    Color[] palette;
 
-    public int PendingScore { get { return pendingScore; } }
-    public int EarnedCoins { get { return earnedCoins; } }
-
-    StageDef stage;
-    StageInstance inst;
-    int stageLevel = 1;
-    int score, movesLeft, totalMoves;
-    bool busy, taRunning, cleared;
-    float deadline;
-    int pendingScore, pendingSeed, earnedCoins;
-    bool pendingTa;
-
-    GraphBoardView view;
+    BoardView view;
     GameUI ui;
     Sfx sfx;
     Camera cam;
-    SpriteRenderer bg;
+    SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
+
+    int score, movesLeft, totalMoves;
+    bool busy, taRunning, touchActive;
+    float pieceDeadline, pieceTimeTotal, taDeadline;
+    int lastW, lastH, curSeed;
+    int pendingScore, pendingSeed, earnedCoins;
+    bool pendingTa, pendingBomb;
+
+    /// <summary>폭탄 조각이 장전돼 있나.</summary>
+    public bool BombArmed { get { return pendingBomb; } }
+
     Vector3 camBase;
-    int lastW, lastH;
     Coroutine shakeCo;
-
-    // 아이템: 지금 고른 아이템과 축 (line 은 축을 고를 수 있다)
-    SpatialItem armed;
-    int armedAxis;
-
-    public SpatialItem ArmedItem { get { return armed; } }
-    public int ArmedAxis { get { return armedAxis; } }
 
     void Awake()
     {
@@ -83,11 +84,11 @@ public class GameManager : MonoBehaviour
         }
         cam.orthographic = true;
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = BackgroundColor;
+        cam.backgroundColor = Palette.Hex(0xCDE3EE);   // 배경 스프라이트 밖 여백 (그림 하늘색)
 
         Leaderboard.Create();
         BuildBackground();
-        view = new GameObject("BoardView").AddComponent<GraphBoardView>();
+        view = new GameObject("BoardView").AddComponent<BoardView>();
         sfx = gameObject.AddComponent<Sfx>();
         ui = GameUI.Create(this);
 
@@ -95,90 +96,139 @@ public class GameManager : MonoBehaviour
         GoHome();
     }
 
-    static readonly Color BackgroundColor = new Color(0.80f, 0.89f, 0.93f);
 
-    // 보드가 화면에서 차지하는 자리 (세로 844 기준 프로토타입 비율).
-    // 위쪽 HUD 와 아래쪽 버튼 줄을 피해 예전 판이 있던 곳에 맞춘다.
-    const float BoardWidthFrac = 0.94f;
-    const float BoardHeightFrac = 0.58f;
-    const float BoardCenterFrac = 0.53f;   // 화면 위에서부터의 비율
-
+    /// <summary>플레이 화면 배경. 보드 프레임(-2)보다 뒤에 오도록 -20 에 둔다.</summary>
     void BuildBackground()
     {
         var tex = Resources.Load<Texture2D>("jungle_bg");
         if (tex == null) return;
+
         var go = new GameObject("Background");
+        go.transform.SetParent(transform, false);
         bg = go.AddComponent<SpriteRenderer>();
-        bg.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f));
+        bg.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        bg.color = Color.white;      // 채도·명도는 파일에 구워져 있다 (Tools/tune-image.py)
         bg.sortingOrder = -20;
     }
 
-    public void GoHome()
+    void FitBackground()
     {
-        Phase = GamePhase.Home;
-        busy = false;
-        armed = null;
-        if (view != null) { view.SetVisible(false); view.HideNextPiece(); }
-        ui.ShowHome();
+        if (bg == null || cam == null) return;
+        float h = cam.orthographicSize * 2f;
+        float w = h * cam.aspect;
+        var sz = bg.sprite.bounds.size;
+        float k = Mathf.Max(w / sz.x, h / sz.y);      // contain 이 아니라 cover
+        bg.transform.localScale = Vector3.one * k;
+        bg.transform.position = new Vector3(cam.transform.position.x, cam.transform.position.y, 10);
     }
 
-    // ---------- 시작 ----------
+    // ---------- 화면 전환 ----------
 
-    public void StartGame() { StartStage(Progress.Selected, seed); }
-
-    public void StartStage(int level) { StartStage(level, seed); }
-
-    public void StartStage(int level, int seedOverride)
+    public void GoHome()
     {
         StopAllCoroutines();
         shakeCo = null;
         if (cam != null) cam.transform.position = camBase;
-
-        stageLevel = Mathf.Clamp(level, 1, Mathf.Max(1, StageCatalog.Count));
-        stage = StageCatalog.Get(stageLevel);
-        if (stage == null)
-        {
-            Debug.LogError("[stage] " + stageLevel + "번 설정을 못 읽었다: "
-                           + string.Join(" / ", StageCatalog.Set.Errors.ToArray()));
-            GoHome();
-            return;
-        }
-
-        // 시드를 넘기면 그 시드로 판을 만든다 (테스트·리플레이용)
-        if (seedOverride != 0) stage.Seed = seedOverride;
-
-        inst = StageBuilder.Build(stage, PaletteBridge.FromUnity(BackgroundColor));
-        foreach (var line in inst.Log) Debug.Log("[stage " + stageLevel + "] " + line);
-
-        taRunning = stage.TimeSeconds > 0;
-        totalMoves = movesLeft = stage.Moves > 0 ? stage.Moves : int.MaxValue;
-        score = 0;
-        cleared = false;
         busy = false;
-        armed = null;
-
-        view.SetPalette(PaletteBridge.ToUnity(inst.Palette));
-        FitCamera();
-        view.SetVisible(true);
-        view.Refresh(inst.Engine);
-
-        ui.ShowGame();
-        ui.RebuildAxisButtons();      // 축 버튼 수는 토폴로지가 정한다
-        ShowNextPiece();
-        Phase = GamePhase.Playing;
-        deadline = taRunning ? Time.time + stage.TimeSeconds : 0;
-
-        WarnTouchSize();
+        Phase = GamePhase.Home;
+        if (view != null) { view.HideGhost(); view.SetVisible(false); }
+        ui.ShowHome();
     }
 
-    void WarnTouchSize()
+    /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
+    public void StartGame() { StartGame(Difficulty, timeAttack, seed); }
+
+    public void StartGame(string diff, bool ta, int seedOverride)
     {
-        // 화면에서 셀이 너무 작으면 터치가 어렵다. 규칙이 아니라 품질 경고다.
-        float pxPerUnit = Screen.height / (cam.orthographicSize * 2f);
-        float cellPt = view.CellSize * pxPerUnit / Mathf.Max(1f, Screen.dpi / 72f);
-        string w = Render.TouchWarning(cellPt);
-        if (w != null) Debug.LogWarning("[render] " + w);
+        StopAllCoroutines();
+        shakeCo = null;
+        if (cam != null) cam.transform.position = camBase;
+        timeAttack = ta;
+
+        int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
+        curSeed = s;
+        board = new Board(Rules.ColorCount, s);
+        pieceRng = new System.Random(s + 1);
+        palette = Palette.Generate(Rules.ColorCount, new System.Random(s + 2));
+
+        var d = Rules.Table[difficulty];
+        taRunning = timeAttack;
+        totalMoves = movesLeft = timeAttack ? 9999 : d.Moves;
+        score = 0;
+        busy = false;
+        touchActive = false;
+
+        pendingBomb = false;
+        queue.Clear();
+        current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+
+        view.Build();
+        view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
+        view.SetVisible(true);
+        view.Refresh(board, palette);
+        ui.ShowGame();
+        ui.SetNext(new List<Piece>(queue), palette);
+
+        Phase = GamePhase.Playing;
+        if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
+        else StartPieceTimer();
     }
+
+    void EndGame()
+    {
+        Phase = GamePhase.Result;
+        busy = false;
+        view.HideGhost();
+
+        string key = BestKey(taRunning, difficulty);
+        int best = PlayerPrefs.GetInt(key, 0);
+        bool newBest = score > best;
+        if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
+
+        if (newBest) sfx.PlayWin(); else sfx.PlayLose();
+        ui.ShowResult(taRunning, score, best, newBest, earnedCoins);
+
+        // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
+        earnedCoins = Rules.CoinsFor(score);
+        Wallet.AddCoins(earnedCoins);
+
+        pendingScore = score;
+        pendingTa = taRunning;
+        pendingSeed = curSeed;
+        ui.SetSubmitState(CanSubmit ? GameUI.SubmitState.Pending : GameUI.SubmitState.Off);
+    }
+
+    /// <summary>아직 올리지 않은 점수가 있는가 (랭킹이 설정돼 있고 0점이 아닐 때).</summary>
+    public bool CanSubmit
+    {
+        get
+        {
+            var lb = Leaderboard.I;
+            return lb != null && lb.Configured && pendingScore > 0;
+        }
+    }
+
+    public int PendingScore { get { return pendingScore; } }
+    /// <summary>직전 게임에서 번 코인 (결과 화면 표시용).</summary>
+    public int EarnedCoins { get { return earnedCoins; } }
+
+    /// <summary>직전 게임 점수를 랭킹에 올린다. 광고를 본 뒤 호출된다.</summary>
+    public void SubmitPending(System.Action<bool> done)
+    {
+        var lb = Leaderboard.I;
+        if (!CanSubmit) { if (done != null) done(false); return; }
+        ui.SetSubmitState(GameUI.SubmitState.Sending);
+        StartCoroutine(lb.Submit(pendingTa, Difficulty, pendingScore, pendingSeed, ok =>
+        {
+            ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed);
+            if (done != null) done(ok);
+        }));
+    }
+
+    public static string BestKey(bool ta, string diff) { return ta ? "best_ta" : "best_score_" + diff; }
+    public int BestForSelection() { return PlayerPrefs.GetInt(BestKey(timeAttack, difficulty), 0); }
 
     // ---------- 루프 ----------
 
@@ -187,367 +237,363 @@ public class GameManager : MonoBehaviour
         if (Screen.width != lastW || Screen.height != lastH) FitCamera();
         if (Phase != GamePhase.Playing) return;
 
-        if (taRunning && !busy && Time.time >= deadline) { EndGame(); return; }
+        if (taRunning)
+        {
+            if (!busy && Time.time >= taDeadline) { EndGame(); return; }
+        }
+        else if (!busy && Time.time >= pieceDeadline)
+        {
+            StartCoroutine(ExpirePiece());
+            return;
+        }
 
         ui.UpdateHud(this);
-        if (busy) { view.ClearHighlight(); return; }
+        if (busy) { view.HideGhost(); return; }
         HandleInput();
     }
 
     void HandleInput()
     {
+        if (Input.GetKeyDown(KeyCode.R)) RotateCurrent();
+
         Vector2 sp;
-        bool commit = false;
+        bool stamp = false;
+        float lift = 0;
 
         if (Input.touchCount > 0)
         {
             var t = Input.GetTouch(0);
             sp = t.position;
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId)) return;
-            if (t.phase == TouchPhase.Ended) commit = true;
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId))
+            { view.HideGhost(); touchActive = false; return; }
+            if (t.phase == TouchPhase.Began) touchActive = true;
+            if (!touchActive) { view.HideGhost(); return; }
+            if (t.phase == TouchPhase.Ended) { stamp = true; touchActive = false; }
+            else if (t.phase == TouchPhase.Canceled) { touchActive = false; view.HideGhost(); return; }
+            lift = ghostLiftCells;
         }
         else
         {
             sp = Input.mousePosition;
-            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
-            commit = Input.GetMouseButtonDown(0);
+            if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
+            { view.HideGhost(); return; }
+            stamp = Input.GetMouseButtonDown(0);
         }
 
-        Vector3 world = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
-        int cell = view.HitTest(world);
-        if (cell < 0) { view.ClearHighlight(); return; }
+        Vector3 w = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
+        int cx = Mathf.RoundToInt(w.x);
+        int cy = Mathf.RoundToInt(w.y + lift);
+        int ax = cx - MaxCell(current, 0) / 2;
+        int ay = cy - MaxCell(current, 1) / 2;
 
-        // 아이템이 장전돼 있으면 아이템 범위를, 아니면 조각이 놓일 자리를 보여준다.
-        // 프리뷰와 실행이 같은 함수를 쓰므로 어긋날 수 없다.
-        if (armed != null)
+        bool can = board.CanPlace(current, ax, ay);
+        if (pendingBomb)
         {
-            view.ShowGhost(null, Color.white);
-            view.ShowDoomed(ItemSystem.Affected(inst.Engine, armed, cell, armedAxis), ItemPreview);
-            if (commit) StartCoroutine(FireItem(cell));
-            return;
+            // 폭탄은 터질 범위를 빨갛게
+            view.ShowBombGhost(ax, ay, can, can ? board.EffectCells(ItemType.Bomb5, ax, ay) : null);
         }
-
-        var place = inst.Turn.PlacementAt(cell);
-        if (place == null)
+        else
         {
-            view.ShowGhost(null, Color.white);
-            view.ShowDoomed(null, Color.white);
-            return;
+            view.ShowGhost(current, ax, ay, can, palette[current.Color]);
+            // 여기 놓으면 어느 칸이 사라지는지 흰색으로 예고한다
+            view.ShowMatchPreview(can ? board.PreviewStamp(current, ax, ay) : null);
         }
-
-        // 여기 놓으면 어느 칸이 사라지는지 흰색으로 예고한다.
-        // 조각이 놓일 칸도 그 안에 들면 같이 깜빡인다.
-        var pal = PaletteBridge.ToUnity(inst.Palette);
-        int color = inst.Turn.CurrentColor;
-        var doomed = inst.Engine.PreviewPlace(place, color);
-
-        var doomedSet = new HashSet<int>(doomed);
-        var ghostOnly = new List<int>();
-        foreach (int id in place) if (!doomedSet.Contains(id)) ghostOnly.Add(id);
-
-        view.ShowGhost(ghostOnly, new Color(pal[color].r, pal[color].g, pal[color].b, 0.9f));
-        view.ShowDoomed(doomed, MatchPreview);
-
-        if (commit) StartCoroutine(DoPlace(place));
+        if (stamp && can) StartCoroutine(DoStamp(ax, ay));
     }
 
-    static readonly Color MatchPreview = new Color(1f, 1f, 1f);          // 사라질 칸 — 흰색
-    static readonly Color ItemPreview = new Color(1f, 0.10f, 0.06f);     // 아이템 범위 — 빨강
-    static readonly Color DirectFlash = new Color(1f, 1f, 1f);           // 직접 터진 칸
-    static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);      // 연계로 터진 칸
-
-    // ---------- 한 수 ----------
-
-    IEnumerator DoPlace(List<int> cells)
-    {
-        busy = true;
-        view.ClearHighlight();
-
-        int color = inst.Turn.CurrentColor;
-        foreach (int id in cells) inst.Engine.Set(id, color);
-        view.Refresh(inst.Engine);
-
-        // 들어올렸다가 내려찍는다. 소리와 셰이크는 꽂히는 순간에 맞춘다.
-        yield return view.StampCells(cells, stampTime, () =>
-        {
-            sfx.PlayStamp();
-            Shake(0.26f, 0.14f);
-        });
-
-        movesLeft--;
-
-        // 놓은 자리가 공중이면 여기서 내려앉는다. 위가 막혀 있으면 그대로 멈춘다.
-        var settled = inst.Engine.Settle();
-        if (settled.Count > 0)
-        {
-            view.Refresh(inst.Engine);
-            yield return view.DropIn(settled, fallTime);
-        }
-
-        yield return Resolve(false);
-
-        if (Phase != GamePhase.Playing) yield break;
-
-        // 다음 조각. 놓을 데가 없으면 리롤하고, 리롤도 없으면 끝난다.
-        if (inst.Turn.Advance() == NoMoveAction.EndGame)
-        {
-            Debug.Log("[stage " + stageLevel + "] 놓을 자리가 없고 리롤도 없다");
-            EndGame();
-            yield break;
-        }
-
-        busy = false;
-        ShowNextPiece();
-        CheckEnd();
-    }
-
-    /// <summary>들고 있는 조각을 보드 위쪽에 실제 모양으로 그린다.
-    /// 글자만으로는 무슨 모양인지 눈에 안 들어온다.</summary>
-    void ShowNextPiece()
-    {
-        if (inst == null) return;
-        var shape = inst.Turn.Current;
-
-        // 어디서든 잘리지 않는 기준 칸을 골라 모양을 편다
-        List<int> cells = null;
-        for (int i = 0; i < inst.Topo.Count && cells == null; i++)
-            cells = PieceShapes.Resolve(inst.Topo, shape, i);
-
-        var pal = PaletteBridge.ToUnity(inst.Palette);
-        int c = inst.Turn.CurrentColor;
-        var color = c >= 0 && c < pal.Length ? pal[c] : Color.white;
-
-        float visH = cam.orthographicSize * 2f;
-        float y = visH * (0.5f - NextCenterFrac);
-        view.ShowNextPiece(inst.Topo, cells, new Vector3(0, y, 0), visH * NextSizeFrac, color);
-
-        ui.SetNext(shape.Name, cells != null ? cells.Count : 0, color);
-    }
-
-    // 다음 조각 미리보기 자리 (화면 세로 대비)
-    const float NextCenterFrac = 0.155f;
-    const float NextSizeFrac = 0.075f;
-
-    IEnumerator FireItem(int cell)
-    {
-        busy = true;
-        var item = armed;
-        armed = null;
-
-        var res = ItemSystem.Fire(inst.Engine, item, cell, armedAxis);
-        score += res.Score;
-        inst.Objectives.Apply(res, score, true);
-        sfx.PlayItem();
-        Shake(0.34f, 0.20f);
-        yield return view.FlashCells(res.Cleared, DirectFlash, flashTime);
-        view.Refresh(inst.Engine);
-
-        if (stage.ItemCostsMove) movesLeft--;
-        yield return Resolve(true);
-
-        busy = false;
-        CheckEnd();
-    }
-
-    /// <summary>연쇄가 멎을 때까지 소거·낙하·리필을 돌리며 단계마다 보여준다.</summary>
-    /// <summary>연쇄가 멎을 때까지 한 단계씩 보여준다.
-    /// 단계마다 '무엇이 사라지는지' 를 먼저 번쩍이고 나서 없앤다 — 인과가 읽혀야 한다.</summary>
-    IEnumerator Resolve(bool fromItem)
-    {
-        int chain = 0;
-        while (true)
-        {
-            var doomed = inst.Engine.Clearable();
-            if (doomed.Count == 0) break;
-            chain++;
-
-            // 첫 단계는 방금 놓은 수가 직접 만든 것, 이후는 무너져 생긴 연계다
-            yield return view.FlashCells(doomed, chain == 1 ? DirectFlash : ChainFlash, flashTime);
-
-            var res = inst.Engine.ResolveOnce();
-            if (res.Cleared.Count == 0) break;
-
-            score += res.Score;
-            inst.Objectives.Apply(res, score, fromItem);
-            sfx.PlayDestroy(chain);
-            Shake(0.14f + 0.06f * chain, 0.13f);
-
-            view.Refresh(inst.Engine);
-            yield return view.DropIn(res.Refilled, fallTime);
-            yield return new WaitForSeconds(chainStep);
-
-            fromItem = false;   // 첫 단계만 아이템 발동이고 이후 연쇄는 일반 소거다
-            if (!stage.ChainReaction) break;
-        }
-        view.Refresh(inst.Engine);
-    }
-
-    void CheckEnd()
-    {
-        if (Phase != GamePhase.Playing) return;
-        if (inst.Objectives.Cleared) { cleared = true; EndGame(); return; }
-        if (!taRunning && movesLeft <= 0) EndGame();
-    }
-
-    // ---------- 아이템 ----------
-
-    /// <summary>이 판에서 쓸 수 있는 아이템.</summary>
-    public IList<SpatialItem> Items { get { return inst != null ? inst.Items : new List<SpatialItem>(); } }
-
-    /// <summary>축 선택 버튼 수는 토폴로지가 정한다. 하드코딩하지 않는다.</summary>
-    public int AxisCount { get { return inst != null ? inst.Topo.Axes.Length : 0; } }
-    public string AxisLabel(int i)
-    {
-        return inst != null && i >= 0 && i < inst.Topo.Axes.Length ? inst.Topo.Axes[i].Label : "";
-    }
-
-    public bool ArmItem(string id, int axis)
+    /// <summary>상점 아이템을 쓴다. 보유량이 없거나 지금 쓸 수 없으면 false.</summary>
+    public bool UseItem(ShopItem it)
     {
         if (Phase != GamePhase.Playing || busy) return false;
-        if (Wallet.Count(id) <= 0) return false;
-        foreach (var it in inst.Items)
-            if (it.Id == id)
-            {
-                armed = it;
-                armedAxis = Mathf.Clamp(axis, 0, Mathf.Max(0, AxisCount - 1));
-                Wallet.Use(id);
-                return true;
-            }
-        return false;
-    }
+        if (Wallet.Count(it) <= 0) return false;
 
-    public void CancelItem() { armed = null; }
+        switch (it)
+        {
+            case ShopItem.BombPiece:
+                // 1칸짜리 폭탄. 매칭이 없어도 던진 자리에서 바로 터진다(Board.Detonate).
+                current = new Piece("bomb", new List<Point> { new Point(0, 0) }, current.Color);
+                pendingBomb = true;
+                break;
+        }
 
-    public void RotateCurrent()
-    {
-        // 조각만 바꾼다. 보드와 중력은 건드리지 않는다.
-        if (Phase == GamePhase.Playing && !busy && inst != null) inst.Turn.Rotate();
-    }
-
-    /// <summary>테스트·자동화용 — 이 칸에 지금 조각을 놓는다.</summary>
-    public bool TryPlace(int cell)
-    {
-        if (Phase != GamePhase.Playing || busy || inst == null) return false;
-        var place = inst.Turn.PlacementAt(cell);
-        if (place == null) return false;
-        StartCoroutine(DoPlace(place));
+        Wallet.Use(it);
+        sfx.PlayItem();
+        // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
+        if (!taRunning) StartPieceTimer();
         return true;
     }
 
-    // ---------- 종료 ----------
-
-    void EndGame()
+    public void RotateCurrent()
     {
-        Phase = GamePhase.Result;
-        busy = false;
-        view.ClearHighlight();
-
-        earnedCoins = Wallet.CoinsFor(score);
-        Wallet.AddCoins(earnedCoins);
-
-        cleared = inst != null && inst.Objectives.Cleared;
-        int best = Progress.Best(stageLevel);
-        bool newBest = score > best;
-        Progress.SetBest(stageLevel, score);
-        if (newBest) best = score;
-        if (cleared) Progress.Clear(stageLevel);
-
-        if (cleared || newBest) sfx.PlayWin(); else sfx.PlayLose();
-        ui.ShowResult(taRunning, score, best, newBest, earnedCoins, stageLevel, cleared);
-
-        pendingScore = score;
-        pendingTa = taRunning;
-        pendingSeed = stage != null ? stage.Seed : 0;
-        ui.SetSubmitState(CanSubmit ? GameUI.SubmitState.Pending : GameUI.SubmitState.Off);
+        if (Phase != GamePhase.Playing || busy) return;
+        current = current.Rotated();
     }
 
-    public bool CanSubmit
+    /// <summary>프로그램/테스트용 스탬프 진입점. 성공 시 코루틴 시작.</summary>
+    public bool TryStamp(int ax, int ay)
     {
-        get
+        if (Phase != GamePhase.Playing || busy || board == null) return false;
+        if (!board.CanPlace(current, ax, ay)) return false;
+        StartCoroutine(DoStamp(ax, ay));
+        return true;
+    }
+
+    IEnumerator DoStamp(int ax, int ay)
+    {
+        busy = true;
+        view.HideGhost();
+
+        // 연출 diff용: 스탬프 직후(파괴 전) 시각 상태 스냅샷
+        var visual = new int[Board.W, Board.H];
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                visual[x, y] = board.GetTile(x, y);
+        var stamped = new List<Point>();
+        foreach (var c in current.Cells)
         {
-            var lb = Leaderboard.I;
-            return pendingTa && lb != null && lb.Configured && pendingScore > 0;
+            var p = new Point(ax + c.X, ay + c.Y);
+            stamped.Add(p);
+            visual[p.X, p.Y] = current.Color;
+        }
+
+        // 폭탄 조각은 매칭을 기다리지 않는다 — 심고 그 자리에서 바로 터뜨린다.
+        ResolveResult result;
+        if (pendingBomb)
+        {
+            pendingBomb = false;
+            board.SetItem(ax, ay, ItemType.Bomb5);
+            result = board.Detonate(ax, ay);
+        }
+        else result = board.Stamp(current, ax, ay);
+        if (!taRunning) movesLeft--;
+
+        // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
+        yield return view.StampCells(stamped, palette[current.Color], stampTime, () =>
+        {
+            sfx.PlayStamp();
+            Shake(0.22f, 0.14f, true);
+        });
+
+        // 2) 파괴 — 연쇄 단계별로 순차 폭발
+        if (result.Destroyed.Count > 0)
+        {
+            yield return DestroyWaves(result, visual);
+            if (result.MaxChain >= 2 || result.ScoreGained >= 500)
+                ui.ShowChainPopup(result.MaxChain, result.ScoreGained);
+            yield return new WaitForSeconds(destroyFlash);
+        }
+        if (result.Spawns.Count > 0) sfx.PlayItem();
+
+        score += result.ScoreGained;
+
+        // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
+        if (!taRunning)
+        {
+            int used = totalMoves - movesLeft;
+            int add = Rules.ObstaclesAfterMove(used, totalMoves);
+            if (add > 0 && board.SpawnObstacles(add) > 0) sfx.PlayItem();
+        }
+        view.Refresh(board, palette);
+
+        // 다음 조각
+        current = queue.Dequeue();
+        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        ui.SetNext(new List<Piece>(queue), palette);
+
+        busy = false;
+        if (!taRunning)
+        {
+            if (movesLeft <= 0) { EndGame(); yield break; }
+            StartPieceTimer();
         }
     }
 
-    public void SubmitPending(System.Action<bool> done)
+    /// <summary>제한 시간이 다 된 조각은 버려진다. 기회도 한 번 소모한다 —
+    /// 아니면 가만히 두는 것만으로 조각을 공짜로 넘길 수 있다.</summary>
+    IEnumerator ExpirePiece()
     {
-        var lb = Leaderboard.I;
-        if (!CanSubmit) { if (done != null) done(false); return; }
-        ui.SetSubmitState(GameUI.SubmitState.Sending);
-        StartCoroutine(lb.Submit(pendingTa, BoardId, pendingScore, pendingSeed, Progress.Unlocked, ok =>
+        busy = true;
+        view.HideGhost();
+        sfx.PlayExpire();
+        yield return new WaitForSeconds(0.15f);
+
+        movesLeft--;
+        pendingBomb = false;   // 폭탄은 그 조각에만 붙는다. 다음 조각으로 넘어가지 않는다.
+        current = queue.Dequeue();
+        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        ui.SetNext(new List<Piece>(queue), palette);
+
+        busy = false;
+        if (movesLeft <= 0) EndGame();
+        else StartPieceTimer();
+    }
+
+    void StartPieceTimer()
+    {
+        pieceTimeTotal = Rules.PieceTimeMs(movesLeft, totalMoves) / 1000f;
+        pieceDeadline = Time.time + pieceTimeTotal;
+    }
+
+    /// <summary>연쇄 단계(웨이브)를 하나씩 터뜨린다. 각 웨이브 안에서도 매칭 → 아이템 발동 순.</summary>
+    IEnumerator DestroyWaves(ResolveResult result, int[,] visual)
+    {
+        // 단계가 많으면 전체가 늘어지므로 조금씩 줄이되, 눈이 못 따라갈 만큼 빨라지지는 않게 한다.
+        int segments = 0;
+        foreach (var w in result.Waves)
+            segments += (w.MatchEnd > w.Start ? 1 : 0) + (w.End > w.MatchEnd ? 1 : 0);
+        float step = segments <= 1 ? 0f : Mathf.Max(0.10f, chainStep - 0.004f * segments);
+        float fall = Mathf.Max(0.11f, chainFall - 0.005f * result.Waves.Count);
+
+        for (int i = 0; i < result.Waves.Count; i++)
         {
-            ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Pending);
-            if (ok) pendingScore = 0;
-            if (done != null) done(ok);
-        }));
+            var w = result.Waves[i];
+            sfx.PlayDestroy(i + 1);
+
+            // 첫 웨이브의 매칭만 '직접 터진 칸'. 아이템 발동과 후속 웨이브는 전부 '연계'.
+            yield return BurstSegment(result, visual, w.Start, w.MatchEnd,
+                i == 0 ? DirectFlash : ChainFlash, i + 1, result.BigHit, step);
+            yield return BurstSegment(result, visual, w.MatchEnd, w.End,
+                ChainFlash, i + 1, result.BigHit, step);
+
+            // 다음 단계의 매칭은 여기서 내려온 블록이 만든 것이다.
+            // 낙하를 먼저 보여주고 새로 채워진 칸을 반짝여야 인과가 읽힌다.
+            bool last = i == result.Waves.Count - 1;
+            yield return ApplyWave(w, visual, last ? fallTime : fall, last ? 0.02f : 0.011f);
+        }
     }
 
-    /// <summary>랭킹 보드 구분자. 타임어택만 올라간다.</summary>
-    public const string BoardId = "timeattack";
-
-    public static string BestKey(bool ta, string board) { return ta ? "best_ta" : "best_" + board; }
-    public int BestForSelection()
+    /// <summary>한 단계의 중력·리필 결과를 낙하 연출로 반영하고, 새로 채워진 칸을 반짝인다.</summary>
+    IEnumerator ApplyWave(Wave w, int[,] visual, float dur, float stagger)
     {
-        return timeAttack ? PlayerPrefs.GetInt(BestKey(true, BoardId), 0) : Progress.Best(Progress.Selected);
+        // 살아남아 미끄러진 블록과 새로 들어온 블록을 나눈다.
+        // 나누지 않으면 한 칸 내려온 블록도 판 밖에서 떨어지는 것처럼 보여
+        // 열 전체가 통째로 교체되는 것처럼 읽힌다.
+        var cells = new List<Point>();
+        var drops = new List<float>();
+        var newCells = new List<Point>();
+
+        for (int x = 0; x < Board.W; x++)
+        {
+            int segStart = 0;
+            for (int y = 0; y <= Board.H; y++)
+            {
+                // 콘크리트는 안 움직이고 중력을 끊는다. 구간마다 따로 계산한다.
+                bool barrier = y == Board.H || w.TilesAfter[x * Board.H + y] == Board.Obstacle
+                                            || visual[x, y] == Board.Obstacle;
+                if (!barrier) continue;
+
+                var before = new List<int>();
+                var after = new List<int>();
+                for (int k = segStart; k < y; k++)
+                {
+                    if (visual[x, k] >= 0) before.Add(k);
+                    if (w.TilesAfter[x * Board.H + k] >= 0) after.Add(k);
+                }
+
+                // 중력은 순서를 지키므로, 아래쪽 after 들이 before 와 1:1 로 대응한다.
+                for (int i = 0; i < after.Count; i++)
+                {
+                    int ny = after[i];
+                    float drop;
+                    if (i < before.Count) drop = before[i] - ny;            // 미끄러진 거리
+                    else drop = (y + (i - before.Count)) - ny;              // 구간 위에서 새로 들어옴
+
+                    if (drop <= 0.001f) continue;                           // 안 움직인 블록은 건드리지 않는다
+                    cells.Add(new Point(x, ny));
+                    drops.Add(drop);
+                    if (i >= before.Count) newCells.Add(new Point(x, ny));
+                }
+                segStart = y + 1;
+            }
+        }
+
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) visual[x, y] = w.TilesAfter[x * Board.H + y];
+
+        view.ApplyState(w.TilesAfter, w.ItemsAfter, w.ObstacleHpAfter, palette);
+        if (cells.Count == 0) yield break;
+
+        yield return view.FallIn(cells, drops, dur, stagger);
+
+        // 착지 타격: 멀리 떨어진 만큼 세게. 짧게 치고 빠진다.
+        float impact = Mathf.Clamp01(view.LastMaxDrop / 6f);
+        if (impact > 0.1f) Shake(Mathf.Lerp(0.158f, 0.238f, impact), 0.15f, true);
+        yield return view.LandCells(newCells, landTime);
     }
 
-    // ---------- 카메라 ----------
+    IEnumerator BurstSegment(ResolveResult result, int[,] visual, int from, int to,
+                             Color flash, int chain, bool bigHit, float step)
+    {
+        if (to <= from) yield break;
 
+        var pts = new List<Point>(to - from);
+        var colors = new List<Color>(to - from);
+        for (int i = from; i < to; i++)
+        {
+            var p = result.Destroyed[i];
+            pts.Add(p);
+            int ci = visual[p.X, p.Y];
+            colors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
+        }
+
+        view.FlashCells(pts, flash);
+        float energy = 1f + 0.35f * Mathf.Clamp(chain - 1, 0, 6) + (bigHit ? 0.6f : 0f);
+        view.Burst(pts, colors, energy, flash);
+
+        float mag = Mathf.Min(0.7f, 0.12f + 0.05f * (chain - 1) + 0.01f * Mathf.Min(pts.Count, 30));
+        Shake(mag, 0.18f);
+
+        if (step > 0f) yield return new WaitForSeconds(step);
+    }
+
+
+
+    // 세로(모바일)/가로(에디터) 모두 보드 전체 + 상단 HUD 공간이 나오게 카메라 맞춤
     void FitCamera()
     {
         lastW = Screen.width; lastH = Screen.height;
-        if (cam == null) return;
-
-        cam.orthographicSize = 10f;
-        camBase = new Vector3(0, 0, -10);
-        cam.transform.position = camBase;
-
-        if (inst != null && view != null)
-        {
-            // 보드가 차지하는 자리. 예전 화면에서 판이 있던 비율을 그대로 쓴다.
-            float visH = cam.orthographicSize * 2f;
-            float visW = visH * (Screen.height <= 0 ? 1f : Screen.width / (float)Screen.height);
-
-            float w = visW * BoardWidthFrac;
-            float h = visH * BoardHeightFrac;
-            view.Build(inst.Topo, w, h);
-            view.transform.position = new Vector3(0, visH * (0.5f - BoardCenterFrac), 0);
-            view.SetPalette(PaletteBridge.ToUnity(inst.Palette));
-            view.Refresh(inst.Engine);
-        }
+        float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
+        // 가로 여백이 카메라 크기를 결정한다. 보드 판이 잘리지 않는 선까지 좁혔다.
+        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 0.44f) / aspect);
+        cam.orthographicSize = half;
+        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.06f, -10);
+        if (shakeCo == null) cam.transform.position = camBase;
         FitBackground();
     }
 
-    void FitBackground()
-    {
-        if (bg == null || bg.sprite == null || cam == null) return;
-        float h = cam.orthographicSize * 2f;
-        float w = h * (Screen.height <= 0 ? 1f : Screen.width / (float)Screen.height);
-        var size = bg.sprite.bounds.size;
-        float s = Mathf.Max(w / size.x, h / size.y);
-        bg.transform.localScale = Vector3.one * s;
-        bg.transform.position = new Vector3(0, 0, 5);
-    }
+    /// <summary>카메라 흔들림 (타격감). 파괴 규모/연쇄에 비례해 호출.</summary>
+    public void Shake(float magnitude, float duration) { Shake(magnitude, duration, false); }
 
-    public void Shake(float mag, float dur)
+    /// <summary>카메라 흔들림. sharp=true 면 처음에 세게 때리고 급격히 잦아든다 (착지 타격용).</summary>
+    public void Shake(float magnitude, float duration, bool sharp)
     {
+        if (!isActiveAndEnabled || cam == null) return;
         if (shakeCo != null) StopCoroutine(shakeCo);
-        shakeCo = StartCoroutine(ShakeRoutine(mag, dur));
+        shakeCo = StartCoroutine(ShakeCo(magnitude, duration, sharp));
     }
 
-    IEnumerator ShakeRoutine(float mag, float dur)
+    IEnumerator ShakeCo(float mag, float dur, bool sharp)
     {
-        for (float t = 0; t < dur; t += Time.deltaTime)
+        float t = 0;
+        while (t < dur)
         {
-            float k = 1f - t / dur;
-            float damp = k * k * k;
-            cam.transform.position = camBase + new Vector3(
-                (Random.value - 0.5f) * mag * damp,
-                (Random.value - 0.5f) * mag * damp * 1.4f, 0);
+            t += Time.deltaTime;
+            float k = 1f - Mathf.Clamp01(t / dur);
+            // 선형 감쇠는 '흔들린다'로 읽히고, 제곱 감쇠는 '맞았다'로 읽힌다
+            float damper = sharp ? k * k * k : k;
+            Vector2 r = UnityEngine.Random.insideUnitCircle;
+            if (sharp) r.y = Mathf.Abs(r.y) * (UnityEngine.Random.value < 0.5f ? -1.4f : 1.4f); // 세로 성분 강조
+            cam.transform.position = camBase + (Vector3)(r * (mag * damper));
             yield return null;
         }
         cam.transform.position = camBase;
         shakeCo = null;
+    }
+
+    static int MaxCell(Piece p, int axis)
+    {
+        int m = 0;
+        foreach (var c in p.Cells) { int v = axis == 0 ? c.X : c.Y; if (v > m) m = v; }
+        return m;
     }
 }

@@ -4,6 +4,11 @@
 
 using UnityEngine;
 
+public enum ShopItem { BombPiece }
+
+/// <summary>타일 겉모습. 규칙에는 영향이 없다.</summary>
+public enum TileSkin { Glossy, Gem, Crayon }
+
 public static class Wallet
 {
     const string KeyCoins = "wallet_coins";
@@ -44,29 +49,54 @@ public static class Wallet
         return true;
     }
 
+    // ---- 타일 스킨 (영구 해금 + 착용) ----
+    const string KeySkin = "skin_equipped";
 
-    // 아이템은 설정(stages.json items.available)이 정하므로 열거형이 아니라 id 문자열로 센다.
-    static string Key(string itemId) { return "inv_" + itemId; }
-
-    public static int Count(string itemId) { return PlayerPrefs.GetInt(Key(itemId), 0); }
-
-    public static void Add(string itemId, int n)
+    /// <summary>기본 스킨은 처음부터 갖고 있다.</summary>
+    public static bool OwnsSkin(TileSkin s)
     {
-        PlayerPrefs.SetInt(Key(itemId), Mathf.Max(0, Count(itemId) + n));
+        return s == TileSkin.Glossy || PlayerPrefs.GetInt("skin_" + (int)s, 0) == 1;
+    }
+
+    public static void UnlockSkin(TileSkin s)
+    {
+        PlayerPrefs.SetInt("skin_" + (int)s, 1);
+        PlayerPrefs.Save();
+    }
+
+    /// <summary>착용 중인 스킨. 갖고 있지 않으면 기본으로 돌아간다.</summary>
+    public static TileSkin Skin
+    {
+        get
+        {
+            var s = (TileSkin)PlayerPrefs.GetInt(KeySkin, 0);
+            return OwnsSkin(s) ? s : TileSkin.Glossy;
+        }
+        set
+        {
+            if (!OwnsSkin(value)) return;
+            PlayerPrefs.SetInt(KeySkin, (int)value);
+            PlayerPrefs.Save();
+        }
+    }
+
+    static string Key(ShopItem it) { return "inv_" + (int)it; }
+
+    public static int Count(ShopItem it) { return PlayerPrefs.GetInt(Key(it), 0); }
+
+    public static void Add(ShopItem it, int n)
+    {
+        PlayerPrefs.SetInt(Key(it), Mathf.Max(0, Count(it) + n));
         PlayerPrefs.Save();
     }
 
     /// <summary>하나 써서 소모한다. 없으면 false.</summary>
-    public static bool Use(string itemId)
+    public static bool Use(ShopItem it)
     {
-        int n = Count(itemId);
+        int n = Count(it);
         if (n <= 0) return false;
-        PlayerPrefs.SetInt(Key(itemId), n - 1);
+        PlayerPrefs.SetInt(Key(it), n - 1);
         PlayerPrefs.Save();
         return true;
     }
-
-    /// <summary>점수를 코인으로 환산한다. 버림.</summary>
-    public const int ScorePerCoin = 100;
-    public static int CoinsFor(int score) { return score <= 0 ? 0 : score / ScorePerCoin; }
 }

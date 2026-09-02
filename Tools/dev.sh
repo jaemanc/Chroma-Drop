@@ -43,12 +43,11 @@ fi
 mkdir -p Logs
 pkill -f "Builds/Mac/ChromaDrop.app" 2>/dev/null
 
-./Tools/sync-stages.sh >/dev/null
-
 if [ "$RUN_TESTS" = "1" ]; then
-  echo "▶ 규칙 검증 (VERIFY 24항목)"
-  if ! ./Tools/verify.sh | tail -3; then
-    echo "✗ VERIFY 실패" >&2; exit 1
+  echo "▶ 코어 규칙 테스트"
+  if ! "$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe 2>&1 | grep -v warning; then :; fi
+  if ! "$MONO/mono" /tmp/core_tests.exe | tail -3; then
+    echo "✗ 코어 테스트 실패" >&2; exit 1
   fi
 
   echo "▶ PlayMode 테스트 (컴파일 검증 겸)"

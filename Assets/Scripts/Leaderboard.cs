@@ -155,7 +155,7 @@ public class Leaderboard : MonoBehaviour
     string DocsBase { get { return fsBase + "/projects/" + projectId + "/databases/(default)/documents"; } }
 
     /// <summary>내 기록을 올린다. 서버에 이미 더 높은 점수가 있으면 덮어쓰지 않는다.</summary>
-    public IEnumerator Submit(bool timeAttack, string difficulty, int score, int seed, int stage, Action<bool> done)
+    public IEnumerator Submit(bool timeAttack, string difficulty, int score, int seed, Action<bool> done)
     {
         if (!Configured) { if (done != null) done(false); yield break; }
         yield return EnsureToken();
@@ -171,16 +171,7 @@ public class Leaderboard : MonoBehaviour
             var f = Fields(Json.AsMap(Json.Parse(res)));
             if (f != null) prev = IntField(f, "score");
         });
-        int prevStage = -1;
-        yield return Get(docUrl, res =>
-        {
-            var f = Fields(Json.AsMap(Json.Parse(res)));
-            if (f != null) prevStage = IntField(f, "stage");
-        });
-        // 점수도 스테이지도 나아진 게 없으면 굳이 쓰지 않는다
-        if (prev >= score && prevStage >= stage) { if (done != null) done(true); yield break; }
-        if (prev > score) score = prev;              // 최고점은 지킨다
-        if (prevStage > stage) stage = prevStage;
+        if (prev >= score) { if (done != null) done(true); yield break; }
 
         long now = (long)(DateTime.UtcNow - new DateTime(1970, 1, 1)).TotalMilliseconds;
         string body = "{\"fields\":{"
@@ -189,15 +180,13 @@ public class Leaderboard : MonoBehaviour
             + "\"score\":{\"integerValue\":\"" + score + "\"},"
             + "\"diff\":{\"stringValue\":" + Json.Quote(difficulty) + "},"
             + "\"seed\":{\"integerValue\":\"" + seed + "\"},"
-            + "\"stage\":{\"integerValue\":\"" + stage + "\"},"
             + "\"updated\":{\"integerValue\":\"" + now + "\"}"
             + "}}";
 
         // updateMask 를 명시해야 덮어쓰기 범위가 결정적이다. 문서가 없으면 새로 만든다.
         string mask = "?updateMask.fieldPaths=name&updateMask.fieldPaths=country"
                     + "&updateMask.fieldPaths=score&updateMask.fieldPaths=diff"
-                    + "&updateMask.fieldPaths=seed&updateMask.fieldPaths=stage"
-                    + "&updateMask.fieldPaths=updated";
+                    + "&updateMask.fieldPaths=seed&updateMask.fieldPaths=updated";
 
         bool ok = false;
         yield return Send(docUrl + mask, "PATCH", body, "application/json", res => ok = res != null);
@@ -239,7 +228,6 @@ public class Leaderboard : MonoBehaviour
                     Name = StrField(f, "name", "?"),
                     Country = StrField(f, "country", "ZZ"),
                     Score = IntField(f, "score"),
-                    Stage = IntField(f, "stage"),
                     UpdatedMs = LongField(f, "updated"),
                 });
             }

@@ -63,7 +63,7 @@ public class LeaderboardCrudTests
         // C — 기존보다 높은 기록 제출
         int first = baseScore + 1000;
         bool ok = false;
-        yield return lb.Submit(false, Diff, first, 42, 1, r => ok = r);
+        yield return lb.Submit(false, Diff, first, 42, r => ok = r);
         Assert.IsTrue(ok, "제출 실패: " + lb.LastError);
 
         // R — 목록에서 내 기록이 보인다
@@ -75,13 +75,13 @@ public class LeaderboardCrudTests
 
         // U — 더 높은 점수로 갱신된다
         int higher = first + 1000;
-        yield return lb.Submit(false, Diff, higher, 42, 1, r => ok = r);
+        yield return lb.Submit(false, Diff, higher, 42, r => ok = r);
         Assert.IsTrue(ok);
         yield return lb.FetchTop(false, Diff, r => rows = r);
         Assert.AreEqual(higher, Mine(rows, lb.Uid).Score, "더 높은 점수가 반영되지 않았다");
 
         // U — 더 낮은 점수는 기존 기록을 덮어쓰지 않는다
-        yield return lb.Submit(false, Diff, higher - 500, 42, 1, r => ok = r);
+        yield return lb.Submit(false, Diff, higher - 500, 42, r => ok = r);
         Assert.IsTrue(ok);
         yield return lb.FetchTop(false, Diff, r => rows = r);
         Assert.AreEqual(higher, Mine(rows, lb.Uid).Score, "낮은 점수가 기존 기록을 덮어썼다");
@@ -94,7 +94,7 @@ public class LeaderboardCrudTests
         yield return lb.SignInAnonymously(null);
 
         // easy 보드에는 아무것도 올리지 않고 hard 에만 올린다.
-        yield return lb.Submit(false, "hard", 777, 1, 1, null);
+        yield return lb.Submit(false, "hard", 777, 1, null);
 
         List<ScoreEntry> easy = null;
         yield return lb.FetchTop(false, "easy", r => easy = r);

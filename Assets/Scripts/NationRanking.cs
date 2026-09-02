@@ -10,7 +10,6 @@ public class ScoreEntry
     public string Name;
     public string Country;   // ISO 2글자. 미상은 "ZZ"
     public int Score;
-    public int Stage;        // 그 사람이 도달한 스테이지. 0 이면 아직 기록이 없다
     public long UpdatedMs;
 }
 
