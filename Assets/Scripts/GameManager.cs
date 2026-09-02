@@ -468,43 +468,33 @@ public class GameManager : MonoBehaviour
         // 살아남아 미끄러진 블록과 새로 들어온 블록을 나눈다.
         // 나누지 않으면 한 칸 내려온 블록도 판 밖에서 떨어지는 것처럼 보여
         // 열 전체가 통째로 교체되는 것처럼 읽힌다.
+        // 벽돌도 중력을 받으므로 같이 센다 — 빈칸이 아닌 것은 전부 움직인다.
         var cells = new List<Point>();
         var drops = new List<float>();
         var newCells = new List<Point>();
 
         for (int x = 0; x < Board.W; x++)
         {
-            int segStart = 0;
-            for (int y = 0; y <= Board.H; y++)
+            var before = new List<int>();
+            var after = new List<int>();
+            for (int y = 0; y < Board.H; y++)
             {
-                // 콘크리트는 안 움직이고 중력을 끊는다. 구간마다 따로 계산한다.
-                bool barrier = y == Board.H || w.TilesAfter[x * Board.H + y] == Board.Obstacle
-                                            || visual[x, y] == Board.Obstacle;
-                if (!barrier) continue;
-                int segEnd = y;   // 이 구간의 위 경계
+                if (visual[x, y] != Board.Empty) before.Add(y);
+                if (w.TilesAfter[x * Board.H + y] != Board.Empty) after.Add(y);
+            }
 
-                var before = new List<int>();
-                var after = new List<int>();
-                for (int k = segStart; k < y; k++)
-                {
-                    if (visual[x, k] >= 0) before.Add(k);
-                    if (w.TilesAfter[x * Board.H + k] >= 0) after.Add(k);
-                }
+            // 중력은 위아래 순서를 지키므로 아래에서부터 1:1 로 대응한다
+            for (int i = 0; i < after.Count; i++)
+            {
+                int ny = after[i];
+                float drop;
+                if (i < before.Count) drop = before[i] - ny;                 // 미끄러진 거리
+                else drop = (Board.H + (i - before.Count)) - ny;             // 판 위에서 새로 들어옴
 
-                // 중력은 순서를 지키므로, 아래쪽 after 들이 before 와 1:1 로 대응한다.
-                for (int i = 0; i < after.Count; i++)
-                {
-                    int ny = after[i];
-                    float drop;
-                    if (i < before.Count) drop = before[i] - ny;            // 미끄러진 거리
-                    else drop = (segEnd + (i - before.Count)) - ny;         // 구간 위에서 새로 들어옴
-
-                    if (drop <= 0.001f) continue;                           // 안 움직인 블록은 건드리지 않는다
-                    cells.Add(new Point(x, ny));
-                    drops.Add(drop);
-                    if (i >= before.Count) newCells.Add(new Point(x, ny));
-                }
-                segStart = y + 1;
+                if (drop <= 0.001f) continue;                                 // 안 움직인 블록은 건드리지 않는다
+                cells.Add(new Point(x, ny));
+                drops.Add(drop);
+                if (i >= before.Count) newCells.Add(new Point(x, ny));
             }
         }
 

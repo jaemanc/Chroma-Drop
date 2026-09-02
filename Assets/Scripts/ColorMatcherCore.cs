@@ -538,27 +538,34 @@ namespace ColorMatcher.Core
         }
 
 
+        /// <summary>중력. 위에서 아래 한 방향 고정이다.
+        /// 벽돌도 함께 떨어진다 — 판에 떠 있는 것은 없다.
+        /// 한 열의 빈칸을 아래에서부터 메우되 블록의 위아래 순서는 그대로 지킨다.</summary>
         public void ApplyGravity()
         {
             for (int x = 0; x < W; x++)
             {
-                int segStart = 0;
-                for (int y = 0; y <= H; y++)
+                int w = 0;
+                for (int y = 0; y < H; y++)
                 {
-                    bool barrier = y == H || tiles[x, y] == Obstacle;
-                    if (!barrier) continue;
+                    if (tiles[x, y] == Empty) continue;
 
-                    int w = segStart;
-                    for (int k = segStart; k < y; k++)
-                        if (tiles[x, k] != Empty)
-                        {
-                            tiles[x, w] = tiles[x, k];
-                            items[x, w] = items[x, k];   // 아이템도 함께 낙하
-                            if (w != k) { tiles[x, k] = Empty; items[x, k] = ItemType.None; }
-                            w++;
-                        }
-                    for (int k = w; k < y; k++) { tiles[x, k] = Empty; items[x, k] = ItemType.None; }
-                    segStart = y + 1;
+                    if (w != y)
+                    {
+                        tiles[x, w] = tiles[x, y];
+                        items[x, w] = items[x, y];             // 아이템도 함께 낙하
+                        obstacleHp[x, w] = obstacleHp[x, y];   // 벽돌은 남은 내구도를 들고 내려간다
+                        tiles[x, y] = Empty;
+                        items[x, y] = ItemType.None;
+                        obstacleHp[x, y] = 0;
+                    }
+                    w++;
+                }
+                for (int k = w; k < H; k++)
+                {
+                    tiles[x, k] = Empty;
+                    items[x, k] = ItemType.None;
+                    obstacleHp[x, k] = 0;
                 }
             }
         }

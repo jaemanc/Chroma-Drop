@@ -265,21 +265,31 @@ class CoreTests
         var r5 = b5.Resolve();
         Assert(r5.Destroyed.Exists(p => p.X == 7 && p.Y == 5), "내구도 1 콘크리트는 인접 파괴로 부서진다");
 
-        // 콘크리트는 중력을 받지 않는다
+        // 벽돌도 중력을 받는다 — 판에 떠 있는 것은 없다
         var b6 = CheckerBoard();
         b6.SetObstacle(3, 7, Rules.ObstacleHp);
+        int hpBefore = b6.GetObstacleHp(3, 7);
         b6.SetTile(3, 5, Board.Empty);
         b6.SetTile(3, 6, Board.Empty);
         b6.ApplyGravity();
-        Assert(b6.IsObstacle(3, 7), "콘크리트는 제자리 (중력 안 받음)");
+        Assert(!b6.IsObstacle(3, 7) && b6.IsObstacle(3, 5), "벽돌이 빈칸만큼 내려온다");
+        Assert(b6.GetObstacleHp(3, 5) == hpBefore, "벽돌이 내구도를 들고 내려온다");
 
-        // 콘크리트 위 칸은 콘크리트 위에 쌓인다 (통과하지 않는다)
+        // 열의 위아래 순서는 그대로여야 한다
         var b7 = CheckerBoard();
-        b7.SetObstacle(3, 5, Rules.ObstacleHp);
-        b7.SetTile(3, 6, Board.Empty);
-        int above = b7.GetTile(3, 7);
+        b7.SetObstacle(4, 3, Rules.ObstacleHp);
+        int above = b7.GetTile(4, 4);
+        b7.SetTile(4, 0, Board.Empty);
         b7.ApplyGravity();
-        Assert(b7.GetTile(3, 6) == above && b7.IsObstacle(3, 5), "위쪽 블록은 콘크리트 위에 얹힌다");
+        Assert(b7.IsObstacle(4, 2) && b7.GetTile(4, 3) == above, "낙하해도 위아래 순서가 지켜진다");
+
+        // 벽돌을 통과해서 내려가지는 않는다 — 벽돌 위 블록은 벽돌 바로 위에 얹힌다
+        var b8 = CheckerBoard();
+        b8.SetObstacle(3, 5, Rules.ObstacleHp);
+        b8.SetTile(3, 6, Board.Empty);
+        int over = b8.GetTile(3, 7);
+        b8.ApplyGravity();
+        Assert(b8.IsObstacle(3, 5) && b8.GetTile(3, 6) == over, "벽돌 위 블록은 벽돌에 얹힌다");
 
         // 진행할수록 콘크리트가 늘어난다
         Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
