@@ -54,20 +54,17 @@ class CoreTests
         Assert(r4.ScoreGained >= 180, "3x3 점수 >= 180 (배수 x2 적용)");
         Assert(r4.BigHit, "3x3은 BigHit");
 
-        // 5. EffectCells 크기 — 기대값을 Board.W/H 에서 유도한다 (보드 크기를 바꿔도 유효)
+        // 5. EffectCells 크기 — 기대값을 Defaults.Width/H 에서 유도한다 (보드 크기를 바꿔도 유효)
         var b5 = FlatBoard(0);
-        int cx = Board.W / 2, cy = Board.H / 2;
-        Assert(b5.EffectCells(ItemType.Row, 5, 3).Count == Board.W, "Row = " + Board.W + "칸");
-        Assert(b5.EffectCells(ItemType.Col, 5, 3).Count == Board.H, "Col = " + Board.H + "칸");
+        int cx = Defaults.Width / 2, cy = Defaults.Height / 2;
+        Assert(b5.EffectCells(ItemType.Row, 5, 3).Count == Defaults.Width, "Row = " + Defaults.Width + "칸");
+        Assert(b5.EffectCells(ItemType.Col, 5, 3).Count == Defaults.Height, "Col = " + Defaults.Height + "칸");
         Assert(b5.EffectCells(ItemType.Bomb5, cx, cy).Count == 25, "Bomb5 중앙 = 25칸");
         Assert(b5.EffectCells(ItemType.Bomb5, 0, 0).Count == 9, "Bomb5 모서리 = 9칸");
         Assert(b5.EffectCells(ItemType.Diag, cx, cy).Count == ExpectedDiag(cx, cy),
                "Diag 중앙 = " + ExpectedDiag(cx, cy) + "칸");
         Assert(b5.EffectCells(ItemType.Diag, 0, 0).Count == ExpectedDiag(0, 0),
                "Diag 모서리 = " + ExpectedDiag(0, 0) + "칸");
-        // ColorClear: 색0 평면 전체
-        Assert(b5.EffectCells(ItemType.ColorClear, 0, 0).Count == Board.W * Board.H,
-               "ColorClear 단색평면 = " + (Board.W * Board.H) + "칸");
 
         // 6. 아이템 발동 BFS 종결성 (아이템 30개 무작위 배치, 100회)
         bool bfsOk = true;
@@ -75,14 +72,14 @@ class CoreTests
         {
             var bb = new Board(Rules.ColorCount, s + 1);
             var trng = new Random(s + 1);
-            var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb5, ItemType.ColorClear };
+            var types = new[] { ItemType.Row, ItemType.Col, ItemType.Diag, ItemType.Bomb5 };
             for (int i = 0; i < 30; i++)
-                bb.SetItem(trng.Next(Board.W), trng.Next(Board.H), types[trng.Next(types.Length)]);
+                bb.SetItem(trng.Next(Defaults.Width), trng.Next(Defaults.Height), types[trng.Next(types.Length)]);
             // Bomb5 하나를 매칭에 넣어 발동시키는 대신, 발동 시뮬레이션은 Resolve 경유가 복잡하므로
             // EffectCells + 수동 BFS로 종결만 확인
             var td = new Dictionary<int, Point>();
             var q = new Queue<Point>();
-            var start = new Point(Board.W / 2, Board.H / 2);
+            var start = new Point(Defaults.Width / 2, Defaults.Height / 2);
             td[start.X * 100 + start.Y] = start; q.Enqueue(start);
             bb.SetItem(start.X, start.Y, ItemType.Bomb5);
             int steps = 0;
@@ -117,12 +114,12 @@ class CoreTests
         {
             var p = Piece.CreateRandom(prng, Rules.ColorCount);
             for (int r = prng.Next(4); r > 0; r--) p = p.Rotated();
-            int px = prng.Next(Board.W), py = prng.Next(Board.H);
+            int px = prng.Next(Defaults.Width), py = prng.Next(Defaults.Height);
             if (!b8.CanPlace(p, px, py)) continue;
             b8.Stamp(p, px, py);
         }
         bool full = true;
-        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) if (b8.GetTile(x, y) == Board.Empty) full = false;
+        for (int x = 0; x < Defaults.Width; x++) for (int y = 0; y < Defaults.Height; y++) if (b8.GetTile(x, y) == Board.Empty) full = false;
         Assert(full, "30수 후 빈 칸 없음");
         Assert(b8.FindSquares().Count == 0, "30수 후 잔여 매칭 없음");
 
@@ -138,12 +135,11 @@ class CoreTests
         }
         Assert(rotOk, "모든 조각 4회 회전 복귀");
 
-        // 10. 난이도/타이머 규칙
-        Assert(Rules.Table["hard"].Moves == 20, "횟수 모드 = " + Rules.Table["hard"].Moves + "수");
+        // 10. 타이머 규칙 (수 제한은 이제 스테이지 설정이 준다)
+        int totalMv = 20;
 
         Console.WriteLine();
         // 조각 제한 시간
-        int totalMv = Rules.Table["hard"].Moves;
         Assert(Rules.PieceTimeMs(totalMv, totalMv) == Rules.PieceTimeMaxMs, "첫 조각 = " + Rules.PieceTimeMaxMs + "ms");
         Assert(Rules.PieceTimeMs(1, totalMv) == Rules.PieceTimeMinMs, "마지막 조각 = " + Rules.PieceTimeMinMs + "ms");
         bool mono = true; int prev = int.MaxValue;
@@ -159,6 +155,7 @@ class CoreTests
         InitialDistributionTest();
         ObstacleTests();
         DetonateTests();
+        PreviewTests();
 
         Console.WriteLine("결과: " + passed + " 통과 / " + failed + " 실패");
         Environment.Exit(failed == 0 ? 0 : 1);
@@ -166,6 +163,45 @@ class CoreTests
 
     // 초기 보드가 특정 색으로 치우치지 않는지.
     // int[,] 기본값 0 때문에 미충전 칸이 '색0' 으로 읽혀 색0 만 재추첨당하던 결함이 있었다.
+
+
+    // 낙하 전 미리보기는 보드를 건드리면 안 되고, 실제 파괴와 맞아야 한다
+    static void PreviewTests()
+    {
+        var b = new Board(Rules.ColorCount, 777);
+        var before = new List<int>();
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++) before.Add(b.GetTile(x, y));
+
+        // 2x2 가 확실히 생기도록 세 칸을 같은 색으로 맞춰 둔다
+        int c0 = b.GetTile(0, 0);
+        b.SetTile(5, 5, c0); b.SetTile(6, 5, c0); b.SetTile(5, 6, c0);
+        var one = new List<Point> { new Point(0, 0) };
+        var piece = new Piece("dot", one, c0);
+
+        var preview = b.PreviewStamp(piece, 6, 6);
+        Assert(preview.Count >= 4, "미리보기 " + preview.Count + "칸 (2x2 이상)");
+
+        // 손에 든 조각이 놓일 칸도 범위에 들어야 한다 — 그 칸도 같이 사라지기 때문이다
+        bool hasStamped = false;
+        foreach (var pt in preview) if (pt.X == 6 && pt.Y == 6) hasStamped = true;
+        Assert(hasStamped, "놓는 칸 자체가 미리보기에 없다");
+
+        // 보드는 그대로여야 한다 (세 칸만 손댔으니 그 값으로 확인)
+        Assert(b.GetTile(6, 6) != Board.Empty && b.GetTile(5, 5) == c0, "미리보기가 보드를 바꾸지 않는다");
+
+        // 실제로 찍으면 미리보기 칸이 전부 파괴 목록에 들어 있어야 한다
+        var res = b.Stamp(piece, 6, 6);
+        var destroyed = new HashSet<int>();
+        foreach (var pt in res.Destroyed) destroyed.Add(pt.X * 100 + pt.Y);
+        bool all = true;
+        foreach (var pt in preview) if (!destroyed.Contains(pt.X * 100 + pt.Y)) all = false;
+        Assert(all, "미리보기한 칸은 실제로 전부 터진다");
+
+        // 놓을 수 없는 자리는 빈 목록
+        Assert(b.PreviewStamp(piece, -1, -1).Count == 0, "놓을 수 없으면 미리보기가 없다");
+    }
+
     // 손으로 던지는 폭탄 — 매칭 없이 즉시 발동한다
     static void DetonateTests()
     {
@@ -180,19 +216,19 @@ class CoreTests
         // 아이템 없는 칸이면 보드가 그대로여야 한다
         var b2 = new Board(Rules.ColorCount, 99);
         var snap = new List<int>();
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++) snap.Add(b2.GetTile(x, y));
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++) snap.Add(b2.GetTile(x, y));
         var r2 = b2.Detonate(3, 3);
         bool same = r2.Destroyed.Count == 0;
         int i = 0;
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++) if (snap[i++] != b2.GetTile(x, y)) same = false;
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++) if (snap[i++] != b2.GetTile(x, y)) same = false;
         Assert(same, "아이템 없는 칸 발동은 무해하다");
     }
 
     static void InitialDistributionTest()
     {
-        int expected = Board.W * Board.H / Rules.ColorCount;   // 균등했을 때 색당 칸 수
+        int expected = Defaults.Width * Defaults.Height / Rules.ColorCount;   // 균등했을 때 색당 칸 수
         int lo = expected / 2, hi = expected * 3 / 2;          // ±50% 안에는 들어와야 한다
         bool even = true;
         int worst = 0;
@@ -200,8 +236,8 @@ class CoreTests
         {
             var b = new Board(Rules.ColorCount, seed);
             var n = new int[Rules.ColorCount];
-            for (int x = 0; x < Board.W; x++)
-                for (int y = 0; y < Board.H; y++)
+            for (int x = 0; x < Defaults.Width; x++)
+                for (int y = 0; y < Defaults.Height; y++)
                 {
                     int t = b.GetTile(x, y);
                     if (t >= 0) n[t]++;
@@ -218,21 +254,22 @@ class CoreTests
     // ── 콘크리트 ──
     static void ObstacleTests()
     {
+        const int Hp = 2;   // 내구도는 이제 스테이지 설정이 준다. 테스트는 값을 직접 정한다.
 
         // 콘크리트 위에는 조각을 놓을 수 없다
         var b3 = CheckerBoard();
-        b3.SetObstacle(5, 5, Rules.ObstacleHp);
+        b3.SetObstacle(5, 5, Hp);
         var piece = new Piece("dot", new List<Point> { new Point(0, 0) }, 1);
         Assert(!b3.CanPlace(piece, 5, 5), "콘크리트 위에는 스탬프 불가");
         Assert(b3.CanPlace(piece, 5, 6), "콘크리트 옆에는 스탬프 가능");
 
         // 옆 칸이 터지면 금이 가고, 3번이면 부서진다
         var b4 = CheckerBoard();
-        b4.SetObstacle(7, 5, Rules.ObstacleHp);
+        b4.SetObstacle(7, 5, Hp);
         int hp0 = b4.GetObstacleHp(7, 5);
         Fill(b4, 4, 4, 3, 1);
         b4.Resolve();
-        Assert(hp0 == Rules.ObstacleHp && hp0 >= 2, "콘크리트 초기 내구도 " + Rules.ObstacleHp);
+        Assert(hp0 == Hp && hp0 >= 2, "콘크리트 초기 내구도 " + Hp);
 
         var b5 = CheckerBoard();
         b5.SetObstacle(7, 5, 1);                          // 마지막 한 대만 남은 콘크리트
@@ -242,7 +279,7 @@ class CoreTests
 
         // 콘크리트는 중력을 받지 않는다
         var b6 = CheckerBoard();
-        b6.SetObstacle(3, 7, Rules.ObstacleHp);
+        b6.SetObstacle(3, 7, Hp);
         b6.SetTile(3, 5, Board.Empty);
         b6.SetTile(3, 6, Board.Empty);
         b6.ApplyGravity();
@@ -250,17 +287,14 @@ class CoreTests
 
         // 콘크리트 위 칸은 콘크리트 위에 쌓인다 (통과하지 않는다)
         var b7 = CheckerBoard();
-        b7.SetObstacle(3, 5, Rules.ObstacleHp);
+        b7.SetObstacle(3, 5, Hp);
         b7.SetTile(3, 6, Board.Empty);
         int above = b7.GetTile(3, 7);
         b7.ApplyGravity();
         Assert(b7.GetTile(3, 6) == above && b7.IsObstacle(3, 5), "위쪽 블록은 콘크리트 위에 얹힌다");
 
         // 진행할수록 콘크리트가 늘어난다
-        Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
         // 한 수 걸러 생기므로 짝수 수끼리 비교한다
-        Assert(Rules.ObstaclesAfterMove(18, 20) > Rules.ObstaclesAfterMove(4, 20), "후반일수록 콘크리트가 많다");
-        Assert(Rules.ObstaclesAfterMove(19, 20) == 0, "홀수 수에는 콘크리트가 안 생긴다");
     }
 
     // ── 헬퍼 ──
@@ -279,21 +313,21 @@ class CoreTests
     //   두 선은 t=0 (자기 칸) 에서만 겹치므로 1 을 뺀다.
     static int ExpectedDiag(int x, int y)
     {
-        int main = Math.Min(Board.W - 1 - x, Board.H - 1 - y) - Math.Max(-x, -y) + 1;
-        int anti = Math.Min(Board.W - 1 - x, y) - Math.Max(-x, y - (Board.H - 1)) + 1;
+        int main = Math.Min(Defaults.Width - 1 - x, Defaults.Height - 1 - y) - Math.Max(-x, -y) + 1;
+        int anti = Math.Min(Defaults.Width - 1 - x, y) - Math.Max(-x, y - (Defaults.Height - 1)) + 1;
         return main + anti - 1;
     }
 
     static Board FlatBoard(int color)
     {
         var b = new Board(Rules.ColorCount, 1);
-        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, color);
+        for (int x = 0; x < Defaults.Width; x++) for (int y = 0; y < Defaults.Height; y++) b.SetTile(x, y, color);
         return b;
     }
     static Board CheckerBoard()
     {
         var b = new Board(Rules.ColorCount, 1);
-        for (int x = 0; x < Board.W; x++) for (int y = 0; y < Board.H; y++) b.SetTile(x, y, (x + y) % 2 == 0 ? 2 : 0);
+        for (int x = 0; x < Defaults.Width; x++) for (int y = 0; y < Defaults.Height; y++) b.SetTile(x, y, (x + y) % 2 == 0 ? 2 : 0);
         // 색 0/2 만 번갈아 깔아 배경을 만든다. 심는 색(1)은 배경과 안 겹친다.
         return b;
     }

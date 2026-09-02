@@ -27,7 +27,7 @@ namespace ColorMatcher.Core
         public override string ToString() { return "(" + X + "," + Y + ")"; }
     }
 
-    public enum ItemType { None, Row, Col, Diag, Bomb5, ColorClear }
+    public enum ItemType { None, Row, Col, Diag, Bomb5 }
 
     public enum GameMode { Score, TimeAttack }
 
@@ -48,7 +48,10 @@ namespace ColorMatcher.Core
         public List<SpawnedItem> Spawns = new List<SpawnedItem>();
         public bool BigHit;                              // 3x3 이상 매칭 발생 여부
         public List<Wave> Waves = new List<Wave>();      // 연쇄 단계별 경계(연출용)
-        public int ObstaclesCracked;                        // 이번 스탬프에 금이 간 콘크리트 수
+        public int ObstaclesCracked;
+        public int BricksBroken;                 // 이번 수에 완전히 부순 brick 수
+        public int FrozenThawed;                 // 해제된 frozen 수
+        public int[] ClearedByColor = new int[0]; // 색별로 없앤 블록 수 (clear_color 목표용)                        // 이번 스탬프에 금이 간 콘크리트 수
     }
 
     /// <summary>Destroyed 안의 한 연쇄 단계 구간. 표현 계층이 순차 연출에 사용.</summary>
@@ -137,28 +140,96 @@ namespace ColorMatcher.Core
 
     public class Board
     {
-        public const int W = 14, H = 14, Empty = -1;
+        public const int Empty = -1;
 
         // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
-        public const int Obstacle = -2;      // 콘크리트: 매칭에 안 끼고, 중력도 안 받고, 옆 칸이 터질 때만 금이 간다
-        public const int MinMatch = 2;    // 최소 매칭 정사각형 한 변
+        public const int Obstacle = -2;      // brick  : 인접 매치로 손상, 내구도 0 이면 제거
+        public const int Wall = -3;          // locked : 어떤 방법으로도 제거 불가. 낙하를 물리적으로 막는다
+        public const int Frozen = -4;        // frozen : 인접 매치 1회로 해제되어 일반 블록이 된다
         public const int BaseTileScore = 10;
         public const double ChainBonus = 0.5;
 
+        // 판의 치수와 매칭 규칙은 스테이지 설정에서 온다. 코드에 스테이지별 상수를 두지 않는다.
+        public readonly int W, H;
+        public readonly int MinMatch;
         public readonly int ColorCount;
+
         readonly int[,] tiles;
         readonly int[,] obstacleHp;
         readonly ItemType[,] items;
         readonly Random rng;
+        readonly double[] colorWeights;      // 신규 블록 색 추첨 가중치. null 이면 균등
+        readonly RefillPolicy refill;
 
-        public Board(int colorCount, int seed)
+        /// <summary>이번 판에서 신규 블록이 몇 개나 더 들어올 수 있는지. drip 모드에서 쓴다.</summary>
+        int refillBudget;
+
+        public Board(int colorCount, int seed) : this(BoardSetup.Default(colorCount), seed) { }
+
+        public Board(BoardSetup setup, int seed)
         {
-            ColorCount = colorCount;
+            W = setup.Width;
+            H = setup.Height;
+            MinMatch = setup.MinMatch;
+            ColorCount = setup.ColorCount;
+            colorWeights = setup.ColorWeights;
+            refill = setup.Refill;
+
             rng = new Random(seed);
             tiles = new int[W, H];
             obstacleHp = new int[W, H];
             items = new ItemType[W, H];
+
+            PlaceObstacles(setup.Obstacles);
             FillNoInitialMatch();
+            ApplyFillPattern(setup);
+        }
+
+        /// <summary>설정이 지정한 자리에 장애물을 놓는다. 좌표는 설정이 유일한 출처다.</summary>
+        void PlaceObstacles(IList<ObstacleSpec> specs)
+        {
+            if (specs == null) return;
+            foreach (var spec in specs)
+            {
+                if (spec.Positions == null) continue;
+                foreach (var pos in spec.Positions)
+                {
+                    if (!InBounds(pos.X, pos.Y)) continue;
+                    tiles[pos.X, pos.Y] = spec.Cell;
+                    obstacleHp[pos.X, pos.Y] = spec.Cell == Obstacle ? spec.HitsToBreak : 0;
+                }
+            }
+        }
+
+        /// <summary>보드를 얼마나, 어떤 순서로 채운 채 시작할지. 비운 칸은 refill 정책에 따라 메워진다.</summary>
+        void ApplyFillPattern(BoardSetup setup)
+        {
+            if (setup.InitialFillRatio >= 1.0) return;
+
+            var open = new List<Point>();
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) if (IsColor(tiles[x, y])) open.Add(new Point(x, y));
+
+            int keep = (int)(open.Count * setup.InitialFillRatio);
+            int drop = open.Count - keep;
+            if (drop <= 0) return;
+
+            if (setup.FillPattern == FillPattern.BottomUp)
+            {
+                // 아래쪽부터 채우고 위쪽을 비운다 — y 가 큰 칸(위)부터 지운다
+                open.Sort((a, b) => b.Y.CompareTo(a.Y));
+                for (int i = 0; i < drop; i++) tiles[open[i].X, open[i].Y] = Empty;
+            }
+            else
+            {
+                for (int i = 0; i < drop * 40 && drop > 0; i++)
+                {
+                    int x = rng.Next(W), y = rng.Next(H);
+                    if (!IsColor(tiles[x, y])) continue;
+                    tiles[x, y] = Empty;
+                    drop--;
+                }
+            }
         }
 
         public int GetTile(int x, int y) { return tiles[x, y]; }
@@ -177,8 +248,36 @@ namespace ColorMatcher.Core
             items[x, y] = ItemType.None;   // 콘크리트 자리에는 아이템이 남지 않는다
         }
 
-        /// <summary>일반 색 칸인가 (콘크리트/빈칸 제외).</summary>
+        /// <summary>일반 색 칸인가 (장애물/빈칸 제외).</summary>
         static bool IsColor(int t) { return t >= 0; }
+
+        /// <summary>블록이 통과하지 못하는 칸. 중력이 여기서 끊긴다.</summary>
+        static bool IsBlocker(int t) { return t == Obstacle || t == Wall || t == Frozen; }
+
+        public bool IsWall(int x, int y) { return tiles[x, y] == Wall; }
+        public bool IsFrozen(int x, int y) { return tiles[x, y] == Frozen; }
+
+        /// <summary>이 판에 지금 남아 있는 특정 종류의 칸 수.</summary>
+        public int CountCells(int cell)
+        {
+            int n = 0;
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) if (tiles[x, y] == cell) n++;
+            return n;
+        }
+
+        /// <summary>지금 판에 있는 색별 블록 수. 목표 달성 가능성 검증에 쓴다.</summary>
+        public int[] ColorCensus()
+        {
+            var n = new int[ColorCount];
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++)
+                {
+                    int t = tiles[x, y];
+                    if (t >= 0 && t < n.Length) n[t]++;
+                }
+            return n;
+        }
 
         public bool CanPlace(Piece p, int px, int py)
         {
@@ -186,12 +285,60 @@ namespace ColorMatcher.Core
             {
                 int x = px + c.X, y = py + c.Y;
                 if (!InBounds(x, y)) return false;
-                if (tiles[x, y] == Obstacle) return false;   // 콘크리트는 덮어쓸 수 없다 — 옆에 놓아서 깨야 한다
+                if (IsBlocker(tiles[x, y])) return false;   // 장애물 칸은 덮어쓸 수 없다
             }
             return true;
         }
 
         /// <summary>페인트 스탬프: 덮인 칸을 조각 색으로 덮어쓰기 → 연쇄 해소</summary>
+        /// <summary>여기에 찍으면 이번 한 웨이브에 어느 칸이 사라지는지 미리 계산한다.
+        /// 보드는 바꾸지 않는다. 후속 연쇄는 리필이 무작위라 예고하지 않는다.</summary>
+        public List<Point> PreviewStamp(Piece p, int px, int py)
+        {
+            var res = new List<Point>();
+            if (!CanPlace(p, px, py)) return res;
+
+            var saved = new int[p.Cells.Count];
+            for (int i = 0; i < p.Cells.Count; i++)
+            {
+                var c = p.Cells[i];
+                saved[i] = tiles[px + c.X, py + c.Y];
+                tiles[px + c.X, py + c.Y] = p.Color;
+            }
+
+            var seen = new HashSet<int>();
+            var actQueue = new Queue<Point>();
+            foreach (var m in FindSquares())
+                for (int dx = 0; dx < m.Size; dx++)
+                    for (int dy = 0; dy < m.Size; dy++)
+                    {
+                        int x = m.X + dx, y = m.Y + dy;
+                        if (seen.Add(Key(x, y))) res.Add(new Point(x, y));
+                        if (items[x, y] != ItemType.None) actQueue.Enqueue(new Point(x, y));
+                    }
+
+            while (actQueue.Count > 0)
+            {
+                var a = actQueue.Dequeue();
+                ItemType t = items[a.X, a.Y];
+                if (t == ItemType.None) continue;
+                foreach (var e in EffectCells(t, a.X, a.Y))
+                {
+                    if (tiles[e.X, e.Y] == Wall) continue;
+                    if (!seen.Add(Key(e.X, e.Y))) continue;
+                    res.Add(e);
+                    if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
+                }
+            }
+
+            for (int i = 0; i < p.Cells.Count; i++)
+            {
+                var c = p.Cells[i];
+                tiles[px + c.X, py + c.Y] = saved[i];
+            }
+            return res;
+        }
+
         public ResolveResult Stamp(Piece p, int px, int py)
         {
             if (!CanPlace(p, px, py))
@@ -227,7 +374,7 @@ namespace ColorMatcher.Core
             actQueue.Enqueue(seed);
 
             // matchEnd = 1 — 던진 칸은 '직접', 터진 범위는 '연계' 로 연출된다
-            ProcessWave(res, toDestroy, order, actQueue, 1, 1, 1.0, 0, false, false);
+            ProcessWave(res, toDestroy, order, actQueue, 1, 1, 1.0, 0, false);
             res.MaxChain = 1;
             ResolveLoop(res, 1);   // 무너진 뒤 새로 생긴 매칭부터 이어서
             return res;
@@ -246,7 +393,6 @@ namespace ColorMatcher.Core
 
                 int matchTiles = 0;
                 foreach (var m in matches) matchTiles += m.Size * m.Size;
-                bool huge = false;   // 이 단계에 4x4 이상 매칭이 있었나 (colorclear 조건)
 
                 var toDestroy = new Dictionary<int, Point>();
                 var order = new List<Point>();   // 매칭 칸 먼저, 아이템 발동 칸 나중
@@ -258,7 +404,6 @@ namespace ColorMatcher.Core
                     res.ScoreGained += (int)(m.Size * m.Size * BaseTileScore * sizeMult * mult);
                     res.Matches.Add(m);
                     if (m.Size >= 3) res.BigHit = true;
-                    if (m.Size >= 4) huge = true;
                     for (int dx = 0; dx < m.Size; dx++)
                         for (int dy = 0; dy < m.Size; dy++)
                         {
@@ -269,7 +414,7 @@ namespace ColorMatcher.Core
                         }
                 }
 
-                ProcessWave(res, toDestroy, order, actQueue, order.Count, chain, mult, matchTiles, huge, true);
+                ProcessWave(res, toDestroy, order, actQueue, order.Count, chain, mult, matchTiles, true);
             }
             if (chain > res.MaxChain) res.MaxChain = chain;
         }
@@ -279,7 +424,7 @@ namespace ColorMatcher.Core
         /// toDestroy/order 에는 시작 칸이 이미 들어 있어야 한다.</summary>
         void ProcessWave(ResolveResult res, Dictionary<int, Point> toDestroy, List<Point> order,
                          Queue<Point> actQueue, int matchEnd, int chain, double mult,
-                         int matchTiles, bool huge, bool allowSpawn)
+                         int matchTiles, bool allowSpawn)
         {
             // 아이템 발동 BFS (발동으로 파괴된 칸의 아이템도 연쇄 발동)
             int actCount = 0;
@@ -290,6 +435,7 @@ namespace ColorMatcher.Core
                 if (t == ItemType.None) continue;
                 foreach (var e in EffectCells(t, a.X, a.Y))
                 {
+                    if (tiles[e.X, e.Y] == Wall) continue;   // 강철은 폭발도 못 뚫는다
                     int k = Key(e.X, e.Y);
                     if (toDestroy.ContainsKey(k)) continue;
                     toDestroy[k] = e;
@@ -305,8 +451,15 @@ namespace ColorMatcher.Core
             foreach (var pt in crackSeeds)
                 foreach (var e in Neighbors(pt))
                 {
-                    if (tiles[e.X, e.Y] != Obstacle) continue;
                     int k = Key(e.X, e.Y);
+                    if (tiles[e.X, e.Y] == Frozen)
+                    {
+                        if (!cracked.Add(k)) continue;
+                        tiles[e.X, e.Y] = NextColor();
+                        res.FrozenThawed++;
+                        continue;
+                    }
+                    if (tiles[e.X, e.Y] != Obstacle) continue;
                     if (!cracked.Add(k)) continue;
                     if (--obstacleHp[e.X, e.Y] > 0) continue;
                     toDestroy[k] = e;
@@ -321,8 +474,13 @@ namespace ColorMatcher.Core
             // 실제 파괴
             res.TilesDestroyed += order.Count;
             int waveStart = res.Destroyed.Count;
+            if (res.ClearedByColor.Length < ColorCount) res.ClearedByColor = new int[ColorCount];
             foreach (var pt in order)
             {
+                int was = tiles[pt.X, pt.Y];
+                if (IsColor(was) && was < res.ClearedByColor.Length) res.ClearedByColor[was]++;
+                else if (was == Obstacle) res.BricksBroken++;
+
                 tiles[pt.X, pt.Y] = Empty;
                 items[pt.X, pt.Y] = ItemType.None;
                 obstacleHp[pt.X, pt.Y] = 0;
@@ -332,7 +490,7 @@ namespace ColorMatcher.Core
             Refill();
 
             // 스폰: 즉시 파괴 방지 위해 실제 배치는 여기서.
-            if (allowSpawn) MaybeSpawn(chain, matchTiles, huge, res);
+            if (allowSpawn) MaybeSpawn(chain, matchTiles, res);
 
             res.Waves.Add(new Wave
             {
@@ -374,7 +532,7 @@ namespace ColorMatcher.Core
         //  - 연쇄 2 도달: row
         //  - 연쇄 3 도달: bomb5
         //  - 연쇄 5 이상 또는 4x4 이상 매칭: colorclear (랜덤 색으로 재칠)
-        void MaybeSpawn(int chain, int matchTiles, bool huge, ResolveResult res)
+        void MaybeSpawn(int chain, int matchTiles, ResolveResult res)
         {
             if (matchTiles >= 6)
             {
@@ -384,7 +542,6 @@ namespace ColorMatcher.Core
             // '도달'이므로 == 다. >= 로 두면 연쇄가 길어질수록 매 단계마다 또 나온다.
             if (chain == 2) SpawnItem(ItemType.Row, false, res);
             if (chain == 3) SpawnItem(ItemType.Bomb5, false, res);
-            if (chain == 5 || huge) SpawnItem(ItemType.ColorClear, true, res);
         }
 
         void SpawnItem(ItemType type, bool randomColor, ResolveResult res)
@@ -431,13 +588,6 @@ namespace ColorMatcher.Core
                             int bx = x + dx, by = y + dy;
                             if (InBounds(bx, by)) cells.Add(new Point(bx, by));
                         }
-                    break;
-                case ItemType.ColorClear:
-                    int c = tiles[x, y];
-                    if (c != Empty)
-                        for (int bx = 0; bx < W; bx++)
-                            for (int by = 0; by < H; by++)
-                                if (tiles[bx, by] == c) cells.Add(new Point(bx, by));
                     break;
             }
             return cells;
@@ -506,7 +656,7 @@ namespace ColorMatcher.Core
                 int segStart = 0;
                 for (int y = 0; y <= H; y++)
                 {
-                    bool barrier = y == H || tiles[x, y] == Obstacle;
+                    bool barrier = y == H || IsBlocker(tiles[x, y]);
                     if (!barrier) continue;
 
                     int w = segStart;
@@ -524,25 +674,45 @@ namespace ColorMatcher.Core
             }
         }
 
-        public void Refill()
+        /// <summary>신규 블록 투입. 정책에 따라 한 번에 들어오는 개수가 다르다.
+        /// 신규 블록은 각 열의 최상단에서만 진입한다 — 위가 막힌 열에는 들어올 수 없다.</summary>
+        public int Refill()
         {
-            for (int x = 0; x < W; x++)
-                for (int y = 0; y < H; y++)
-                    if (tiles[x, y] == Empty) tiles[x, y] = rng.Next(ColorCount);
-        }
-
-        /// <summary>빈칸이 아닌 일반 칸을 콘크리트로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
-        public int SpawnObstacles(int count)
-        {
+            if (refill.Mode == RefillMode.None) return 0;
+            int budget = refill.Mode == RefillMode.Instant ? int.MaxValue : refill.BlocksPerClear;
             int placed = 0;
-            for (int t = 0; t < count * 40 && placed < count; t++)
+            bool progress = true;
+            while (placed < budget && progress)
             {
-                int x = rng.Next(W), y = rng.Next(H);
-                if (!IsColor(tiles[x, y])) continue;   // 빈칸/콘크리트 자리는 건너뛴다
-                SetObstacle(x, y, Rules.ObstacleHp);
-                placed++;
+                progress = false;
+                for (int x = 0; x < W && placed < budget; x++)
+                    for (int y = H - 1; y >= 0; y--)
+                    {
+                        if (IsBlocker(tiles[x, y])) break;
+                        if (tiles[x, y] != Empty) continue;
+                        tiles[x, y] = NextColor();
+                        placed++;
+                        progress = true;
+                        break;
+                    }
             }
             return placed;
+        }
+
+        /// <summary>가중치를 반영한 신규 블록 색. 가중치가 없으면 균등 추첨.</summary>
+        int NextColor()
+        {
+            if (colorWeights == null) return rng.Next(ColorCount);
+            double total = 0;
+            for (int i = 0; i < ColorCount && i < colorWeights.Length; i++) total += colorWeights[i];
+            if (total <= 0) return rng.Next(ColorCount);
+            double r = rng.NextDouble() * total;
+            for (int i = 0; i < ColorCount && i < colorWeights.Length; i++)
+            {
+                r -= colorWeights[i];
+                if (r <= 0) return i;
+            }
+            return ColorCount - 1;
         }
 
         void FillNoInitialMatch()
@@ -551,14 +721,15 @@ namespace ColorMatcher.Core
             // 아직 안 채운 칸이 '색0' 으로 읽혀 Makes2x2At 이 가짜 2x2 를 잡는다.
             // 그러면 색0 만 계속 재추첨당해 분포가 크게 치우친다 (196칸 중 7칸 수준).
             for (int x = 0; x < W; x++)
-                for (int y = 0; y < H; y++) tiles[x, y] = Empty;
+                for (int y = 0; y < H; y++) if (!IsBlocker(tiles[x, y])) tiles[x, y] = Empty;
 
             for (int x = 0; x < W; x++)
                 for (int y = 0; y < H; y++)
                 {
-                    tiles[x, y] = rng.Next(ColorCount);
+                    if (IsBlocker(tiles[x, y])) continue;   // 장애물 자리는 설정이 정했다
+                    tiles[x, y] = NextColor();
                     int guard = 0;
-                    while (Makes2x2At(x, y) && guard++ < 16) tiles[x, y] = rng.Next(ColorCount);
+                    while (Makes2x2At(x, y) && guard++ < 16) tiles[x, y] = NextColor();
                 }
             // 정리 패스: 채우기 순서상 놓친 잔여 정사각형을 실제 매칭 판정으로 제거.
             // (칸 단위 Makes2x2At은 나중에 채워진 이웃이 완성하는 2x2를 놓칠 수 있음)
@@ -614,25 +785,6 @@ namespace ColorMatcher.Core
 
         /// <summary>점수를 코인으로 환산한다. 버림.</summary>
         public static int CoinsFor(int score) { return score <= 0 ? 0 : score / ScorePerCoin; }
-
-        public const int ObstacleHp = 2;               // 콘크리트는 2번 금이 가야 부서진다
-
-        /// <summary>이번 수가 끝난 뒤 새로 놓을 콘크리트 수. 진행할수록 늘어난다.</summary>
-        public static int ObstaclesAfterMove(int movesUsed, int totalMoves)
-        {
-            if (movesUsed < 3) return 0;                       // 첫 세 수는 판을 익히게 둔다
-            if (movesUsed % 2 != 0) return 0;                  // 한 수 걸러 한 번
-            if (totalMoves <= 0) return 1;
-            double t = movesUsed / (double)totalMoves;         // 0 → 1
-            return 1 + (int)(t * 2);                           // 1개에서 3개까지
-        }
-
-        // 목표 점수는 없앴다 — 주어진 기회 안에서 최대한 많이 얻는 방식이다.
-        public struct Difficulty { public int Moves; public string Label; }
-        public static readonly Dictionary<string, Difficulty> Table = new Dictionary<string, Difficulty>
-        {
-            { "hard",   new Difficulty { Moves = 20, Label = "상" } },
-        };
 
     }
 }

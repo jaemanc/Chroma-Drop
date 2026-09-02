@@ -6,6 +6,7 @@
 using System.Collections;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.TestTools;
 using ColorMatcher.Core;
 
@@ -13,8 +14,15 @@ public class GameSmokeTests
 {
     GameManager gm;
 
-    // 난이도 선택이 없어져 규칙표에서 가져온다
-    static int Moves { get { return Rules.Table[GameManager.Difficulty].Moves; } }
+    // 수 제한은 스테이지 설정에서 온다
+    static int Moves
+    {
+        get
+        {
+            var st = StageLoader.Get(1);
+            return st != null && st.Moves > 0 ? st.Moves : 20;
+        }
+    }
 
     GameManager NewGm()
     {
@@ -68,8 +76,8 @@ public class GameSmokeTests
         // 코어 불변식: 해소 후 보드에 빈 칸/잔여 매칭 없음
         var b = gm.BoardRef;
         Assert.AreEqual(0, b.FindSquares().Count, "해소 후 잔여 매칭 없음");
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
                 Assert.AreNotEqual(Board.Empty, b.GetTile(x, y), "해소 후 빈 칸 없음");
     }
 
@@ -139,13 +147,6 @@ public class GameSmokeTests
         Assert.AreEqual(1, gm.CurrentPiece.Cells.Count, "1칸 폭탄 조각이 아니다");
         Assert.AreEqual(moves, gm.MovesLeft, "아이템이 기회를 소모했다");
         Assert.AreEqual(0, Wallet.Count(ShopItem.BombPiece), "보유량이 줄지 않았다");
-
-        // 큰 조각: 9x9 = 81칸
-        Wallet.Add(ShopItem.BigPiece, 1);
-        Assert.IsTrue(gm.UseItem(ShopItem.BigPiece));
-        int side = GameManager.BigPieceSide;
-        Assert.AreEqual(side * side, gm.CurrentPiece.Cells.Count, "9x9 조각이 아니다");
-        Assert.AreEqual(moves, gm.MovesLeft, "아이템이 기회를 소모했다");
     }
 
     // 회귀: 폭탄을 장전하면 조준할 시간이 새로 주어져야 한다.
@@ -260,6 +261,148 @@ public class GameSmokeTests
         }
         Assert.AreEqual(GamePhase.Result, gm.Phase, "제한 수 안에 게임이 종료(성공/실패)돼야 함");
     }
+
+    // 회귀: 리더보드 행이 아래쪽 고정 요소(내 점수·광고 버튼)를 덮거나,
+    // 행 안에서 이름이 점수 칸을 파고들면 안 된다. 실제 배치 좌표로 검사한다.
+    [UnityTest]
+    public IEnumerator 리더보드_칸이_서로_겹치지_않는다()
+    {
+        gm = NewGm();
+        yield return null;
+        var ui = Object.FindObjectOfType<GameUI>();
+        Assert.IsNotNull(ui, "GameUI 를 찾지 못했다");
+        ui.ShowRanking(false);
+        yield return null;
+        yield return null;
+
+        var lastRow = FindRect(ui.gameObject, "row" + (RankRows - 1));
+        var myRow = FindRect(ui.gameObject, "myrow");
+        var adBtn = FindRect(ui.gameObject, "adbtn");
+        Assert.IsNotNull(lastRow, "마지막 행이 없다 — RankRows 상수가 실제와 다르다");
+        Assert.IsNotNull(myRow); Assert.IsNotNull(adBtn);
+
+        float rowBottom = Bottom(lastRow);
+        Assert.GreaterOrEqual(rowBottom, Top(myRow), "마지막 행이 내 점수 행을 덮는다");
+        Assert.GreaterOrEqual(rowBottom, Top(adBtn), "마지막 행이 광고 버튼을 덮는다");
+        Assert.GreaterOrEqual(Bottom(myRow), Top(adBtn), "내 점수 행과 광고 버튼이 겹친다");
+
+        // 행 안쪽: 이름 오른쪽 끝이 점수 왼쪽 끝을 넘지 않는다
+        var row0 = FindRect(ui.gameObject, "row0");
+        var name = FindIn(row0, "n");
+        var score = FindIn(row0, "s");
+        Assert.IsNotNull(name); Assert.IsNotNull(score);
+        var lv = FindIn(row0, "lv");
+        Assert.IsNotNull(lv, "스테이지 레벨 칸이 없다");
+        Assert.LessOrEqual(Right(name), Left(lv), "이름 칸이 레벨 칸을 파고든다");
+        Assert.LessOrEqual(Right(lv), Left(score), "레벨 칸이 점수 칸을 파고든다");
+    }
+
+
+    [UnityTest]
+    public IEnumerator 클리어해야_다음_스테이지가_열린다()
+    {
+        Progress.ResetAll();
+        Assert.AreEqual(1, Progress.Unlocked, "처음엔 1스테이지만 열려 있다");
+        Assert.AreEqual(1, Progress.Selected);
+
+        Progress.Clear(1);
+        Assert.AreEqual(2, Progress.Unlocked, "클리어했는데 다음이 안 열렸다");
+        Assert.AreEqual(2, Progress.Selected, "클리어하면 다음 판이 선택된다");
+
+        // 이미 지난 판을 다시 깨도 진행이 뒤로 가지 않는다
+        Progress.Clear(1);
+        Assert.AreEqual(2, Progress.Unlocked, "해금이 뒤로 갔다");
+
+        // 열리지 않은 판은 고를 수 없다
+        Progress.Selected = 99;
+        Assert.AreEqual(Progress.Unlocked, Progress.Selected, "안 열린 판이 선택됐다");
+
+        Progress.ResetAll();
+        yield return null;
+    }
+
+    [UnityTest]
+    public IEnumerator 지도는_열린_섬만_고를_수_있다()
+    {
+        Progress.ResetAll();
+        PlayerPrefs.SetInt("stage_unlocked", 4);
+        PlayerPrefs.Save();
+
+        gm = NewGm();
+        yield return null;
+        var ui = Object.FindObjectOfType<GameUI>();
+        ui.ShowMap();
+        yield return null;
+
+        for (int level = 1; level <= StageLoader.Count; level++)
+        {
+            var rt = FindRect(ui.gameObject, "island" + level);
+            Assert.IsNotNull(rt, level + "번 섬이 없다");
+            var btn = rt.GetComponent<Button>();
+            Assert.IsNotNull(btn, level + "번 섬에 버튼이 없다");
+            Assert.AreEqual(level <= 4, btn.interactable,
+                            level + "번 섬의 잠금 상태가 해금(4)과 맞지 않는다");
+        }
+
+        // 섬은 항로를 따라 아래로 내려간다 — 겹치면 안 된다
+        var a = FindRect(ui.gameObject, "island1");
+        var b = FindRect(ui.gameObject, "island2");
+        Assert.Greater(Bottom(a), Top(b), "이웃한 두 섬이 겹친다");
+
+        Progress.ResetAll();
+    }
+
+
+
+    // 회귀: 내구도가 2든 5든 한 대 맞을 때마다 겉모습이 반드시 달라져야 한다.
+    // 예전엔 손상 단계를 상수 Rules.ObstacleHp 로 계산해서, 내구도 3 이상인 판에서는
+    // 멀쩡해 보이다가 한 방에 사라지는 것처럼 보였다.
+    [UnityTest]
+    public IEnumerator 방해블록은_맞을_때마다_겉모습이_달라진다()
+    {
+        foreach (int maxHp in new[] { 2, 3, 4, 5 })
+        {
+            int prev = -1;
+            for (int hp = maxHp; hp >= 1; hp--)
+            {
+                int st = ObstacleStyle.StageFor(hp, maxHp);
+                Assert.Greater(st, prev,
+                    "내구도 " + maxHp + ", 남은 " + hp + ": 손상 단계가 " + prev + " 에서 안 올라갔다");
+                Assert.Less(st, ObstacleStyle.Stages, "손상 단계가 스프라이트 개수를 넘는다");
+                prev = st;
+            }
+        }
+
+        // 설정에 있는 모든 내구도가 이 규칙을 만족해야 한다
+        foreach (var st in StageLoader.All)
+            foreach (var ob in st.Obstacles)
+            {
+                if (ob.Cell != Board.Obstacle) continue;
+                Assert.AreEqual(0, ObstacleStyle.StageFor(ob.HitsToBreak, ob.HitsToBreak),
+                                st.StageId + "판: 새로 놓인 벽돌이 이미 손상돼 보인다");
+            }
+        yield return null;
+    }
+
+    const int RankRows = 10;
+
+    static RectTransform FindRect(GameObject root, string name)
+    {
+        foreach (var rt in root.GetComponentsInChildren<RectTransform>(true))
+            if (rt.name == name) return rt;
+        return null;
+    }
+    static RectTransform FindIn(RectTransform root, string name)
+    {
+        foreach (var rt in root.GetComponentsInChildren<RectTransform>(true))
+            if (rt.name == name) return rt;
+        return null;
+    }
+    static readonly Vector3[] corners = new Vector3[4];
+    static float Bottom(RectTransform r) { r.GetWorldCorners(corners); return corners[0].y; }
+    static float Top(RectTransform r) { r.GetWorldCorners(corners); return corners[1].y; }
+    static float Left(RectTransform r) { r.GetWorldCorners(corners); return corners[0].x; }
+    static float Right(RectTransform r) { r.GetWorldCorners(corners); return corners[2].x; }
 
     [UnityTest]
     public IEnumerator TimeAttackRunsAndHudUpdates()

@@ -24,8 +24,17 @@ public class BoardView : MonoBehaviour
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
     Sprite bomb;                  // 폭탄 조각 아이콘
-    SpriteRenderer[] blast;       // 폭발 범위 시뮬레이션 (Bomb5 = 5x5 = 25칸)
+    Sprite wall;                  // 강철 벽 — 부술 수 없는 칸
+    int obstacleMaxHp = 1;   // 이 판의 방해블록 내구도. StartGame 이 설정값으로 덮는다
+
+    /// <summary>이번 판의 방해블록 내구도. 손상 단계를 이 값에 맞춰 환산한다.</summary>
+    public void SetObstacleMaxHp(int hp) { obstacleMaxHp = Mathf.Max(1, hp); }
+    SpriteRenderer[] blast;       // 영향 범위 미리보기 (폭탄 5x5, 매칭+아이템 연쇄)
     int blastCount;
+    Color blastColor;
+    int[] ghostX, ghostY;         // 고스트 칸 좌표 — 사라질 자리인지 대조한다
+    Color[] ghostBase;            // 깜빡이기 전 색
+    readonly HashSet<int> doomed = new HashSet<int>();
     Sprite tile;                  // 현재 스킨의 타일 (타일/고스트 공용)
     TileSkin currentSkin = TileSkin.Glossy;
     Sprite ring;                  // 둥근 사각 테두리 (고스트)
@@ -60,22 +69,22 @@ public class BoardView : MonoBehaviour
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
         // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
-        obstacle = new Sprite[Rules.ObstacleHp];
+        obstacle = new Sprite[ObstacleStyle.Stages];
         for (int i = 0; i < obstacle.Length; i++) obstacle[i] = MakeObstacleSprite(i);
         icons[ItemType.Row] = MakeIcon(ItemType.Row);
         icons[ItemType.Col] = MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
         icons[ItemType.Bomb5] = MakeIcon(ItemType.Bomb5);
-        icons[ItemType.ColorClear] = MakeIcon(ItemType.ColorClear);
+        wall = MakeWallSprite();
 
         // 보드 레이어 (뒤 → 앞):
         //   ① 흰색 20% 헤일로 — 보드 뒤 배경의 대비를 눌러 경계를 만든다
         //   ② 하드 그림자 (offset 6px, 블러 없음)  ③ 네이비 테두리 5px, radius 24px
         //   ④ 크림 서피스  ⑤ 타일 영역
-        var center = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f, 1);
+        var center = new Vector3((Defaults.Width - 1) / 2f, (Defaults.Height - 1) / 2f, 1);
         float radius = 24f * Px;
         // 판 여백을 줄인 만큼 보드를 키울 수 있다 — 카메라 크기를 정하는 건 가로다.
-        float inner = Board.H + 0.20f;
+        float inner = Defaults.Height + 0.20f;
         float surface = inner + 0.19f;
         float border = surface + 2f * (5f * Px);
 
@@ -85,10 +94,10 @@ public class BoardView : MonoBehaviour
         MakePanel("surface", center, surface, surface, BoardCream, -5, radius - 5f * Px);
         MakePanel("grid", center, inner, inner, EmptyColor, -4, radius - 9f * Px);
 
-        tiles = new SpriteRenderer[Board.W, Board.H];
-        overlays = new SpriteRenderer[Board.W, Board.H];
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        tiles = new SpriteRenderer[Defaults.Width, Defaults.Height];
+        overlays = new SpriteRenderer[Defaults.Width, Defaults.Height];
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
             {
                 var go = new GameObject("t_" + x + "_" + y);
                 go.transform.SetParent(transform, false);
@@ -110,6 +119,7 @@ public class BoardView : MonoBehaviour
 
         ghost = new SpriteRenderer[8]; // 최대 조각 5칸 + 여유
         ghostRing = new SpriteRenderer[8];
+        ghostX = new int[8]; ghostY = new int[8]; ghostBase = new Color[8];
         for (int i = 0; i < ghost.Length; i++)
         {
             var rg = new GameObject("ghostring_" + i);
@@ -134,7 +144,7 @@ public class BoardView : MonoBehaviour
         // 폭발 범위 미리보기 — 고스트(5,6)보다 아래, 타일 위
         bomb = MakeBombSprite();
         var blastSprite = MakePanelSprite(0.3f);
-        blast = new SpriteRenderer[25];
+        blast = new SpriteRenderer[96];   // 대각선/색깔폭탄까지 덮을 만큼
         for (int i = 0; i < blast.Length; i++)
         {
             var bg = new GameObject("blast_" + i);
@@ -259,9 +269,25 @@ public class BoardView : MonoBehaviour
         var sr = tiles[x, y];
         var ov = overlays[x, y];
 
+        if (c == Board.Wall)
+        {
+            // 강철은 상태가 없다 — 늘 같은 모습이어야 '못 부순다'가 읽힌다
+            sr.sprite = tile;
+            sr.color = EmptyColor;
+            sr.transform.localScale = Vector3.one * ObstacleStyle.Scale;
+
+            ov.enabled = true;
+            ov.sprite = wall;
+            ov.color = Color.white;
+            ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
+            return;
+        }
+
         if (c == Board.Obstacle)
         {
-            int stage = Mathf.Clamp(Rules.ObstacleHp - hp, 0, obstacle.Length - 1);
+            // 내구도는 스테이지마다 다르다(2~5). 상수로 계산하면 손상이 안 보인 채로
+            // 한 방에 사라지는 것처럼 보인다 — 이 판의 최대 내구도를 기준으로 환산한다.
+            int stage = ObstacleStyle.StageFor(hp, obstacleMaxHp);
 
             // 아래층: 마지막 단계에서만 조각 틈으로 색이 비친다. 그 전에는 배경색이라
             // 콘크리트 주위에 유채색 테두리가 남지 않는다.
@@ -302,8 +328,8 @@ public class BoardView : MonoBehaviour
     /// <summary>보드 최종 상태를 즉시 반영 (색/아이템/위치·스케일 리셋)</summary>
     public void Refresh(Board b, Color[] palette)
     {
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
             {
                 PaintTile(x, y, b.GetTile(x, y), b.GetObstacleHp(x, y), b.GetItem(x, y), palette);
                 tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
@@ -314,10 +340,10 @@ public class BoardView : MonoBehaviour
     /// <summary>연쇄 한 단계가 끝난 시점의 보드를 반영 (색/아이템만; 위치는 FallIn 이 잡는다).</summary>
     public void ApplyState(int[] t, ItemType[] it, int[] hp, Color[] palette)
     {
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
             {
-                int k = x * Board.H + y;
+                int k = x * Defaults.Height + y;
                 PaintTile(x, y, t[k], hp[k], it[k], palette);
             }
     }
@@ -345,7 +371,7 @@ public class BoardView : MonoBehaviour
             var p = pts[i];
             baseCols[i] = tiles[p.X, p.Y].color;
             float d;
-            LastDrop.TryGetValue(p.X * Board.H + p.Y, out d);
+            LastDrop.TryGetValue(p.X * Defaults.Height + p.Y, out d);
             amps[i] = Mathf.Clamp(d / 6f, 0.25f, 1f);     // 낙하 거리 → 찌그러지는 정도
         }
 
@@ -637,24 +663,24 @@ public class BoardView : MonoBehaviour
         // 예전에는 전부 3.5칸 고정이라 한 칸 내려온 블록과 열 전체가 무너진 블록이 똑같이 보였다.
         var xs = new List<int>(); var ys = new List<int>();
         var delays = new List<float>(); var drops = new List<float>();
-        for (int x = 0; x < Board.W; x++)
+        for (int x = 0; x < Defaults.Width; x++)
         {
             int run = 0;
-            for (int y = Board.H - 1; y >= 0; y--)
+            for (int y = Defaults.Height - 1; y >= 0; y--)
             {
                 if (!changed[x, y]) { run = 0; continue; }
                 run++;
                 float d = Mathf.Min(1.2f + run * 0.55f, 6f);
                 xs.Add(x); ys.Add(y);
-                delays.Add((Board.H - 1 - y) * stagger);
+                delays.Add((Defaults.Height - 1 - y) * stagger);
                 drops.Add(d);
-                LastDrop[x * Board.H + y] = d;
+                LastDrop[x * Defaults.Height + y] = d;
                 if (d > LastMaxDrop) LastMaxDrop = d;
             }
         }
         if (xs.Count == 0) yield break;
 
-        float maxDelay = (Board.H - 1) * stagger;
+        float maxDelay = (Defaults.Height - 1) * stagger;
         float t = 0, total = dur + maxDelay;
         while (t < total)
         {
@@ -690,9 +716,11 @@ public class BoardView : MonoBehaviour
                 ghost[i].enabled = true;
                 ghost[i].sprite = tile;
                 ghost[i].transform.localPosition = new Vector3(gx, gy, -1);
-                ghost[i].color = can
+                ghostX[i] = gx; ghostY[i] = gy;
+                ghostBase[i] = can
                     ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
                     : new Color(0.1f, 0.1f, 0.12f, 0.75f);
+                ghost[i].color = ghostBase[i];
 
                 ghostRing[i].enabled = true;
                 ghostRing[i].transform.localPosition = new Vector3(gx, gy, -1.05f);
@@ -717,12 +745,40 @@ public class BoardView : MonoBehaviour
         ghostRing[0].color = ghostRingColor;
         for (int i = 1; i < ghost.Length; i++) { ghost[i].enabled = false; ghostRing[i].enabled = false; }
 
+        ShowRange(can ? range : null, BombRed);
+    }
+
+    static readonly Color BombRed = new Color(1f, 0.06f, 0.04f);
+    static readonly Color MatchWhite = new Color(1f, 1f, 1f);
+
+    /// <summary>지금 놓으면 사라질 칸을 흰색으로 예고한다.
+    /// 손에 든 조각도 그 안에 들면 같이 반짝인다 — 고스트가 범위 표시를 덮기 때문이다.</summary>
+    public void ShowMatchPreview(List<Point> cells)
+    {
+        ShowRange(cells, MatchWhite);
+
+        doomed.Clear();
+        if (cells != null) foreach (var c in cells) doomed.Add(c.X * 1000 + c.Y);
+
+        float k = 0.5f + 0.5f * Mathf.Sin(Time.time * 17f);   // 범위 표시와 같은 박자
+        for (int i = 0; i < ghostCount && i < ghost.Length; i++)
+        {
+            if (!ghost[i].enabled) continue;
+            ghost[i].color = doomed.Contains(ghostX[i] * 1000 + ghostY[i])
+                ? Color.Lerp(ghostBase[i], Color.white, 0.20f + 0.80f * k)
+                : ghostBase[i];
+        }
+    }
+
+    void ShowRange(List<Point> cells, Color c)
+    {
+        blastColor = c;
         blastCount = 0;
-        if (can && range != null)
-            for (int i = 0; i < range.Count && i < blast.Length; i++)
+        if (cells != null)
+            for (int i = 0; i < cells.Count && i < blast.Length; i++)
             {
                 blast[i].enabled = true;
-                blast[i].transform.localPosition = new Vector3(range[i].X, range[i].Y, -0.9f);
+                blast[i].transform.localPosition = new Vector3(cells[i].X, cells[i].Y, -0.9f);
                 blastCount++;
             }
         for (int i = blastCount; i < blast.Length; i++) blast[i].enabled = false;
@@ -743,9 +799,9 @@ public class BoardView : MonoBehaviour
     {
         if (blastCount > 0)
         {
-            // 위험 범위는 빠르고 새빨갛게 — 놓을 자리(흰 테두리)와 한눈에 갈린다
+            // 빠르게 깜빡여서 '여기가 사라진다'가 바로 읽히게 한다
             float ba = 0.66f + 0.24f * Mathf.Sin(Time.time * 17f);
-            var bc = new Color(1f, 0.06f, 0.04f, ba);
+            var bc = new Color(blastColor.r, blastColor.g, blastColor.b, ba);
             for (int i = 0; i < blastCount; i++) blast[i].color = bc;
         }
         if (ghostCount <= 0) return;
@@ -900,8 +956,8 @@ public class BoardView : MonoBehaviour
         if (!built || skin == currentSkin) return;
         currentSkin = skin;
         tile = MakeTileSprite(skin);
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
                 if (tiles[x, y].sprite != null) tiles[x, y].sprite = tile;
         foreach (var g in ghost) g.sprite = tile;
     }
@@ -1019,13 +1075,19 @@ public class BoardView : MonoBehaviour
     // 지정한 무채색이 그대로 나오지 않는다.
     //
     // stage 0 = 온전 / 1 = 갈라져 조각이 벌어짐 (틈으로 아래 색이 비친다)
+    /// <summary>벽돌 블록. 흰 줄눈이 그리는 격자가 '쌓아올린 것 = 부술 수 있다' 를 알린다.
+    /// stage 는 0(온전) ~ ObstacleStyle.Stages-1(곧 부서짐). 한 대 맞을 때마다 반드시 달라진다.</summary>
     static Sprite MakeObstacleSprite(int stage)
     {
         const int S = 48;
         float r = S * ObstacleStyle.RoundFrac;
         float line = S * ObstacleStyle.LineFrac;
-        float split = S * ObstacleStyle.SplitFrac;
+        float mortar = S * ObstacleStyle.MortarFrac;
+        float dmg = ObstacleStyle.Stages <= 1 ? 0f : stage / (float)(ObstacleStyle.Stages - 1);
         Color body = ObstacleStyle.BodyFor(stage);
+
+        // 벽돌 한 장 크기 — 가로 3장, 세로 4켜. 잘아야 '쌓아올린 벽' 으로 읽힌다
+        float bw = S / 3f, bh = S / 4f;
 
         var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
         var px = new Color[S * S];
@@ -1040,50 +1102,129 @@ public class BoardView : MonoBehaviour
                 float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
                 float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
 
-                Color c = body;
+                // 켜마다 반 장씩 어긋나게 쌓는다
+                int row = Mathf.Clamp((int)(fy / bh), 0, 3);
+                float shift = (row % 2) * bw * 0.5f;
+                float ux = fx + shift;
+                int col = (int)(ux / bw);
 
-                // 콘크리트 잔알갱이 — 결정적 해시라 매번 같은 무늬가 나온다
+                // 벽돌마다 흰기를 다르게 섞는다 — 부분적으로 하얀 벽돌이 섞인 벽
+                float h = Frac(Mathf.Sin(row * 37.13f + col * 91.7f) * 43758.5453f);
+                Color c = Color.Lerp(body, ObstacleStyle.BrickPale, h * 0.62f);
+
+                // 벽돌 면의 잔결
                 float n = Frac(Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f);
                 c = Color.Lerp(c, n > 0.5f ? ObstacleStyle.Light : ObstacleStyle.Shadow,
-                               0.16f * Mathf.Abs(n - 0.5f) * 2f);
+                               0.14f * Mathf.Abs(n - 0.5f) * 2f);
+
+                // 줄눈 — 가로 켜 사이, 세로 이음매. 흰색이라 격자가 멀리서도 보인다
+                float dRow = Mathf.Abs(fy - Mathf.Round(fy / bh) * bh);
+                float dCol = Mathf.Abs(ux - col * bw);
+                dCol = Mathf.Min(dCol, Mathf.Abs(ux - (col + 1) * bw));
+                if (dRow < mortar || dCol < mortar)
+                    c = Color.Lerp(ObstacleStyle.Mortar, c, 0.12f);
 
                 // 베벨: 위/좌는 밝게, 아래/우는 어둡게 — 두께감
                 float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
-                if (edge > line && edge < line + S * 0.11f)
+                if (edge > line && edge < line + S * 0.10f)
                     c = Color.Lerp(c, (fy > S * 0.5f || fx < S * 0.5f)
-                                      ? ObstacleStyle.Light : ObstacleStyle.Shadow, 0.55f);
+                                      ? ObstacleStyle.Light : ObstacleStyle.Shadow, 0.45f);
 
                 // 외곽선 — 색 타일에는 없는 신호라 테두리 자체가 구분 단서가 된다
                 if (edge <= line) c = ObstacleStyle.Outline;
 
-                // 균열 / 조각 분리
-                float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
-                float d1 = Mathf.Abs(fx - (S * 0.44f + w1));
-                if (stage == 0)
+                // 균열: 손상이 깊어질수록 굵어지고, 갈래가 늘고, 끝내 조각이 떨어져 나간다
+                if (stage > 0)
                 {
-                    // 온전해도 실금 하나 — 완전히 매끈하면 플라스틱처럼 보인다
-                    if (d1 < line * 0.42f) c = Color.Lerp(c, ObstacleStyle.Outline, 0.45f);
+                    float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
+                    float d = Mathf.Abs(fx - (S * 0.44f + w1));
+
+                    if (dmg > 0.3f)
+                    {
+                        float w2 = Mathf.Sin(fx * 0.28f + 1.5f) * S * 0.075f;
+                        d = Mathf.Min(d, Mathf.Abs(fy - (S * 0.60f + w2)));
+                    }
+                    if (dmg > 0.7f)
+                    {
+                        float w3 = Mathf.Sin(fy * 0.41f + 2.6f) * S * 0.06f;
+                        d = Mathf.Min(d, Mathf.Abs(fx - (S * 0.74f + w3)));
+                    }
+
+                    float crack = line * (0.30f + 0.70f * dmg);   // 금이 점점 굵어진다
+                    // 틈은 마지막 단계에서만, 실금 굵기 정도로만 벌어진다.
+                    // 크게 뚫으면 벽돌이 아니라 부서진 잔해로 보인다.
+                    float gap = S * 0.030f * Mathf.Max(0f, dmg - 0.75f) * 4f;
+                    if (gap > 0f && d < gap) a = 0f;
+                    else if (d < crack) c = Color.Lerp(c, ObstacleStyle.Outline, 0.55f + 0.45f * dmg);
                 }
                 else
                 {
-                    float w2 = Mathf.Sin(fx * 0.28f + 1.5f) * S * 0.075f;
-                    float d2 = Mathf.Abs(fy - (S * 0.60f + w2));
-                    float d = Mathf.Min(d1, d2);
-                    if (d < split) a = 0f;                            // 벌어진 틈
-                    else if (d < split + line * 0.9f) c = ObstacleStyle.Outline;   // 갈라진 단면
+                    // 온전해도 실금 하나 — 완전히 매끈하면 플라스틱처럼 보인다
+                    float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
+                    if (Mathf.Abs(fx - (S * 0.44f + w1)) < line * 0.30f)
+                        c = Color.Lerp(c, ObstacleStyle.Outline, 0.30f);
                 }
 
-                px[y * S + x] = new Color(c.r, c.g, c.b, a);
+                c.a = a;
+                px[y * S + x] = c;
             }
 
-        tex.SetPixels(px);
-        tex.Apply();
+        tex.SetPixels(px); tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
     static float Frac(float v) { return v - Mathf.Floor(v); }
 
-    // 충격파용 원형 링 (안쪽이 비어 있다)
+    /// <summary>강철 벽. 콘크리트(부술 수 있음)와 헷갈리지 않게 차가운 금속과 리벳으로 그린다.</summary>
+    static Sprite MakeWallSprite()
+    {
+        const int S = 64;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+
+        var steel     = new Color(0.36f, 0.40f, 0.47f);
+        var steelHi   = new Color(0.52f, 0.57f, 0.64f);
+        var steelLo   = new Color(0.24f, 0.27f, 0.33f);
+        var edge      = new Color(0.12f, 0.13f, 0.18f);
+        var rivet     = new Color(0.66f, 0.71f, 0.78f);
+
+        float round = S * ObstacleStyle.RoundFrac * 2.2f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                // 둥근 사각형 바깥은 투명
+                float dx = Mathf.Max(0, Mathf.Abs(x - (S - 1) * 0.5f) - ((S - 1) * 0.5f - round));
+                float dy = Mathf.Max(0, Mathf.Abs(y - (S - 1) * 0.5f) - ((S - 1) * 0.5f - round));
+                float d = Mathf.Sqrt(dx * dx + dy * dy);
+                if (d > round) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
+
+                // 위에서 아래로 떨어지는 금속 그라데이션 + 대각선 결
+                float g = 1f - y / (float)(S - 1);
+                Color c = Color.Lerp(steelHi, steelLo, g);
+                float grain = Mathf.Sin((x + y) * 0.55f) * 0.5f + 0.5f;
+                c = Color.Lerp(c, steel, grain * 0.35f);
+
+                // 사방 리벳 — 딱 봐도 박아놓은 판
+                for (int ry = 0; ry < 2; ry++)
+                    for (int rx = 0; rx < 2; rx++)
+                    {
+                        float cx = rx == 0 ? S * 0.22f : S * 0.78f;
+                        float cy = ry == 0 ? S * 0.22f : S * 0.78f;
+                        float rd = Mathf.Sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+                        if (rd < S * 0.055f) c = Color.Lerp(rivet, c, rd / (S * 0.055f));
+                    }
+
+                // 굵은 외곽선
+                if (d > round - 1.6f || x < 2 || y < 2 || x > S - 3 || y > S - 3)
+                    c = edge;
+
+                px[y * S + x] = c;
+            }
+
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
     static Sprite MakeShockSprite()
     {
         const int S = 64;
@@ -1147,11 +1288,6 @@ public class BoardView : MonoBehaviour
                         glyph = (Mathf.Abs(dx - dy) <= 2f || Mathf.Abs(dx + dy) <= 2f) && dist <= 9f;
                         break;
                     case ItemType.Bomb5: glyph = dist <= 6f; break;
-                    case ItemType.ColorClear:
-                        // 8방향 스파클
-                        glyph = ((Mathf.Abs(dx) <= 1.6f || Mathf.Abs(dy) <= 1.6f) && Mathf.Abs(dx) + Mathf.Abs(dy) <= 9f)
-                             || (Mathf.Abs(Mathf.Abs(dx) - Mathf.Abs(dy)) <= 1.4f && dist <= 6.5f);
-                        break;
                 }
                 if (glyph) col = Color.white;
                 px[y * S + x] = col;

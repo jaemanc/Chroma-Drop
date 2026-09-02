@@ -45,7 +45,12 @@ pkill -f "Builds/Mac/ChromaDrop.app" 2>/dev/null
 
 if [ "$RUN_TESTS" = "1" ]; then
   echo "▶ 코어 규칙 테스트"
-  if ! "$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe 2>&1 | grep -v warning; then :; fi
+  rm -f /tmp/core_tests.exe
+  if ! "$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs \
+        Assets/Scripts/Stages/StageConfig.cs Assets/Scripts/Stages/ObjectiveTracker.cs \
+        Assets/Scripts/Stages/BoardTopology.cs Assets/Scripts/Stages/StageValidator.cs \
+        Tests/CoreTests.cs -out:/tmp/core_tests.exe 2>&1 | grep -v warning; then :; fi
+  if [ ! -f /tmp/core_tests.exe ]; then echo "✗ 코어 테스트 컴파일 실패"; exit 1; fi
   if ! "$MONO/mono" /tmp/core_tests.exe | tail -3; then
     echo "✗ 코어 테스트 실패" >&2; exit 1
   fi

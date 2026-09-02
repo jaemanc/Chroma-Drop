@@ -27,11 +27,6 @@ public static class Shop
             Desc = "Swap your piece for a 2x2 block that plants a bomb.",
             Tint = Palette.Hex(0xE4795A),
         },
-        new ShopEntry {
-            Item = ShopItem.BigPiece, Name = "BIG BLOCK", Price = 250,
-            Desc = "Swap your piece for a huge 9x9 block.",
-            Tint = Palette.Hex(0x8B84D6),
-        },
     };
 
     /// <summary>타일 스킨 — 한 번 사면 계속 쓴다.</summary>

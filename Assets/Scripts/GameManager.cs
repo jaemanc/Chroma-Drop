@@ -58,6 +58,10 @@ public class GameManager : MonoBehaviour
     SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
 
     int score, movesLeft, totalMoves;
+    int stageLevel;                  // 몇 번째 판인가
+    StageConfig stage;               // 이 판의 설정. 난이도의 유일한 출처다
+    ObjectiveTracker objectives;     // 목표 진행도
+    bool stageCleared;
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
@@ -67,8 +71,20 @@ public class GameManager : MonoBehaviour
     /// <summary>폭탄 조각이 장전돼 있나.</summary>
     public bool BombArmed { get { return pendingBomb; } }
 
-    /// <summary>BIG BLOCK 한 변. 보드보다 작아야 놓을 자리가 생긴다.</summary>
-    public const int BigPieceSide = 9;
+    // ---------- 스테이지 ----------
+    public int StageLevel { get { return stageLevel; } }
+    public StageConfig Stage { get { return stage; } }
+    public bool StageCleared { get { return stageCleared; } }
+
+    /// <summary>목표별 진행도. UI 가 그대로 그린다.</summary>
+    public List<ObjectiveProgress> Objectives
+    {
+        get
+        {
+            return objectives != null ? objectives.Snapshot() : new List<ObjectiveProgress>();
+        }
+    }
+
     Vector3 camBase;
     Coroutine shakeCo;
 
@@ -140,6 +156,16 @@ public class GameManager : MonoBehaviour
     /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
     public void StartGame() { StartGame(Difficulty, timeAttack, seed); }
 
+    /// <summary>스테이지 한 판을 시작한다.</summary>
+    public void StartStage(int level) { StartStage(level, seed); }
+
+    public void StartStage(int level, int seedOverride)
+    {
+        timeAttack = false;
+        stageLevel = Mathf.Clamp(level, 1, Mathf.Max(1, StageLoader.Count));
+        StartGame(Difficulty, false, seedOverride);
+    }
+
     public void StartGame(string diff, bool ta, int seedOverride)
     {
         StopAllCoroutines();
@@ -149,13 +175,30 @@ public class GameManager : MonoBehaviour
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         curSeed = s;
-        board = new Board(Rules.ColorCount, s);
+
+        // 판을 만들기 전에 어떤 스테이지인지부터 정해야 지형을 넘길 수 있다
+        taRunning = timeAttack;
+        if (!taRunning && stageLevel < 1) stageLevel = Progress.Selected;
+        stage = taRunning ? null : StageLoader.Get(stageLevel);
+        if (!taRunning && stage == null)
+        {
+            Debug.LogError("[stage] " + stageLevel + "번 설정을 못 읽었다 — 기본 판으로 시작한다. "
+                           + string.Join(" / ", StageLoader.Report.Errors.ToArray()));
+        }
+
+        // 판의 모든 조건은 설정에서 온다. 타임어택은 스테이지가 없으므로 기본값.
+        var setup = stage != null ? stage.ToBoardSetup(Rules.ColorCount)
+                                  : BoardSetup.Default(Rules.ColorCount);
+        board = new Board(setup, s);
+        LogStageTopology();
         pieceRng = new System.Random(s + 1);
         palette = Palette.Generate(Rules.ColorCount, new System.Random(s + 2));
 
-        var d = Rules.Table[difficulty];
-        taRunning = timeAttack;
-        totalMoves = movesLeft = timeAttack ? 9999 : d.Moves;
+        objectives = stage != null
+                   ? new ObjectiveTracker(stage.Objectives, stage.ObjectiveMode)
+                   : null;
+        stageCleared = false;
+        totalMoves = movesLeft = stage != null && stage.Moves > 0 ? stage.Moves : 9999;
         score = 0;
         busy = false;
         touchActive = false;
@@ -166,6 +209,7 @@ public class GameManager : MonoBehaviour
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
         queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
 
+        view.SetObstacleMaxHp(MaxBrickHp());
         view.Build();
         view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
         view.SetVisible(true);
@@ -175,6 +219,7 @@ public class GameManager : MonoBehaviour
 
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
+        else if (stage != null && stage.TimeSeconds > 0) taDeadline = Time.time + stage.TimeSeconds;
         else StartPieceTimer();
     }
 
@@ -184,17 +229,34 @@ public class GameManager : MonoBehaviour
         busy = false;
         view.HideGhost();
 
-        string key = BestKey(taRunning, difficulty);
-        int best = PlayerPrefs.GetInt(key, 0);
-        bool newBest = score > best;
-        if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
-
-        if (newBest) sfx.PlayWin(); else sfx.PlayLose();
-        ui.ShowResult(taRunning, score, best, newBest, earnedCoins);
-
-        // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
+        // 코인부터 정산한다. 결과 화면에 이번 판에서 번 코인을 보여줘야 하기 때문이다.
         earnedCoins = Rules.CoinsFor(score);
         Wallet.AddCoins(earnedCoins);
+
+        int best;
+        bool newBest;
+        if (taRunning)
+        {
+            string key = BestKey(true, difficulty);
+            best = PlayerPrefs.GetInt(key, 0);
+            newBest = score > best;
+            if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
+        }
+        else
+        {
+            stageCleared = objectives != null && objectives.Cleared;
+            best = Progress.Best(stageLevel);
+            newBest = score > best;
+            Progress.SetBest(stageLevel, score);
+            if (newBest) best = score;
+            if (stageCleared) Progress.Clear(stageLevel);   // 다음 스테이지를 연다
+        }
+
+        if (stageCleared || newBest) sfx.PlayWin(); else sfx.PlayLose();
+        ui.ShowResult(taRunning, score, best, newBest, earnedCoins,
+                      taRunning ? 0 : stageLevel, stageCleared);
+
+        // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
 
         pendingScore = score;
         pendingTa = taRunning;
@@ -207,8 +269,9 @@ public class GameManager : MonoBehaviour
     {
         get
         {
+            // 스테이지 점수는 올리지 않는다 — 판마다 목표가 달라 한 표에 섞을 수 없다.
             var lb = Leaderboard.I;
-            return lb != null && lb.Configured && pendingScore > 0;
+            return pendingTa && lb != null && lb.Configured && pendingScore > 0;
         }
     }
 
@@ -222,7 +285,7 @@ public class GameManager : MonoBehaviour
         var lb = Leaderboard.I;
         if (!CanSubmit) { if (done != null) done(false); return; }
         ui.SetSubmitState(GameUI.SubmitState.Sending);
-        StartCoroutine(lb.Submit(pendingTa, Difficulty, pendingScore, pendingSeed, ok =>
+        StartCoroutine(lb.Submit(pendingTa, Difficulty, pendingScore, pendingSeed, Progress.Unlocked, ok =>
         {
             ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed);
             if (done != null) done(ok);
@@ -230,7 +293,11 @@ public class GameManager : MonoBehaviour
     }
 
     public static string BestKey(bool ta, string diff) { return ta ? "best_ta" : "best_score_" + diff; }
-    public int BestForSelection() { return PlayerPrefs.GetInt(BestKey(timeAttack, difficulty), 0); }
+    public int BestForSelection()
+    {
+        return timeAttack ? PlayerPrefs.GetInt(BestKey(true, difficulty), 0)
+                          : Progress.Best(Progress.Selected);
+    }
 
     // ---------- 루프 ----------
 
@@ -290,9 +357,15 @@ public class GameManager : MonoBehaviour
 
         bool can = board.CanPlace(current, ax, ay);
         if (pendingBomb)
+        {
             view.ShowBombGhost(ax, ay, can, can ? board.EffectCells(ItemType.Bomb5, ax, ay) : null);
+        }
         else
+        {
             view.ShowGhost(current, ax, ay, can, palette[current.Color]);
+            // 여기 놓으면 어느 칸이 사라지는지 흰색으로 예고한다
+            view.ShowMatchPreview(can ? board.PreviewStamp(current, ax, ay) : null);
+        }
         if (stamp && can) StartCoroutine(DoStamp(ax, ay));
     }
 
@@ -306,12 +379,8 @@ public class GameManager : MonoBehaviour
         {
             case ShopItem.BombPiece:
                 // 1칸짜리 폭탄. 매칭이 없어도 던진 자리에서 바로 터진다(Board.Detonate).
-                current = Square(1, current.Color);
+                current = new Piece("bomb", new List<Point> { new Point(0, 0) }, current.Color);
                 pendingBomb = true;
-                break;
-            case ShopItem.BigPiece:
-                current = Square(BigPieceSide, current.Color);
-                pendingBomb = false;
                 break;
         }
 
@@ -320,15 +389,6 @@ public class GameManager : MonoBehaviour
         // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
         if (!taRunning) StartPieceTimer();
         return true;
-    }
-
-    /// <summary>n x n 정사각 조각.</summary>
-    static Piece Square(int n, int color)
-    {
-        var cells = new List<Point>(n * n);
-        for (int x = 0; x < n; x++)
-            for (int y = 0; y < n; y++) cells.Add(new Point(x, y));
-        return new Piece(n + "x" + n, cells, color);
     }
 
     public void RotateCurrent()
@@ -352,9 +412,9 @@ public class GameManager : MonoBehaviour
         view.HideGhost();
 
         // 연출 diff용: 스탬프 직후(파괴 전) 시각 상태 스냅샷
-        var visual = new int[Board.W, Board.H];
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        var visual = new int[Defaults.Width, Defaults.Height];
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
                 visual[x, y] = board.GetTile(x, y);
         var stamped = new List<Point>();
         foreach (var c in current.Cells)
@@ -393,14 +453,9 @@ public class GameManager : MonoBehaviour
         if (result.Spawns.Count > 0) sfx.PlayItem();
 
         score += result.ScoreGained;
+        if (objectives != null) objectives.Apply(result, score);
 
-        // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
-        if (!taRunning)
-        {
-            int used = totalMoves - movesLeft;
-            int add = Rules.ObstaclesAfterMove(used, totalMoves);
-            if (add > 0 && board.SpawnObstacles(add) > 0) sfx.PlayItem();
-        }
+        // 장애물은 게임 중에 늘리지 않는다 — 자리는 스테이지 설정이 유일한 출처다.
         view.Refresh(board, palette);
 
         // 다음 조각
@@ -411,8 +466,40 @@ public class GameManager : MonoBehaviour
         busy = false;
         if (!taRunning)
         {
+            // 목표를 채웠으면 수가 남아도 그 자리에서 끝난다
+            if (objectives != null && objectives.Cleared) { stageCleared = true; EndGame(); yield break; }
             if (movesLeft <= 0) { EndGame(); yield break; }
             StartPieceTimer();
+        }
+    }
+
+
+    /// <summary>이 판 brick 의 최대 내구도. 설정이 준 값 중 가장 큰 것.</summary>
+    int MaxBrickHp()
+    {
+        int hp = 1;
+        if (stage != null)
+            foreach (var o in stage.Obstacles)
+                if (o.Cell == Board.Obstacle && o.HitsToBreak > hp) hp = o.HitsToBreak;
+        return hp;
+    }
+
+    /// <summary>스테이지를 열 때 보드 구조를 로그로 남긴다. 에러가 아니라 정보다.</summary>
+    void LogStageTopology()
+    {
+        if (stage == null) return;
+        Debug.Log("[stage " + stage.StageId + "] 조작 가능 칸 = "
+                  + stage.Width * stage.Height + " - " + stage.ObstacleCells
+                  + " = " + stage.PlayableCells);
+
+        var regions = BoardTopology.Regions(board);
+        if (regions.Count > 1)
+            Debug.Log("[stage " + stage.StageId + "] 보드가 " + regions.Count + "개 영역으로 분단됨");
+        for (int i = 0; i < regions.Count; i++)
+        {
+            var r = regions[i];
+            string tag = r.DeadZone ? "dead zone" : (r.Refillable ? "정상" : "고립(소모전)");
+            Debug.Log("[stage " + stage.StageId + "] 영역 " + (i + 1) + ": " + r.Size + "칸 · " + tag);
         }
     }
 
@@ -473,13 +560,13 @@ public class GameManager : MonoBehaviour
     /// <summary>한 단계의 중력·리필 결과를 낙하 연출로 반영하고, 새로 채워진 칸을 반짝인다.</summary>
     IEnumerator ApplyWave(Wave w, int[,] visual, float dur, float stagger)
     {
-        var changed = new bool[Board.W, Board.H];
+        var changed = new bool[Defaults.Width, Defaults.Height];
         var newCells = new List<Point>();
         bool any = false;
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
+        for (int x = 0; x < Defaults.Width; x++)
+            for (int y = 0; y < Defaults.Height; y++)
             {
-                int after = w.TilesAfter[x * Board.H + y];
+                int after = w.TilesAfter[x * Defaults.Height + y];
                 if (after == visual[x, y]) continue;
                 changed[x, y] = true;
                 any = true;
@@ -532,9 +619,9 @@ public class GameManager : MonoBehaviour
         lastW = Screen.width; lastH = Screen.height;
         float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         // 가로 여백이 카메라 크기를 결정한다. 보드 판이 잘리지 않는 선까지 좁혔다.
-        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 0.44f) / aspect);
+        float half = Mathf.Max(Defaults.Height / 2f + 2.5f, (Defaults.Width / 2f + 0.44f) / aspect);
         cam.orthographicSize = half;
-        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.06f, -10);
+        camBase = new Vector3((Defaults.Width - 1) / 2f, (Defaults.Height - 1) / 2f + half * 0.06f, -10);
         if (shakeCo == null) cam.transform.position = camBase;
         FitBackground();
     }

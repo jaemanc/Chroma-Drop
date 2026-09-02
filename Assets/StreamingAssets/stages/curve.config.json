@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "stageCount": 30,
+  "colors": [
+    "coral",
+    "purple",
+    "yellow",
+    "teal"
+  ],
+  "grid": {
+    "width": 14,
+    "height": 14
+  },
+  "axes": {
+    "initialFillRatio": {
+      "from": 1.0,
+      "to": 0.5,
+      "startStage": 6,
+      "endStage": 20
+    },
+    "blocksPerClear": {
+      "from": 5,
+      "to": 2,
+      "startStage": 4,
+      "endStage": 22
+    },
+    "obstacleRatio": {
+      "from": 0.0,
+      "to": 0.2,
+      "startStage": 3,
+      "endStage": 28
+    },
+    "objectiveCount": {
+      "from": 1,
+      "to": 3,
+      "startStage": 8,
+      "endStage": 24
+    },
+    "objectiveTarget": {
+      "from": 40,
+      "to": 260,
+      "startStage": 1,
+      "endStage": 30
+    },
+    "moveSlack": {
+      "from": 1.8,
+      "to": 1.05,
+      "startStage": 2,
+      "endStage": 26
+    },
+    "minMatchLength": {
+      "from": 2,
+      "to": 3,
+      "startStage": 18,
+      "endStage": 18
+    }
+  },
+  "obstacleMix": {
+    "brick": 0.6,
+    "frozen": 0.25,
+    "locked": 0.15
+  },
+  "brickHitsToBreak": {
+    "from": 1,
+    "to": 3,
+    "startStage": 5,
+    "endStage": 25
+  },
+  "refillModeByStage": {
+    "instantUntil": 3,
+    "dripUntil": 27,
+    "noneFrom": 28
+  },
+  "seed": 20260902
+}

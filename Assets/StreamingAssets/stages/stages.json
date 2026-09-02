@@ -1,0 +1,385 @@
+{
+  "version": 1,
+  "stages": [
+    {
+      "stageId": 1,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 2,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 3,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 4,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 4, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 5,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 3, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 6,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 7,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 8,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "teal", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 9,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "coral", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 10,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.91, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "purple", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 11,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.86, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "yellow", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 12,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.82, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "teal", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 13,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.77, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "coral", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 14,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.73, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "purple", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 15,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.68, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "yellow", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 16,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.64, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "teal", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 17,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.59, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "coral", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 8, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+    },
+    {
+      "stageId": 18,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.59, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "purple", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 19,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.55, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "yellow", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 20,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "teal", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 21,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "coral", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 22,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "purple", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 23,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "yellow", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 24,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "teal", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 25,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "coral", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 26,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 40 },
+        { "type": "clear_color", "color": "purple", "target": 8 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 5, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 27,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 95 },
+        { "type": "clear_color", "color": "yellow", "target": 19 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 7, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 28,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 150 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 10, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 29,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 205 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 14, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    },
+    {
+      "stageId": 30,
+      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
+      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
+      "obstacles": [],
+      "objectives": [
+        { "type": "clear_count", "target": 260 }
+      ],
+      "objectiveMode": "all",
+      "limits": { "moves": 18, "timeSeconds": null },
+      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+    }
+  ]
+}

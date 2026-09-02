@@ -35,7 +35,7 @@ public class GameUI : MonoBehaviour
     struct RankRow
     {
         public Image Bg, Badge;
-        public Text Rank, Code, Name, Score;
+        public Text Rank, Code, Name, Score, Stage;
         public void SetActive(bool v) { Bg.transform.parent.gameObject.SetActive(v); }
     }
     GameObject rankPanel, countryPanel;
@@ -58,7 +58,7 @@ public class GameUI : MonoBehaviour
     Image homeBadge; Text homeBadgeText;
     bool rankNationTab;
     Coroutine rankCo;
-    const int RankRowCount = 12;
+    const int RankRowCount = 10;
     RectTransform nextRoot;
     readonly List<Image> nextCells = new List<Image>();
 
@@ -122,6 +122,7 @@ public class GameUI : MonoBehaviour
         BuildCountryPanel();
         BuildAdPanel();
         BuildShopPanel();
+        BuildMapPanel();
         homePanel.SetActive(false);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
@@ -143,6 +144,7 @@ public class GameUI : MonoBehaviour
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
+        if (mapPanel != null) mapPanel.SetActive(false);
         RefreshHomeButtons();
     }
 
@@ -173,7 +175,7 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 20, 342, 18);
+        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 20, 342, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         float cw = (390f - 48f - 14f) / 2f;
@@ -326,6 +328,22 @@ public class GameUI : MonoBehaviour
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
+        // 목표 진행은 아이브로우 줄에 얹는다 — 보드 위쪽 여백이 좁다
+        // 목표는 여러 개일 수 있다. 진행도를 그대로 이어 붙여 보여준다.
+        if (g.TimeAttackMode) { gameEyebrow.text = Spaced("CHROMA DROP"); gameEyebrow.color = Muted; }
+        else
+        {
+            var progress = g.Objectives;
+            var sb = new System.Text.StringBuilder("STAGE " + g.StageLevel);
+            bool allDone = progress.Count > 0;
+            foreach (var op in progress)
+            {
+                sb.Append("   ").Append(op.Label);
+                if (!op.Done) allDone = false;
+            }
+            gameEyebrow.text = sb.ToString();
+            gameEyebrow.color = allDone ? Coral : Muted;
+        }
         timerBar.SetActive(true);
         float frac;
         if (g.TimeAttackMode)
@@ -408,6 +426,19 @@ public class GameUI : MonoBehaviour
     Image[] modeFill;
     Text[] modeEyebrow;
     Text selectedModeText, coinHomeText;
+    Text gameEyebrow;
+    Image stagePrev, stageNext;
+    GameObject mapPanel;
+    RectTransform mapContent, boat;
+    Image[] island;          // 섬 본체 (잠김/열림/클리어에 따라 색이 다르다)
+    Text[] islandNum;
+    Image[] islandLock;
+    ScrollRect mapScroll;
+    Image stageMapBtn;
+    Text mapTitle;
+    Coroutine sailCo;
+    Text retryLabel;
+    GameObject rankFromResult;
 
     Sprite Rounded(float protoRadius)
     {
@@ -504,8 +535,8 @@ public class GameUI : MonoBehaviour
         // ---- 모드 카드 ----
         modeFill = new Image[2];
         modeEyebrow = new Text[2];
-        string[] eyebrows = { "CLASSIC", "RUSH" };
-        string[] labels = { "Moves", "Time Attack" };
+        string[] eyebrows = { "STAGE", "RUSH" };
+        string[] labels = { "Stage", "Time Attack" };
         for (int i = 0; i < 2; i++)
         {
             bool ta = i == 1;
@@ -560,10 +591,13 @@ public class GameUI : MonoBehaviour
         var sb = startRoot.gameObject.AddComponent<Button>();
         sb.targetGraphic = faceOuter;
         sb.transition = Selectable.Transition.None;
-        sb.onClick.AddListener(() => gm.StartGame());
+        sb.onClick.AddListener(() => { if (gm.timeAttack) gm.StartGame(); else gm.StartStage(Progress.Selected); });
         startRoot.gameObject.AddComponent<UiPressImage>().target = faceRt;
 
-        selectedModeText = Label(safe, "selmode", "", 13, TextAnchor.MiddleLeft, Body, 20, 434, 350, 20);
+        selectedModeText = Label(safe, "selmode", "", 13, TextAnchor.MiddleLeft, Body, 20, 434, 250, 20);
+        // 스테이지는 지도에서 고른다. 타임어택이면 숨긴다.
+        stageMapBtn = Card(safe, "stgmap", 268, 426, 102, 32, Yellow, 12);
+        HookButton(stageMapBtn, () => ShowMap(), "MAP", 12);
 
         // ---- 최고 기록 카드 ----
         var best = Card(safe, "bestcard", 20, 472, 350, 328, Cream, 22);
@@ -684,9 +718,19 @@ public class GameUI : MonoBehaviour
         }
         bestHomeText.text = gm.BestForSelection().ToString("N0");
         if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0");
-        selectedModeText.text = gm.timeAttack
-            ? "Selected mode: time attack · 3 min"
-            : "Selected mode: " + Rules.Table[GameManager.Difficulty].Moves + " moves";
+        if (gm.timeAttack)
+        {
+            selectedModeText.text = "Selected mode: time attack · 3 min";
+        }
+        else
+        {
+            var st = StageLoader.Get(Progress.Selected);
+            selectedModeText.text = st == null
+                ? "Stage " + Progress.Selected
+                : "Stage " + st.StageId + " · " + Summary(st) + " / " + st.Moves + " moves";
+        }
+        if (stageMapBtn != null)
+            stageMapBtn.transform.parent.gameObject.SetActive(!gm.timeAttack);
         RefreshBadge();
     }
 
@@ -701,6 +745,288 @@ public class GameUI : MonoBehaviour
     // ---------- 결과 ----------
 
     Text resultCoins;
+
+
+    /// <summary>스테이지 개수. 설정 파일이 유일한 출처다.</summary>
+    static int StageCount { get { return Mathf.Max(1, StageLoader.Count); } }
+
+    /// <summary>목표를 한 줄로 요약한다.</summary>
+    static string Summary(StageConfig st)
+    {
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < st.Objectives.Count; i++)
+        {
+            if (i > 0) sb.Append(" + ");
+            sb.Append(st.Objectives[i].Target);
+            if (st.Objectives[i].Type == ObjectiveType.ClearColor) sb.Append(' ').Append(st.Objectives[i].ColorName);
+            else if (st.Objectives[i].Type == ObjectiveType.BreakObstacle) sb.Append(' ').Append(st.Objectives[i].ObstacleType);
+            else if (st.Objectives[i].Type == ObjectiveType.ReachScore) sb.Append(" pts");
+            else sb.Append(" blocks");
+        }
+        return sb.ToString();
+    }
+
+    // ---------- 스테이지 지도 ----------
+    // 섬에서 섬으로 항로가 이어지고, 배가 지금 선 자리를 표시한다.
+    const float IslandGap = 132f;    // 섬 사이 세로 간격 (프로토타입 단위)
+    const float MapTop = 150f;       // 첫 섬까지 여백
+    const float IslandSize = 84f;
+
+    static readonly Color Sea       = Palette.Hex(0x9FD5E4);
+    static readonly Color SeaDeep   = Palette.Hex(0x6FB8CE);
+    static readonly Color IslandOn  = Palette.Hex(0x8FD06A);
+    static readonly Color IslandDone= Palette.Hex(0x5FB88C);
+    static readonly Color IslandOff = Palette.Hex(0xA9B3BC);
+    static readonly Color Sand      = Palette.Hex(0xF2DFA8);
+
+    /// <summary>섬의 가로 위치. 좌우로 굽이치는 항로를 만든다.</summary>
+    static float IslandX(int i)
+    {
+        float[] lane = { 74f, 168f, 262f, 168f };
+        return lane[i % 4];
+    }
+    static float IslandY(int i) { return MapTop + i * IslandGap; }
+
+    void BuildMapPanel()
+    {
+        mapPanel = NewImage("mapbg", transform, Sea).gameObject;
+        Stretch((RectTransform)mapPanel.transform);
+
+        // 스크롤 영역 — 헤더 아래부터 화면 끝까지
+        var viewport = NewImage("mapview", mapPanel.transform, new Color(0, 0, 0, 0));
+        Place(viewport.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f),
+              new Vector2(0, -46 * PS), new Vector2(0, -92 * PS));
+        viewport.rectTransform.anchorMin = new Vector2(0, 0);
+        viewport.rectTransform.anchorMax = new Vector2(1, 1);
+        viewport.rectTransform.offsetMin = new Vector2(0, 0);
+        viewport.rectTransform.offsetMax = new Vector2(0, -92 * PS);
+        viewport.gameObject.AddComponent<RectMask2D>();
+
+        mapContent = NewRT("mapcontent", viewport.transform);
+        mapContent.anchorMin = new Vector2(0, 1);
+        mapContent.anchorMax = new Vector2(1, 1);
+        mapContent.pivot = new Vector2(0.5f, 1);
+        mapContent.offsetMin = new Vector2(0, 0);
+        mapContent.offsetMax = new Vector2(0, 0);
+        float contentH = MapTop + StageCount * IslandGap;
+        mapContent.sizeDelta = new Vector2(0, contentH * PS);
+        mapContent.anchoredPosition = Vector2.zero;
+
+        mapScroll = mapPanel.AddComponent<ScrollRect>();
+        mapScroll.viewport = viewport.rectTransform;
+        mapScroll.content = mapContent;
+        mapScroll.horizontal = false;
+        mapScroll.movementType = ScrollRect.MovementType.Clamped;
+        mapScroll.scrollSensitivity = 24f;
+
+        // 바다 무늬 — 잔물결
+        for (int i = 0; i < 26; i++)
+        {
+            float wy = 60 + i * 96 + (i % 2) * 34;
+            var w = NewImage("wave" + i, mapContent, new Color(1f, 1f, 1f, 0.20f));
+            w.sprite = Rounded(6); w.type = Image.Type.Sliced; w.raycastTarget = false;
+            Place(w.rectTransform, Top, Top, new Vector2(0, 1),
+                  P(30 + (i * 61) % 250, wy), Sz(52, 8));
+        }
+
+        // 항로 — 섬과 섬 사이를 점선으로 잇는다
+        for (int i = 0; i < StageCount - 1; i++)
+        {
+            float x0 = IslandX(i), y0 = IslandY(i), x1 = IslandX(i + 1), y1 = IslandY(i + 1);
+            const int Dots = 7;
+            for (int d = 1; d < Dots; d++)
+            {
+                float t = d / (float)Dots;
+                var dot = NewImage("dot" + i + "_" + d, mapContent, new Color(1f, 1f, 1f, 0.7f));
+                dot.sprite = Rounded(5); dot.type = Image.Type.Sliced; dot.raycastTarget = false;
+                Place(dot.rectTransform, Top, Top, new Vector2(0.5f, 0.5f),
+                      P(x0 + (x1 - x0) * t + IslandSize * 0.5f, y0 + (y1 - y0) * t + IslandSize * 0.5f),
+                      Sz(9, 9));
+            }
+        }
+
+        island = new Image[StageCount];
+        islandNum = new Text[StageCount];
+        islandLock = new Image[StageCount];
+        for (int i = 0; i < StageCount; i++)
+        {
+            int level = i + 1;
+            // 모래톱을 살짝 크게 깔고 그 위에 섬
+            var sand = NewImage("sand" + level, mapContent, Sand);
+            sand.sprite = Rounded(IslandSize * 0.5f); sand.type = Image.Type.Sliced;
+            sand.raycastTarget = false;
+            Place(sand.rectTransform, Top, Top, new Vector2(0, 1),
+                  P(IslandX(i) - 7, IslandY(i) + 10), Sz(IslandSize + 14, IslandSize + 6));
+
+            var fill = Card(mapContent, "island" + level, IslandX(i), IslandY(i),
+                            IslandSize, IslandSize, IslandOn, IslandSize * 0.5f);
+            island[i] = fill;
+            HookButton(fill, () => SailTo(level), level.ToString(), 22);
+            islandNum[i] = fill.transform.Find("l").GetComponent<Text>();
+
+            islandLock[i] = NewImage("lock" + level, fill.transform, new Color(0.16f, 0.18f, 0.26f, 0.55f));
+            islandLock[i].sprite = Rounded(IslandSize * 0.5f); islandLock[i].type = Image.Type.Sliced;
+            islandLock[i].raycastTarget = false;
+            Stretch(islandLock[i].rectTransform);
+        }
+
+        // 배 — 선택된 섬 위에 떠 있다
+        boat = NewRT("boat", mapContent);
+        boat.anchorMin = boat.anchorMax = Top; boat.pivot = new Vector2(0.5f, 0.5f);
+        boat.sizeDelta = Sz(52, 49);
+        var hull = NewImage("hull", boat, Color.white);
+        hull.sprite = BoatSprite(); hull.type = Image.Type.Simple; hull.raycastTarget = false;
+        Stretch(hull.rectTransform);
+
+        // 헤더 — 스크롤 위에 고정
+        var head = NewImage("maphead", mapPanel.transform, SeaDeep);
+        Place(head.rectTransform, new Vector2(0, 1), new Vector2(1, 1), new Vector2(0.5f, 1),
+              Vector2.zero, new Vector2(0, 92 * PS));
+        head.rectTransform.anchorMin = new Vector2(0, 1);
+        head.rectTransform.anchorMax = new Vector2(1, 1);
+        head.rectTransform.sizeDelta = new Vector2(0, 92 * PS);
+
+        mapTitle = NewText("mt", head.transform, "VOYAGE", Mathf.RoundToInt(20 * PS), TextAnchor.MiddleLeft, Cream);
+        mapTitle.fontStyle = FontStyle.Bold;
+        Anchor(mapTitle.transform, 0, 0.5f, 24, 0, 240, 30);
+
+        HookButton(Card(head.transform, "mapclose", 0, 0, 62, 34, Cream, 12),
+                   () => { mapPanel.SetActive(false); ShowHome(); }, "X", 13);
+        var mc = (RectTransform)head.transform.Find("mapclose");
+        mc.anchorMin = mc.anchorMax = mc.pivot = new Vector2(1, 0.5f);
+        mc.sizeDelta = Sz(62, 34); mc.anchoredPosition = new Vector2(-20 * PS, 0);
+
+        mapPanel.SetActive(false);
+    }
+
+
+    static Sprite boatSprite;
+
+    /// <summary>돛단배. 선체 사다리꼴 + 삼각돛 + 깃발.</summary>
+    static Sprite BoatSprite()
+    {
+        if (boatSprite != null) return boatSprite;
+
+        const int W = 64, H = 60;
+        var tex = new Texture2D(W, H) { filterMode = FilterMode.Bilinear };
+        var px = new Color[W * H];
+
+        var hull = Palette.Hex(0x8A5A3B);
+        var hullDark = Palette.Hex(0x6B4429);
+        var mast = Palette.Hex(0x5C4630);
+        var sail = Palette.Hex(0xFBF8EE);
+        var sailShade = Palette.Hex(0xE3DCC6);
+        var flag = Palette.Hex(0xE4795A);
+        var line = Palette.Hex(0x14162B);
+
+        for (int y = 0; y < H; y++)
+            for (int x = 0; x < W; x++)
+            {
+                Color c = new Color(0, 0, 0, 0);
+                float fx = x - 32f;
+
+                // 선체 — 아래로 갈수록 좁아지는 사다리꼴
+                if (y >= 4 && y <= 19)
+                {
+                    float halfw = 12f + (y - 4) * 1.35f;
+                    if (Mathf.Abs(fx) <= halfw)
+                        c = y <= 8 ? hullDark : hull;
+                    if (Mathf.Abs(fx) > halfw - 1.6f && Mathf.Abs(fx) <= halfw) c = line;
+                    if (y == 19 || y == 4) c = line;
+                }
+                // 돛대
+                if (y >= 19 && y <= 52 && fx >= -2f && fx <= 0f) c = mast;
+                // 삼각돛 — 돛대 오른쪽으로 펼쳐진다
+                if (y >= 21 && y <= 50)
+                {
+                    float w = (50 - y) * 0.62f;
+                    if (fx >= 1f && fx <= 1f + w) c = fx < 1f + w * 0.3f ? sailShade : sail;
+                }
+                // 깃발
+                if (y >= 50 && y <= 55 && fx >= -1f && fx <= 8f) c = flag;
+
+                px[y * W + x] = c;
+            }
+
+        tex.SetPixels(px); tex.Apply();
+        boatSprite = Sprite.Create(tex, new Rect(0, 0, W, H), new Vector2(0.5f, 0.5f), W);
+        return boatSprite;
+    }
+
+    public void ShowMap()
+    {
+        mapPanel.SetActive(true);
+        RefreshMap();
+        // 지금 선 섬이 화면에 오도록 스크롤을 맞춘다
+        float contentH = MapTop + StageCount * IslandGap;
+        float target = Mathf.Clamp01((IslandY(Progress.Selected - 1) - 260f) / Mathf.Max(1f, contentH - 500f));
+        mapScroll.verticalNormalizedPosition = 1f - target;
+        PlaceBoat(Progress.Selected);
+    }
+
+    void RefreshMap()
+    {
+        for (int i = 0; i < island.Length; i++)
+        {
+            int level = i + 1;
+            bool open = level <= Progress.Unlocked;
+            bool done = level < Progress.Unlocked;
+            island[i].color = !open ? IslandOff : (done ? IslandDone : IslandOn);
+            islandNum[i].text = open ? level.ToString() : "\u2715";
+            islandNum[i].color = open ? Ink : new Color(1f, 1f, 1f, 0.8f);
+            islandLock[i].enabled = !open;
+            var btn = island[i].transform.parent.GetComponent<Button>();
+            if (btn != null) btn.interactable = open;
+        }
+    }
+
+    void PlaceBoat(int level)
+    {
+        int i = Mathf.Clamp(level, 1, StageCount) - 1;
+        boat.anchoredPosition = BoatSpot(i);
+    }
+
+    /// <summary>섬 왼쪽 물 위. 맨 왼쪽 항로에서는 오른쪽에 댄다.</summary>
+    static Vector2 BoatSpot(int i)
+    {
+        float x = IslandX(i);
+        float side = x < 100f ? IslandSize + 30f : -30f;
+        return P(x + side, IslandY(i) + IslandSize * 0.55f);
+    }
+
+    /// <summary>고른 섬으로 배를 몰고 가서 그 스테이지를 시작한다.</summary>
+    void SailTo(int level)
+    {
+        if (level > Progress.Unlocked) return;
+        if (sailCo != null) StopCoroutine(sailCo);
+        sailCo = StartCoroutine(Sail(level));
+    }
+
+    IEnumerator Sail(int level)
+    {
+        Vector2 from = boat.anchoredPosition;
+        int i = level - 1;
+        Vector2 to = BoatSpot(i);
+
+        float d = Vector2.Distance(from, to);
+        float dur = Mathf.Clamp(d / (420f * PS), 0.18f, 1.1f);
+        for (float t = 0; t < dur; t += Time.deltaTime)
+        {
+            float k = t / dur;
+            k = 1f - (1f - k) * (1f - k);                 // 감속
+            var pos = Vector2.Lerp(from, to, k);
+            pos.y += Mathf.Sin(k * Mathf.PI * 4f) * 5f * PS;   // 파도에 흔들린다
+            boat.anchoredPosition = pos;
+            yield return null;
+        }
+        boat.anchoredPosition = to;
+        yield return new WaitForSeconds(0.12f);
+
+        Progress.Selected = level;
+        mapPanel.SetActive(false);
+        gm.StartStage(level);
+        sailCo = null;
+    }
 
     void BuildResultPanel()
     {
@@ -733,27 +1059,37 @@ public class GameUI : MonoBehaviour
         submitText = NewText("sub", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.UpperCenter, Muted);
         Anchor(submitText.transform, 0.5f, 1, 0, -220, 300, 16);
 
-        HookButton(Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16),
-                   () => ShowRanking(false), "LEADERBOARD", 14);
-        HookButton(Card(card.transform, "retry", 22, 302, 136, 52, Coral, 18),
-                   () => gm.StartGame(), "RETRY", 16);
+        var rankBtn = Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16);
+        HookButton(rankBtn, () => ShowRanking(false), "LEADERBOARD", 14);
+        rankFromResult = rankBtn.transform.parent.gameObject;
+        var retryFill = Card(card.transform, "retry", 22, 302, 136, 52, Coral, 18);
+        HookButton(retryFill, () =>
+        {
+            if (gm.timeAttack) gm.StartGame();
+            else gm.StartStage(Progress.Selected);   // 클리어했으면 Selected 가 이미 다음 판이다
+        }, "RETRY", 16);
+        retryLabel = retryFill.transform.Find("l").GetComponent<Text>();
         HookButton(Card(card.transform, "rhome", 172, 302, 136, 52, Color.white, 18),
                    () => gm.GoHome(), "HOME", 16);
     }
 
-    public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
+    public void ShowResult(bool ta, int score, int best, bool newBest, int coins, int level, bool cleared)
     {
         resultPanel.SetActive(true);
-        // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
-        resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
-        resultTitle.color = newBest ? Coral : Ink;
+        // 타임어택은 성공/실패가 없다. 스테이지는 목표를 채웠는지로 갈린다.
+        if (ta) resultTitle.text = "TIME'S UP!";
+        else resultTitle.text = cleared ? "STAGE " + level + " CLEAR!" : "STAGE " + level + " FAILED";
+        // 깼으면 다음 판으로, 못 깼으면 같은 판 재도전
+        retryLabel.text = ta ? "RETRY" : (cleared && Progress.Selected > level ? "NEXT" : "RETRY");
+        resultTitle.color = (cleared || newBest) ? Coral : Ink;
         resultScore.text = score.ToString("N0");
         resultBest.text = newBest ? "NEW BEST!" : "BEST  " + best.ToString("N0");
         resultBest.color = newBest ? Coral : Body;
         resultCoins.text = "+" + coins.ToString("N0");
 
-        // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
-        if (Leaderboard.I != null && Leaderboard.I.Configured)
+        // 리더보드는 타임어택 전용이다. 스테이지는 기록만 남기고 조용히 끝난다.
+        rankFromResult.SetActive(ta);
+        if (ta && Leaderboard.I != null && Leaderboard.I.Configured)
             StartCoroutine(OpenRankAfter(1.6f));
     }
 
@@ -763,7 +1099,7 @@ public class GameUI : MonoBehaviour
     static readonly Color[] MedalColors = {
         Palette.Hex(0xE4C05A), Palette.Hex(0xA9B4BC), Palette.Hex(0xC98A57),
     };
-    const float RowH = 46f;   // 프로토타입 단위
+    const float RowH = 40f;   // 프로토타입 단위. 행 10개가 내 점수/광고 버튼 위에서 끝나야 한다
 
     void BuildRankPanel()
     {
@@ -831,32 +1167,41 @@ public class GameUI : MonoBehaviour
 
         r.Rank = NewText("rk", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink);
         r.Rank.fontStyle = FontStyle.Bold;
-        Anchor(r.Rank.transform, 0, 0.5f, 8, 0, 30, 22);
+        Anchor(r.Rank.transform, 0, 0.5f, 6, 0, 28, 22);
 
         r.Badge = NewImage("badge", r.Bg.transform, Color.white);
         r.Badge.sprite = Rounded(6); r.Badge.type = Image.Type.Sliced; r.Badge.raycastTarget = false;
-        Anchor(r.Badge.transform, 0, 0.5f, 42, 0, 34, 22);
+        Anchor(r.Badge.transform, 0, 0.5f, 38, 0, 32, 22);
         r.Code = NewText("c", r.Badge.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Color.white);
         r.Code.fontStyle = FontStyle.Bold;
         Stretch(r.Code.rectTransform);
 
         r.Name = NewText("n", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleLeft, Ink);
-        Anchor(r.Name.transform, 0, 0.5f, 82, 0, 140, 22);
+        Anchor(r.Name.transform, 0, 0.5f, 74, 0, 80, 22);   // 스테이지 칸(158~)을 침범하지 않는다
+
+        r.Stage = NewText("lv", r.Bg.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Muted);
+        r.Stage.fontStyle = FontStyle.Bold;
+        Anchor(r.Stage.transform, 0, 0.5f, 158, 0, 28, 22);   // 점수 왼쪽 끝(190)까지 여유를 둔다
 
         r.Score = NewText("s", r.Bg.transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleRight, Ink);
         r.Score.fontStyle = FontStyle.Bold;
-        Anchor(r.Score.transform, 1, 0.5f, -10, 0, 110, 22);
+        Anchor(r.Score.transform, 1, 0.5f, -10, 0, 104, 22);
         return r;
     }
 
     void FillRow(RankRow r, int rank, string code, string name, int score, bool isMe)
+    { FillRow(r, rank, code, name, score, 0, isMe); }
+
+    void FillRow(RankRow r, int rank, string code, string name, int score, int stage, bool isMe)
     {
         r.SetActive(true);
+        // 도달한 스테이지. 국가 집계 줄에는 해당 없음
+        r.Stage.text = stage > 0 ? "L" + stage : "";
         r.Rank.text = rank > 0 ? rank.ToString() : "-";
         r.Rank.color = rank >= 1 && rank <= 3 ? MedalColors[rank - 1] : Muted;
         r.Badge.color = PlayerAccount.BadgeColor(code);
         r.Code.text = code;
-        r.Name.text = Trim(name, 14);
+        r.Name.text = Trim(name, 11);
         r.Name.color = Ink;
         r.Score.text = score.ToString("N0");
         r.Score.color = Ink;
@@ -880,7 +1225,7 @@ public class GameUI : MonoBehaviour
     {
         rankTabMe.color = rankNationTab ? Color.white : Teal;
         rankTabNation.color = rankNationTab ? Teal : Color.white;
-        rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "MOVES";
+        rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "STAGE";
         foreach (var r in rankRows) r.SetActive(false);
         RefreshMyRow(0);
         RefreshAdButton();
@@ -924,7 +1269,7 @@ public class GameUI : MonoBehaviour
                 var e = rows[i];
                 bool mine = e.Uid == myUid;
                 if (mine) myRank = i + 1;
-                FillRow(rankRows[i], i + 1, e.Country, e.Name, e.Score, mine);
+                FillRow(rankRows[i], i + 1, e.Country, e.Name, e.Score, e.Stage, mine);
             }
             for (int i = 0; i < rows.Count; i++)
                 if (rows[i].Uid == myUid) { myRank = i + 1; break; }
@@ -936,7 +1281,7 @@ public class GameUI : MonoBehaviour
     void RefreshMyRow(int rank)
     {
         int score = gm.PendingScore > 0 ? gm.PendingScore : gm.BestForSelection();
-        FillRow(myRow, rank, PlayerAccount.Country, PlayerAccount.Name, score, true);
+        FillRow(myRow, rank, PlayerAccount.Country, PlayerAccount.Name, score, Progress.Unlocked, true);
         myRowLabel.text = rank > 0 ? "YOU  ·  RANK " + rank : "YOU  ·  UNRANKED";
     }
 
