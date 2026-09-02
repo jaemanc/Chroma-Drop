@@ -245,17 +245,26 @@ static class Verify
         Check("V10", ok, null);
     }
 
+    static StageSet stages;
+    static StageSet Stages()
+    {
+        if (stages == null) stages = StageData.Parse(File.ReadAllText(StagePath));
+        return stages;
+    }
+    const string StagePath = "stages/stages.json";
+    const int ForcedSquareUntil = 5;
+
     // V11 colorWeights 길이 == palette.size
     static void V11()
     {
-        var rep = StageJson.Load();
+        var rep = Stages();
         var bad = new List<string>();
         foreach (var s in rep.Stages)
         {
-            if (s.ColorWeights.Length != s.PaletteSize)
-                bad.Add("stage" + s.StageId + " w=" + s.ColorWeights.Length + " size=" + s.PaletteSize);
+            if (s.ColorWeights.Length != s.Palette.Size)
+                bad.Add("stage" + s.StageId + " w=" + s.ColorWeights.Length + " size=" + s.Palette.Size);
             foreach (var o in s.Objectives)
-                if (o.Type == "clear_color" && (o.ColorIndex < 0 || o.ColorIndex >= s.PaletteSize))
+                if (o.Type == "clear_color" && (o.ColorIndex < 0 || o.ColorIndex >= s.Palette.Size))
                     bad.Add("stage" + s.StageId + " colorIndex=" + o.ColorIndex);
         }
         Check("V11", rep.Errors.Count == 0 && bad.Count == 0,
@@ -279,31 +288,32 @@ static class Verify
     // V13 stages.json 30개 스키마 통과 + 달성 불가 0건
     static void V13()
     {
-        var rep = StageJson.Load();
+        var rep = Stages();
         var bad = new List<string>(rep.Errors);
         if (rep.Stages.Count != 30) bad.Add("스테이지 " + rep.Stages.Count + "개");
         foreach (var s in rep.Stages)
-            foreach (var o in s.Objectives)
-                if (o.Target > s.Moves * StageJson.OptimisticPerMove(s))
-                    bad.Add("stage" + s.StageId + " " + o.Type + " " + o.Target + " 불가");
+        {
+            var c = StageValidator.Check(s, new Rgb(1, 1, 1));
+            foreach (var e in c.Errors) bad.Add("stage" + s.StageId + " " + e);
+        }
         Check("V13", bad.Count == 0, string.Join(" ", bad.ToArray()));
     }
 
     // V14 스테이지 1~5 는 square
     static void V14()
     {
-        var rep = StageJson.Load();
+        var rep = Stages();
         var bad = new List<string>();
         foreach (var s in rep.Stages)
-            if (s.StageId <= StageJson.ForcedSquareUntil && s.TopologyMode != TopologyGen.Square)
-                bad.Add("stage" + s.StageId + "=" + s.TopologyMode);
+            if (s.StageId <= ForcedSquareUntil && s.ResolveTopology() != TopologyGen.Square)
+                bad.Add("stage" + s.StageId + "=" + s.ResolveTopology());
         Check("V14", bad.Count == 0, string.Join(" ", bad.ToArray()));
     }
 
     // V15 스테이지당 변화 축 <= 2, paletteSize/minGroupSize 동시 상향 0건
     static void V15()
     {
-        var rep = StageJson.Load();
+        var rep = Stages();
         var bad = new List<string>();
         for (int i = 1; i < rep.Stages.Count; i++)
         {
@@ -312,14 +322,14 @@ static class Verify
             int changed = 0;
             if (Math.Abs(a.InitialFillRatio - b.InitialFillRatio) > 1e-9) changed++;
             if (a.BlocksPerClear != b.BlocksPerClear) changed++;
-            if (a.ObstacleRatioPermille != b.ObstacleRatioPermille) changed++;
-            if (a.PaletteSize != b.PaletteSize) changed++;
+            if (Math.Abs(a.ObstacleRatio - b.ObstacleRatio) > 1e-9) changed++;
+            if (a.Palette.Size != b.Palette.Size) changed++;
             if (a.MinGroupSize != b.MinGroupSize) changed++;
             if (a.RerollCount != b.RerollCount) changed++;
             if (a.Objectives.Count != b.Objectives.Count) changed++;
             if (a.Moves != b.Moves) changed++;
             if (changed > 2) bad.Add("stage" + b.StageId + " 변화 " + changed);
-            if (b.PaletteSize > a.PaletteSize && b.MinGroupSize > a.MinGroupSize)
+            if (b.Palette.Size > a.Palette.Size && b.MinGroupSize > a.MinGroupSize)
                 bad.Add("stage" + b.StageId + " palette+minGroup 동시 상향");
         }
         Check("V15", bad.Count == 0, string.Join(" ", bad.ToArray()));
@@ -459,12 +469,12 @@ static class Verify
     // V21 stages.json 값 변경 후 재로드만으로 반영
     static void V21()
     {
-        string path = StageJson.Path;
+        string path = StagePath;
         if (!File.Exists(path)) { Check("V21", false, "stages.json 없음"); return; }
         string original = File.ReadAllText(path);
         try
         {
-            var before = StageJson.Load();
+            var before = StageData.Parse(File.ReadAllText(path));
             if (before.Stages.Count == 0) { Check("V21", false, "스테이지 0개"); return; }
             int wasMoves = before.Stages[0].Moves;
 
@@ -472,7 +482,7 @@ static class Verify
             if (patched == original) { Check("V21", false, "moves 치환 실패"); return; }
             File.WriteAllText(path, patched);
 
-            var after = StageJson.Load();
+            var after = StageData.Parse(File.ReadAllText(path));
             Check("V21", after.Stages[0].Moves == wasMoves + 7,
                   "재로드 후 " + after.Stages[0].Moves);
         }

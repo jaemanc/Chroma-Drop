@@ -1,75 +1,49 @@
 {
   "version": 1,
   "stageCount": 30,
-  "colors": [
-    "coral",
-    "purple",
-    "yellow",
-    "teal"
-  ],
-  "grid": {
-    "width": 14,
-    "height": 14
+  "baseSeed": 20260902,
+  "grid": { "size": 8 },
+  "topology": {
+    "forcedSquareUntil": 5,
+    "allowed": ["square", "triangle", "hex"],
+    "weights": [0.5, 0.2, 0.3]
+  },
+  "palette": {
+    "hueSpread": 300,
+    "satRange": [0.45, 0.75],
+    "lightRange": [0.35, 0.70],
+    "minDeltaE": 22,
+    "minContrast": 1.8
   },
   "axes": {
-    "initialFillRatio": {
-      "from": 1.0,
-      "to": 0.5,
-      "startStage": 6,
-      "endStage": 20
-    },
-    "blocksPerClear": {
-      "from": 5,
-      "to": 2,
-      "startStage": 4,
-      "endStage": 22
-    },
-    "obstacleRatio": {
-      "from": 0.0,
-      "to": 0.2,
-      "startStage": 3,
-      "endStage": 28
-    },
-    "objectiveCount": {
-      "from": 1,
-      "to": 3,
-      "startStage": 8,
-      "endStage": 24
-    },
-    "objectiveTarget": {
-      "from": 40,
-      "to": 260,
-      "startStage": 1,
-      "endStage": 30
-    },
-    "moveSlack": {
-      "from": 1.8,
-      "to": 1.05,
-      "startStage": 2,
-      "endStage": 26
-    },
-    "minMatchLength": {
-      "from": 2,
-      "to": 3,
-      "startStage": 18,
-      "endStage": 18
-    }
+    "initialFillRatio": { "from": 1.0, "to": 0.5, "startStage": 6, "endStage": 20 },
+    "blocksPerClear":   { "from": 5,   "to": 2,   "startStage": 4, "endStage": 14 },
+    "obstacleRatio":    { "from": 0.0, "to": 0.2, "startStage": 3, "endStage": 27 },
+    "paletteSize":      { "from": 4,   "to": 6,   "startStage": 9, "endStage": 23 },
+    "minGroupSize":     { "from": 3,   "to": 4,   "startStage": 17, "endStage": 17 },
+    "rerollCount":      { "from": 5,   "to": 1,   "startStage": 7, "endStage": 26 },
+    "objectiveCount":   { "from": 1,   "to": 3,   "startStage": 11, "endStage": 24 }
   },
-  "obstacleMix": {
-    "brick": 0.6,
-    "frozen": 0.25,
-    "locked": 0.15
+  "objectiveTarget": { "from": 30, "to": 180 },
+  "moveSlack": { "from": 2.2, "to": 1.15 },
+  "obstacleMix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 },
+  "brickHitsToBreak": { "from": 1, "to": 3 },
+  "refillModeByStage": { "instantUntil": 3, "noneFrom": 29 },
+  "topologyModifiers": {
+    "neighborBaseline": 4,
+    "minGroupSizePerExtraNeighbor": 0.5,
+    "paletteSizePerExtraNeighbor": 0.5,
+    "movesPerExtraNeighbor": -1
   },
-  "brickHitsToBreak": {
-    "from": 1,
-    "to": 3,
-    "startStage": 5,
-    "endStage": 25
+  "itemModifiers": {
+    "hex": { "lineMaxCellsRatio": 0.8, "burstRadiusDelta": -1 },
+    "triangle": { "lineMaxCellsRatio": 1.0, "burstRadiusDelta": 0 },
+    "square": { "lineMaxCellsRatio": 1.0, "burstRadiusDelta": 0 }
   },
-  "refillModeByStage": {
-    "instantUntil": 3,
-    "dripUntil": 27,
-    "noneFrom": 28
-  },
-  "seed": 20260902
+  "items": {
+    "available": ["line", "burst", "ring", "color", "cross"],
+    "itemCostsMove": false,
+    "burstRadius": 2,
+    "ringRadius": 2
+  }
 }

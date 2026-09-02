@@ -17,13 +17,33 @@ namespace ChromaDrop.Engine
         public PieceShape Current { get; private set; }
         public int RerollsLeft { get { return rerollBudget; } }
 
+        /// <summary>지금 조각의 색. 조각 하나는 한 색이다 (colorsPerPiece = 1).</summary>
+        public int CurrentColor { get; private set; }
+
+        /// <summary>조각 모양만 다음 것으로 바꾼다. 보드도 중력도 건드리지 않는다.</summary>
+        public void Rotate()
+        {
+            if (shapes.Count <= 1) return;
+            int i = shapes.IndexOf(Current);
+            Current = shapes[(i + 1) % shapes.Count];
+        }
+
         public TurnController(GameEngine eng, List<PieceShape> shapes, Rng spawnRng, int rerollCount)
         {
             this.eng = eng;
             this.shapes = shapes;
             this.spawnRng = spawnRng;
             rerollBudget = rerollCount;
+            paletteSize = eng.PaletteSize;
+            Draw();
+        }
+
+        readonly int paletteSize;
+
+        void Draw()
+        {
             Current = shapes[spawnRng.Next(shapes.Count)];
+            CurrentColor = spawnRng.Next(paletteSize);
         }
 
         /// <summary>지금 조각을 어디든 놓을 수 있는가.</summary>
@@ -49,14 +69,14 @@ namespace ChromaDrop.Engine
         {
             if (rerollBudget <= 0) return NoMoveAction.EndGame;
             rerollBudget--;
-            Current = shapes[spawnRng.Next(shapes.Count)];
+            Draw();
             return NoMoveAction.Reroll;
         }
 
         /// <summary>다음 조각을 뽑는다. 매 턴 배치 가능 여부를 검사한다.</summary>
         public NoMoveAction Advance()
         {
-            Current = shapes[spawnRng.Next(shapes.Count)];
+            Draw();
             int guard = shapes.Count * 4;
             while (!CanPlaceAnywhere() && guard-- > 0)
             {

@@ -3,7 +3,7 @@
 
 namespace ChromaDrop.Engine
 {
-    public struct Rect
+    public struct Extent
     {
         public double MinX, MinY, MaxX, MaxY;
         public double Width { get { return MaxX - MinX; } }
@@ -15,9 +15,9 @@ namespace ChromaDrop.Engine
         /// <summary>권장 최소 터치 크기(pt).</summary>
         public const double MinTouchPt = 44.0;
 
-        public static Rect Bounds(Topology t)
+        public static Extent Bounds(Topology t)
         {
-            var r = new Rect { MinX = double.MaxValue, MinY = double.MaxValue,
+            var r = new Extent { MinX = double.MaxValue, MinY = double.MaxValue,
                                MaxX = double.MinValue, MaxY = double.MinValue };
             foreach (var c in t.Cells)
                 foreach (var p in c.Poly)

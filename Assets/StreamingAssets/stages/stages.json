@@ -3,383 +3,580 @@
   "stages": [
     {
       "stageId": 1,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260903,
+      "locked": false,
+      "topology": { "mode": "fixed", "allowed": ["square"], "weights": [1.00] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.00, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 30 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 2,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260904,
+      "locked": false,
+      "topology": { "mode": "fixed", "allowed": ["square"], "weights": [1.00] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.00, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 35 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 3,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260905,
+      "locked": false,
+      "topology": { "mode": "fixed", "allowed": ["square"], "weights": [1.00] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "instant", "blocksPerClear": 0, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
         { "type": "clear_count", "target": 40 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 4,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 4, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260906,
+      "locked": false,
+      "topology": { "mode": "fixed", "allowed": ["square"], "weights": [1.00] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "drip", "blocksPerClear": 4, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 46 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 5,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 3, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260907,
+      "locked": false,
+      "topology": { "mode": "fixed", "allowed": ["square"], "weights": [1.00] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "drip", "blocksPerClear": 3, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 51 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 6,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 1.00, "fillPattern": "random", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260908,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 5 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 56 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 7,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260909,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 4 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 }
+        { "type": "clear_count", "target": 61 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 8,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260910,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 3 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 1, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "teal", "target": 8 }
+        { "type": "clear_count", "target": 66 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 9,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.95, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260911,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 2 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "coral", "target": 8 }
+        { "type": "clear_count", "target": 71 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 6, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 10,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.91, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260912,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "purple", "target": 8 }
+        { "type": "clear_count", "target": 77 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 11,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.86, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260913,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "yellow", "target": 8 }
+        { "type": "clear_count", "target": 82 },
+        { "type": "clear_color", "colorIndex": 2, "target": 16 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 12,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.82, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260914,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 4, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2500, 0.2500, 0.2500, 0.2500] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "teal", "target": 8 }
+        { "type": "clear_count", "target": 87 },
+        { "type": "clear_color", "colorIndex": 3, "target": 17 },
+        { "type": "clear_group_size", "groupSize": 4, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 13,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.77, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260915,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 5, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.2000, 0.2000, 0.2000, 0.2000, 0.2000] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "coral", "target": 8 }
+        { "type": "clear_count", "target": 92 },
+        { "type": "clear_color", "colorIndex": 2, "target": 15 },
+        { "type": "clear_group_size", "groupSize": 4, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 7, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 14,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.73, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260916,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 1.00, "fillPattern": "random" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "purple", "target": 8 }
+        { "type": "clear_count", "target": 97 },
+        { "type": "clear_color", "colorIndex": 1, "target": 13 },
+        { "type": "clear_group_size", "groupSize": 4, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 7, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 15,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.68, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260917,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.90, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "yellow", "target": 8 }
+        { "type": "clear_count", "target": 102 },
+        { "type": "clear_color", "colorIndex": 2, "target": 14 },
+        { "type": "clear_group_size", "groupSize": 4, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 7, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 16,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.64, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260918,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.80, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "teal", "target": 8 }
+        { "type": "clear_count", "target": 108 },
+        { "type": "clear_color", "colorIndex": 3, "target": 15 },
+        { "type": "clear_group_size", "groupSize": 4, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 7, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 3, "chainReaction": true }
     },
     {
       "stageId": 17,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.59, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260919,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.80, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "coral", "target": 8 }
+        { "type": "clear_count", "target": 113 },
+        { "type": "clear_color", "colorIndex": 4, "target": 16 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 8, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 2, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 18,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.59, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260920,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.70, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "purple", "target": 8 }
+        { "type": "clear_count", "target": 118 },
+        { "type": "clear_color", "colorIndex": 5, "target": 16 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 19,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.55, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260921,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.60, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "yellow", "target": 8 }
+        { "type": "clear_count", "target": 123 },
+        { "type": "clear_color", "colorIndex": 0, "target": 17 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 20,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260922,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.03, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "teal", "target": 8 }
+        { "type": "clear_count", "target": 128 },
+        { "type": "clear_color", "colorIndex": 1, "target": 18 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 21,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260923,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.05, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "coral", "target": 8 }
+        { "type": "clear_count", "target": 133 },
+        { "type": "clear_color", "colorIndex": 2, "target": 19 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 22,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260924,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.08, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 2, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "purple", "target": 8 }
+        { "type": "clear_count", "target": 139 },
+        { "type": "clear_color", "colorIndex": 3, "target": 19 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 23,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260925,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.10, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "yellow", "target": 8 }
+        { "type": "clear_count", "target": 144 },
+        { "type": "clear_color", "colorIndex": 4, "target": 20 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 24,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260926,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.13, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "teal", "target": 8 }
+        { "type": "clear_count", "target": 149 },
+        { "type": "clear_color", "colorIndex": 5, "target": 21 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 25,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260927,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.15, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "coral", "target": 8 }
+        { "type": "clear_count", "target": 154 },
+        { "type": "clear_color", "colorIndex": 0, "target": 22 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 26,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260928,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.18, "pattern": "ring", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 40 },
-        { "type": "clear_color", "color": "purple", "target": 8 }
+        { "type": "clear_count", "target": 159 },
+        { "type": "clear_color", "colorIndex": 1, "target": 22 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 5, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 27,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": true, "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260929,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.20, "pattern": "cluster", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 95 },
-        { "type": "clear_color", "color": "yellow", "target": 19 }
+        { "type": "clear_count", "target": 164 },
+        { "type": "clear_color", "colorIndex": 2, "target": 23 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 7, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 28,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260930,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "drip", "blocksPerClear": 2, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.20, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 150 }
+        { "type": "clear_count", "target": 170 },
+        { "type": "clear_color", "colorIndex": 3, "target": 24 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 10, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 29,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260931,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.20, "pattern": "scattered", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 205 }
+        { "type": "clear_count", "target": 175 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 14, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     },
     {
       "stageId": 30,
-      "grid": { "width": 14, "height": 14, "initialFillRatio": 0.50, "fillPattern": "bottom_up", "presetLayout": null },
-      "refill": { "enabled": false, "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": { "coral": 0.25, "purple": 0.25, "yellow": 0.25, "teal": 0.25 } },
-      "obstacles": [],
+      "seed": 20260932,
+      "locked": false,
+      "topology": { "mode": "random", "allowed": ["square", "triangle", "hex"], "weights": [0.50, 0.20, 0.30] },
+      "palette": { "size": 6, "hueSpread": 300, "satRange": [0.45, 0.75], "lightRange": [0.35, 0.7], "minDeltaE": 22, "minContrast": 1.8 },
+      "grid": { "size": 8, "initialFillRatio": 0.50, "fillPattern": "bottom_up" },
+      "pieces": { "shapes": ["auto"], "colorsPerPiece": 1, "weights": [], "rerollCount": 1 },
+      "refill": { "mode": "none", "blocksPerClear": 0, "delayMs": 150, "colorWeights": [0.1667, 0.1667, 0.1667, 0.1667, 0.1667, 0.1667] },
+      "obstaclePlacement": { "ratio": 0.20, "pattern": "wall", "avoidSpawnCells": true, "hitsToBreak": 3, "mix": { "brick": 0.6, "frozen": 0.25, "locked": 0.15 } },
+      "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
-        { "type": "clear_count", "target": 260 }
+        { "type": "clear_count", "target": 180 },
+        { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
-      "limits": { "moves": 18, "timeSeconds": null },
-      "matchRule": { "minMatchLength": 3, "allowDiagonal": false }
+      "limits": { "moves": 5, "timeSeconds": 0 },
+      "matchRule": { "minGroupSize": 4, "chainReaction": true }
     }
   ]
 }

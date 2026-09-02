@@ -1,11 +1,11 @@
-using ColorMatcher.Core;
+using ChromaDrop.Engine;
 using UnityEngine;
 
 /// <summary>스테이지 진행 상황. 어디까지 열렸는지와 스테이지별 최고 점수를 들고 있다.</summary>
 public static class Progress
 {
     /// <summary>스테이지 개수. 설정 파일이 유일한 출처다.</summary>
-    static int StageCount { get { return Mathf.Max(1, StageLoader.Count); } }
+    static int StageCount { get { return Mathf.Max(1, StageCatalog.Count); } }
 
     const string UnlockedKey = "stage_unlocked";
     const string LastKey = "stage_last";

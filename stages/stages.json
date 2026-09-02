@@ -553,7 +553,6 @@
       "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
         { "type": "clear_count", "target": 175 },
-        { "type": "clear_color", "colorIndex": 4, "target": 25 },
         { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",
@@ -573,7 +572,6 @@
       "items": { "available": ["line", "burst", "ring", "color", "cross"], "itemCostsMove": false, "burstRadius": 2, "ringRadius": 2, "dropFromMatch": {} },
       "objectives": [
         { "type": "clear_count", "target": 180 },
-        { "type": "clear_color", "colorIndex": 5, "target": 25 },
         { "type": "clear_group_size", "groupSize": 5, "target": 1 }
       ],
       "objectiveMode": "all",

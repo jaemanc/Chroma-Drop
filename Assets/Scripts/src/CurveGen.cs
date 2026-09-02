@@ -336,7 +336,9 @@ namespace ChromaDrop.Engine
 
             sb.Append("      \"objectives\": [\n");
             sb.Append("        { \"type\": \"clear_count\", \"target\": ").Append(target).Append(" }");
-            if (objCount >= 2)
+            // 리필이 없는 판(소모전)에는 색 목표를 걸 수 없다.
+            // 신규 블록이 안 들어오므로 처음 깔린 개수가 상한이고, 그걸 넘으면 영영 못 채운다.
+            if (objCount >= 2 && mode != "none")
                 sb.Append(",\n        { \"type\": \"clear_color\", \"colorIndex\": ")
                   .Append((id - BaseStage) % effPalette)
                   .Append(", \"target\": ").Append(System.Math.Max(1, target / (effPalette + 1))).Append(" }");

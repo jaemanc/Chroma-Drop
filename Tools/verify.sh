@@ -6,7 +6,7 @@ cd "$(dirname "$0")/.."
 MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
 OUT=/tmp/chromadrop_verify.exe
 
-"$MONO/mcs" -langversion:latest Assets/Scripts/src/*.cs Verify/Verify.cs Verify/StageJson.cs \
+"$MONO/mcs" -langversion:latest Assets/Scripts/src/*.cs Verify/Verify.cs \
   -out:"$OUT" 2>/tmp/verify_build.log
 if [ $? -ne 0 ]; then
   echo "BUILD FAIL"

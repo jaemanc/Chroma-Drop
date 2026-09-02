@@ -9,7 +9,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
-using ColorMatcher.Core;
+using ChromaDrop.Engine;
 
 public class GameUI : MonoBehaviour
 {
@@ -59,7 +59,8 @@ public class GameUI : MonoBehaviour
     bool rankNationTab;
     Coroutine rankCo;
     const int RankRowCount = 10;
-    RectTransform nextRoot;
+    RectTransform axisRoot;
+    Text nextText;
     readonly List<Image> nextCells = new List<Image>();
 
     public static GameUI Create(GameManager gm)
@@ -193,10 +194,12 @@ public class GameUI : MonoBehaviour
         rightText.fontStyle = FontStyle.Bold;
         Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
 
-        // ---- 다음 조각 ----
+        // ---- 다음 조각 + 축 선택 ----
         Label(safe, "nextlabel", Spaced("NEXT"), 10, TextAnchor.MiddleCenter, Muted, 24, 124, 342, 14);
-        nextRoot = NewRT("next", safe);
-        Place(nextRoot, Top, Top, new Vector2(0.5f, 1), P(195, 140), Sz(320, 46));
+        nextText = Label(safe, "nexttext", "", 14, TextAnchor.MiddleCenter, Ink, 24, 140, 342, 22);
+
+        axisRoot = NewRT("axes", safe);
+        Place(axisRoot, Top, Top, new Vector2(0.5f, 1), P(195, 166), Sz(390, 34));
 
         // ---- 제한시간 바 ----
         // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
@@ -216,7 +219,7 @@ public class GameUI : MonoBehaviour
         {
             var e = Shop.Items[i];
             var f = Card(safe, "item" + i, 24 + i * (iw + 10), 690, iw, 54, e.Tint, 16);
-            HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
+            HookButton(f, () => { if (gm.ArmItem(e.Id, selectedAxis)) RefreshItemButtons(); }, e.Name, 12);
             itemBtnFill[i] = f;
             itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();
         }
@@ -245,6 +248,52 @@ public class GameUI : MonoBehaviour
         Stretch(t.rectTransform);
     }
 
+    /// <summary>이 판의 설정이 허용한 아이템인가.</summary>
+    bool Available(string id)
+    {
+        if (gm.Stage == null) return false;
+        foreach (var name in gm.Stage.ItemsAvailable) if (name == id) return true;
+        return false;
+    }
+
+    /// <summary>축 선택. 버튼 수는 토폴로지가 정한다 — 하드코딩하지 않는다.</summary>
+    int selectedAxis;
+    Image[] axisFill;
+    Text[] axisLabel;
+
+    public void RebuildAxisButtons()
+    {
+        if (axisRoot == null) return;
+        foreach (Transform c in axisRoot) Destroy(c.gameObject);
+
+        int n = gm.AxisCount;
+        axisFill = new Image[n];
+        axisLabel = new Text[n];
+        if (n <= 1) return;
+
+        float w = (390f - 48f - (n - 1) * 8f) / n;
+        for (int i = 0; i < n; i++)
+        {
+            int idx = i;
+            var f = Card(axisRoot, "axis" + i, 24 + i * (w + 8), 0, w, 34, Color.white, 10);
+            HookButton(f, () => { selectedAxis = idx; RefreshAxisButtons(); }, gm.AxisLabel(i), 9);
+            axisFill[i] = f;
+            axisLabel[i] = f.transform.Find("l").GetComponent<Text>();
+        }
+        RefreshAxisButtons();
+    }
+
+    void RefreshAxisButtons()
+    {
+        if (axisFill == null) return;
+        for (int i = 0; i < axisFill.Length; i++)
+        {
+            bool on = i == selectedAxis;
+            axisFill[i].color = on ? Teal : Color.white;
+            axisLabel[i].color = on ? TealInk : Muted;
+        }
+    }
+
     /// <summary>아이템 버튼의 보유량 표시. 0 이면 흐리게.</summary>
     void RefreshItemButtons()
     {
@@ -252,8 +301,8 @@ public class GameUI : MonoBehaviour
         for (int i = 0; i < Shop.Items.Length; i++)
         {
             var e = Shop.Items[i];
-            int n = Wallet.Count(e.Item);
-            bool usable = n > 0 && !(e.MovesOnly && gm.timeAttack);
+            int n = Wallet.Count(e.Id);
+            bool usable = n > 0 && Available(e.Id);
             itemBtnLabel[i].text = e.Name + (n > 0 ? "  x" + n : "");
             itemBtnFill[i].color = usable ? e.Tint : Color.Lerp(e.Tint, ScreenBg, 0.72f);
             itemBtnLabel[i].color = usable ? Ink : Muted;
@@ -351,45 +400,27 @@ public class GameUI : MonoBehaviour
             subText.text = Spaced("TIME LEFT");
             int sec = Mathf.CeilToInt(g.TimeLeftSec);
             rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
-            frac = g.TimeLeftSec / (Rules.TimeAttackMs / 1000f);
+            float total = g.Stage != null && g.Stage.TimeSeconds > 0 ? g.Stage.TimeSeconds : 1f;
+            frac = g.TimeLeftSec / total;
         }
         else
         {
             subText.text = Spaced("MOVES LEFT");
             rightText.text = g.MovesLeft.ToString();
-            frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
+            int total = g.Stage != null && g.Stage.Moves > 0 ? g.Stage.Moves : 1;
+            frac = g.MovesLeft / (float)total;
         }
         frac = Mathf.Clamp01(frac);
         timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
         timerFill.color = Color.Lerp(Coral, Palette.Hex(0x7FCFC0), frac);
     }
 
-    /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
-    public void SetNext(IReadOnlyList<Piece> pieces, Color[] palette)
+    /// <summary>다음 조각 미리보기. 조각은 그래프 위 모양이라 칸 수와 이름으로 보여준다.</summary>
+    public void SetNext(string shapeName, int cellCount, Color color)
     {
-        int need = 0;
-        for (int i = 0; i < pieces.Count && i < 2; i++) need += pieces[i].Cells.Count;
-        while (nextCells.Count < need)
-        {
-            var img = NewImage("n" + nextCells.Count, nextRoot, Color.white);
-            var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(1, 1);
-            rt.sizeDelta = new Vector2(20, 20);
-            nextCells.Add(img);
-        }
-        int idx = 0;
-        for (int i = 0; i < pieces.Count && i < 2; i++)
-        {
-            var p = pieces[i];
-            foreach (var c in p.Cells)
-            {
-                var img = nextCells[idx++];
-                img.gameObject.SetActive(true);
-                img.color = palette[p.Color];
-                img.rectTransform.anchoredPosition = new Vector2(-(i * 150) - (3 - c.X) * 30, -(3 - c.Y) * 30);
-            }
-        }
-        for (int i = idx; i < nextCells.Count; i++) nextCells[i].gameObject.SetActive(false);
+        if (nextText == null) return;
+        nextText.text = shapeName + "  ·  " + cellCount;
+        nextText.color = color;
     }
 
     // ---------- 홈 ----------
@@ -724,10 +755,11 @@ public class GameUI : MonoBehaviour
         }
         else
         {
-            var st = StageLoader.Get(Progress.Selected);
+            var st = StageCatalog.Get(Progress.Selected);
             selectedModeText.text = st == null
                 ? "Stage " + Progress.Selected
-                : "Stage " + st.StageId + " · " + Summary(st) + " / " + st.Moves + " moves";
+                : "Stage " + st.StageId + " · " + st.ResolveTopology()
+                  + " · " + Summary(st) + " / " + st.Moves + " moves";
         }
         if (stageMapBtn != null)
             stageMapBtn.transform.parent.gameObject.SetActive(!gm.timeAttack);
@@ -748,19 +780,21 @@ public class GameUI : MonoBehaviour
 
 
     /// <summary>스테이지 개수. 설정 파일이 유일한 출처다.</summary>
-    static int StageCount { get { return Mathf.Max(1, StageLoader.Count); } }
+    static int StageCount { get { return Mathf.Max(1, StageCatalog.Count); } }
 
     /// <summary>목표를 한 줄로 요약한다.</summary>
-    static string Summary(StageConfig st)
+    static string Summary(StageDef st)
     {
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < st.Objectives.Count; i++)
         {
             if (i > 0) sb.Append(" + ");
             sb.Append(st.Objectives[i].Target);
-            if (st.Objectives[i].Type == ObjectiveType.ClearColor) sb.Append(' ').Append(st.Objectives[i].ColorName);
-            else if (st.Objectives[i].Type == ObjectiveType.BreakObstacle) sb.Append(' ').Append(st.Objectives[i].ObstacleType);
-            else if (st.Objectives[i].Type == ObjectiveType.ReachScore) sb.Append(" pts");
+            var ob = st.Objectives[i];
+            if (ob.Type == "clear_color") sb.Append(" C").Append(ob.ColorIndex);
+            else if (ob.Type == "break_obstacle") sb.Append(' ').Append(ob.ObstacleType);
+            else if (ob.Type == "reach_score") sb.Append(" pts");
+            else if (ob.Type == "clear_group_size") sb.Append(" x").Append(ob.GroupSize);
             else sb.Append(" blocks");
         }
         return sb.ToString();
@@ -1238,7 +1272,7 @@ public class GameUI : MonoBehaviour
         }
         rankEmpty.text = "Loading...";
         if (rankCo != null) StopCoroutine(rankCo);
-        rankCo = StartCoroutine(lb.FetchTop(gm.timeAttack, gm.difficulty, FillRank));
+        rankCo = StartCoroutine(lb.FetchTop(gm.timeAttack, GameManager.BoardId, FillRank));
     }
 
     void FillRank(List<ScoreEntry> rows)
@@ -1329,130 +1363,74 @@ public class GameUI : MonoBehaviour
         shopPanel = NewImage("shopdim", transform, new Color(0.06f, 0.08f, 0.10f, 0.82f)).gameObject;
         Stretch((RectTransform)shopPanel.transform);
 
-        var card = Card(shopPanel.transform, "shopcard", 20, 50, 350, 744, ScreenBg, 24);
+        var card = Card(shopPanel.transform, "shopcard", 0, 0, 350, 560, ScreenBg, 24);
         var cr = (RectTransform)card.transform.parent;
         cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
         cr.anchoredPosition = Vector2.zero;
 
-        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(24 * PS), TextAnchor.UpperLeft, Ink);
+        var title = NewText("st", card.transform, "SHOP", Mathf.RoundToInt(20 * PS), TextAnchor.UpperLeft, Ink);
         title.fontStyle = FontStyle.Bold;
-        Anchor(title.transform, 0, 1, 20, -18, 200, 36);
+        Anchor(title.transform, 0, 1, 20, -18, 200, 30);
 
-        // 코인 칩 — 카드 오른쪽 위
-        shopCoins = CoinChip(card.transform, "coinchip", 1, 1, -16, -14, 124, 38);
-        var chipRoot = shopCoins.transform.parent.parent.gameObject;   // 칩 바깥(테두리)
-        var cb = chipRoot.AddComponent<Button>();
-        cb.targetGraphic = chipRoot.GetComponent<Image>();
-        cb.transition = Selectable.Transition.None;
-        cb.onClick.AddListener(TapCoins);
+        shopCoins = CoinChip(card.transform, "shopcoin", 1, 1, -16, -16, 130, 38);
 
-        var itemsLabel = NewText("il", card.transform, Spaced("ITEMS"), Mathf.RoundToInt(10 * PS),
-                                 TextAnchor.UpperLeft, Muted);
-        Anchor(itemsLabel.transform, 0, 1, 20, -88, 200, 16);
+        HookButton(Card(card.transform, "shclose", 0, 0, 62, 34, Color.white, 12),
+                   () => { shopPanel.SetActive(false); }, "X", 13);
+        var clr = (RectTransform)card.transform.Find("shclose");
+        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(1, 0);
+        clr.sizeDelta = Sz(62, 34); clr.anchoredPosition = new Vector2(-20 * PS, 20 * PS);
 
-        int n = Shop.Items.Length;
-        shopBuyFill = new Image[n]; shopBuyLabel = new Text[n]; shopOwned = new Text[n];
-        for (int i = 0; i < n; i++)
+        // 아이템 목록. 무엇을 파는지는 Shop.Items 가, 무엇을 쓸 수 있는지는 스테이지 설정이 정한다.
+        shopBuyFill = new Image[Shop.Items.Length];
+        shopBuyLabel = new Text[Shop.Items.Length];
+        shopOwned = new Text[Shop.Items.Length];
+
+        for (int i = 0; i < Shop.Items.Length; i++)
         {
             var e = Shop.Items[i];
-            int idx = i;
-            float rowY = 108 + i * 78;
-
-            var row = Card(card.transform, "item" + i, 0, 0, 314, 70, Color.white, 18);
-            var rr = (RectTransform)row.transform.parent;
-            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 70); rr.anchoredPosition = new Vector2(0, -rowY * PS);
+            float y = 76 + i * 74;
+            var row = Card(card.transform, "item" + i, 20, y, 310, 64, Color.white, 16);
 
             var swatch = NewImage("sw", row.transform, e.Tint);
             swatch.sprite = Rounded(10); swatch.type = Image.Type.Sliced; swatch.raycastTarget = false;
-            Anchor(swatch.transform, 0, 1, 12, -10, 48, 48);
+            Anchor(swatch.transform, 0, 0.5f, 12, 0, 44, 44);
 
-            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink);
-            nm.fontStyle = FontStyle.Bold;
-            Anchor(nm.transform, 0, 1, 70, -11, 150, 20);
+            var name = NewText("n", row.transform, e.Name, Mathf.RoundToInt(13 * PS), TextAnchor.UpperLeft, Ink);
+            name.fontStyle = FontStyle.Bold;
+            Anchor(name.transform, 0, 1, 66, -10, 150, 20);
 
-            var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
-            Anchor(ds.transform, 0, 1, 70, -32, 165, 30);
+            var desc = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
+            Anchor(desc.transform, 0, 1, 66, -30, 160, 26);
 
-            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted);
-            Anchor(shopOwned[i].transform, 1, 0, -12, 8, 120, 16);
+            shopOwned[i] = NewText("o", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted);
+            Anchor(shopOwned[i].transform, 1, 0, -12, 8, 90, 16);
 
-            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 78, 36, Teal, 12);
-            var br = (RectTransform)shopBuyFill[i].transform.parent;
-            br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 1);
-            br.sizeDelta = Sz(78, 36); br.anchoredPosition = new Vector2(-12 * PS, -10 * PS);
-            var bb = br.gameObject.AddComponent<Button>();
-            bb.targetGraphic = br.GetComponent<Image>();
-            bb.transition = Selectable.Transition.None;
-            bb.onClick.AddListener(() => Buy(idx));
-            br.gameObject.AddComponent<UiPressImage>().target = br;
-            shopBuyLabel[i] = NewText("l", shopBuyFill[i].transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleCenter, Ink);
-            shopBuyLabel[i].fontStyle = FontStyle.Bold;
-            Stretch(shopBuyLabel[i].rectTransform);
-        }
-
-        // ---- 타일 스킨 ----
-        float skinTop = 108 + n * 78 + 14;
-        var skinLabel = NewText("sl", card.transform, Spaced("TILE SKINS"), Mathf.RoundToInt(10 * PS),
-                                TextAnchor.UpperLeft, Muted);
-        Anchor(skinLabel.transform, 0, 1, 20, -skinTop, 200, 16);
-
-        int m = Shop.Skins.Length;
-        skinBuyFill = new Image[m]; skinBuyLabel = new Text[m]; skinSwatch = new Image[m];
-        for (int i = 0; i < m; i++)
-        {
-            var sk = Shop.Skins[i];
             int idx = i;
-            var row = Card(card.transform, "skin" + i, 0, 0, 314, 56, Color.white, 16);
-            var rr = (RectTransform)row.transform.parent;
-            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 56);
-            rr.anchoredPosition = new Vector2(0, -(skinTop + 20 + i * 64) * PS);
-
-            // 실제 타일 스프라이트를 팔레트 색 3가지로 보여준다 — 사기 전에 재질이 보여야 한다
-            var sp = BoardView.MakeTileSprite(sk.Skin);
-            var demo = Palette.Generate(4, new System.Random(1));
-            for (int k = 0; k < 3; k++)
-            {
-                var sw = NewImage("sw" + k, row.transform, demo[k]);
-                sw.sprite = sp; sw.raycastTarget = false;
-                Anchor(sw.transform, 0, 0.5f, 12 + k * 40, 0, 36, 36);
-                if (k == 0) skinSwatch[i] = sw;
-            }
-
-            var nm = NewText("n", row.transform, sk.Name, Mathf.RoundToInt(13 * PS), TextAnchor.MiddleLeft, Ink);
-            nm.fontStyle = FontStyle.Bold;
-            Anchor(nm.transform, 0, 0.5f, 136, 0, 90, 22);
-
-            skinBuyFill[i] = Card(row.transform, "buy", 0, 0, 82, 34, Teal, 12);
-            var br = (RectTransform)skinBuyFill[i].transform.parent;
-            br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 0.5f);
-            br.sizeDelta = Sz(82, 34); br.anchoredPosition = new Vector2(-10 * PS, 0);
-            var bb = br.gameObject.AddComponent<Button>();
-            bb.targetGraphic = br.GetComponent<Image>();
-            bb.transition = Selectable.Transition.None;
-            bb.onClick.AddListener(() => SkinTap(idx));
-            br.gameObject.AddComponent<UiPressImage>().target = br;
-            skinBuyLabel[i] = NewText("l", skinBuyFill[i].transform, "", Mathf.RoundToInt(12 * PS),
-                                      TextAnchor.MiddleCenter, Ink);
-            skinBuyLabel[i].fontStyle = FontStyle.Bold;
-            Stretch(skinBuyLabel[i].rectTransform);
+            var buy = Card(row.transform, "buy", 0, 0, 76, 34, Teal, 12);
+            HookButton(buy, () => Buy(idx), "", 12);
+            var brt = (RectTransform)row.transform.Find("buy");
+            brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(1, 1);
+            brt.sizeDelta = Sz(76, 34); brt.anchoredPosition = new Vector2(-12 * PS, -10 * PS);
+            shopBuyFill[idx] = buy;
+            shopBuyLabel[idx] = buy.transform.Find("l").GetComponent<Text>();
         }
 
-        float adY = skinTop + 20 + m * 64 + 12;
-        var adRow = Card(card.transform, "shopad", 0, 0, 314, 62, Coral, 18);
-        var ar = (RectTransform)adRow.transform.parent;
-        ar.anchorMin = ar.anchorMax = ar.pivot = new Vector2(0.5f, 1);
-        ar.sizeDelta = Sz(314, 62); ar.anchoredPosition = new Vector2(0, -adY * PS);
-        HookButton(adRow, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }),
-                   "WATCH AD  ·  +" + Shop.AdReward, 15);
+        HookButton(Card(card.transform, "shad", 20, 468, 310, 48, Coral, 16),
+                   () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }),
+                   "WATCH AD  +" + Shop.AdReward, 14);
 
-        var close = Card(card.transform, "shopclose", 0, 0, 314, 54, Cream, 18);
-        var clr = (RectTransform)close.transform.parent;
-        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(0.5f, 0);
-        clr.sizeDelta = Sz(314, 54); clr.anchoredPosition = new Vector2(0, 18 * PS);
-        HookButton(close, () => shopPanel.SetActive(false), "CLOSE", 15);
+        shopPanel.SetActive(false);
     }
+
+    void Buy(int i)
+    {
+        var e = Shop.Items[i];
+        if (Wallet.Coins < e.Price) return;
+        Wallet.SpendCoins(e.Price);
+        Wallet.Add(e.Id, 1);
+        RefreshShop();
+    }
+
 
     public void ShowShop()
     {
@@ -1461,25 +1439,7 @@ public class GameUI : MonoBehaviour
         RefreshShop();
     }
 
-    void Buy(int i)
-    {
-        var e = Shop.Items[i];
-        if (Wallet.SpendCoins(e.Price)) Wallet.Add(e.Item, 1);
-        RefreshShop();
-    }
 
-    /// <summary>안 샀으면 사고, 샀으면 착용한다.</summary>
-    void SkinTap(int i)
-    {
-        var sk = Shop.Skins[i];
-        if (!Wallet.OwnsSkin(sk.Skin))
-        {
-            if (!Wallet.SpendCoins(sk.Price)) { RefreshShop(); return; }
-            Wallet.UnlockSkin(sk.Skin);
-        }
-        Wallet.Skin = sk.Skin;
-        RefreshShop();
-    }
 
     int coinTaps;
 
@@ -1498,16 +1458,6 @@ public class GameUI : MonoBehaviour
     void RefreshShop()
     {
         shopCoins.text = Wallet.Coins.ToString("N0");
-        for (int i = 0; i < Shop.Skins.Length; i++)
-        {
-            var sk = Shop.Skins[i];
-            bool owned = Wallet.OwnsSkin(sk.Skin);
-            bool on = Wallet.Skin == sk.Skin;
-            bool afford = Wallet.Coins >= sk.Price;
-            skinBuyLabel[i].text = on ? "EQUIPPED" : owned ? "EQUIP" : sk.Price.ToString();
-            skinBuyFill[i].color = on ? Yellow : (owned || afford) ? Teal : new Color(0.85f, 0.86f, 0.88f);
-            skinBuyLabel[i].color = (on || owned || afford) ? Ink : Muted;
-        }
         for (int i = 0; i < Shop.Items.Length; i++)
         {
             var e = Shop.Items[i];
@@ -1515,10 +1465,11 @@ public class GameUI : MonoBehaviour
             shopBuyLabel[i].text = e.Price.ToString();
             shopBuyFill[i].color = afford ? Teal : new Color(0.85f, 0.86f, 0.88f);
             shopBuyLabel[i].color = afford ? Ink : Muted;
-            shopOwned[i].text = "owned " + Wallet.Count(e.Item);
+            shopOwned[i].text = "owned " + Wallet.Count(e.Id);
         }
         RefreshItemButtons();
     }
+
 
     // ---------- 광고 (자리표시) ----------
     //
