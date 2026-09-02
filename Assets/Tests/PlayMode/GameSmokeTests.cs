@@ -93,7 +93,7 @@ public class GameSmokeTests
 
         Assert.AreEqual(moves - 1, gm.MovesLeft, "만료되면 기회를 하나 쓴다");
         Assert.AreNotSame(before, gm.TraySlot(0), "만료되면 트레이를 새로 뽑는다");
-        Assert.AreEqual(-1, gm.SelectedSlot, "만료 뒤에는 아무것도 집고 있지 않다");
+        Assert.AreEqual(0, gm.SelectedSlot, "만료 뒤에도 지금 블록이 잡혀 있다");
         Assert.Greater(gm.PieceTimerFrac, 0.5f, "새 트레이는 제한시간이 다시 채워진다");
     }
 
@@ -181,7 +181,7 @@ public class GameSmokeTests
         float t0 = Time.realtimeSinceStartup;
         while (gm.BombArmed && Time.realtimeSinceStartup - t0 < 12) yield return null;
         Assert.IsFalse(gm.BombArmed, "만료됐는데 폭탄 예약이 남아 있다");
-        Assert.AreEqual(-1, gm.SelectedSlot, "만료 뒤에는 아무것도 집고 있지 않다");
+        Assert.AreEqual(0, gm.SelectedSlot, "만료 뒤에도 지금 블록이 잡혀 있다");
     }
 
     [UnityTest]
@@ -299,30 +299,27 @@ public class GameSmokeTests
     }
 
     [UnityTest]
-    public IEnumerator 트레이에서_집어야_보드에_놓을_수_있다()
+    public IEnumerator 트레이는_지금_블록과_다음_블록을_들고_있다()
     {
         gm = NewGm();
         yield return null;
         gm.StartGame(GameManager.Difficulty, false, 909);
         yield return null;
 
-        Assert.AreEqual(-1, gm.SelectedSlot, "시작할 때는 아무것도 안 집은 상태다");
-        for (int i = 0; i < 3; i++) Assert.IsNotNull(gm.TraySlot(i), i + "번 트레이가 비었다");
+        var now = gm.TraySlot(0);
+        var next = gm.TraySlot(1);
+        Assert.IsNotNull(now, "지금 블록이 없다");
+        Assert.IsNotNull(next, "다음 블록이 없다");
+        Assert.AreSame(now, gm.CurrentPiece, "지금 블록이 바로 잡혀 있어야 한다");
+        Assert.AreEqual(0, gm.SelectedSlot);
 
-        Assert.IsTrue(gm.SelectSlot(1), "트레이에서 집지 못했다");
-        Assert.AreEqual(1, gm.SelectedSlot);
-        Assert.AreSame(gm.TraySlot(1), gm.CurrentPiece, "집은 조각이 트레이의 것과 다르다");
-
-        // 놓으면 그 슬롯만 비고 나머지는 남는다
-        var other0 = gm.TraySlot(0);
-        var other2 = gm.TraySlot(2);
+        // 놓으면 다음 블록이 지금 자리로 당겨진다
         Assert.IsTrue(gm.TryStamp(5, 5), "놓지 못했다");
         float t0 = Time.realtimeSinceStartup;
         while (gm.Busy && Time.realtimeSinceStartup - t0 < 20) yield return null;
 
-        Assert.IsNull(gm.TraySlot(1), "쓴 슬롯이 비지 않았다");
-        Assert.AreSame(other0, gm.TraySlot(0), "안 쓴 슬롯이 바뀌었다");
-        Assert.AreSame(other2, gm.TraySlot(2), "안 쓴 슬롯이 바뀌었다");
-        Assert.AreEqual(-1, gm.SelectedSlot, "놓고 나면 집은 상태가 풀린다");
+        Assert.AreSame(next, gm.TraySlot(0), "다음 블록이 지금 자리로 안 왔다");
+        Assert.IsNotNull(gm.TraySlot(1), "새 다음 블록이 안 채워졌다");
+        Assert.AreSame(gm.TraySlot(0), gm.CurrentPiece, "놓은 뒤에도 지금 블록이 잡혀 있어야 한다");
     }
 }

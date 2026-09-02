@@ -177,24 +177,28 @@ public class GameUI : MonoBehaviour
         Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 222, 18);
 
         // ---- 점수 / 남은 수 카드 ----
-        float cw = (390f - 48f - 14f) / 2f;
-        var scoreCard = Card(safe, "statscore", 24, 66, cw, 74, Cream, 22);
-        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 12, TextAnchor.UpperLeft, StatLabel, 0, 0, 0, 0);
-        Anchor(sl.transform, 0, 1, 16, -12, cw - 32, 18);
-        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
-        scoreText.fontStyle = FontStyle.Bold;
-        Anchor(scoreText.transform, 0, 1, 16, -30, cw - 32, 46);
+        // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
+        // 한쪽은 왼쪽, 한쪽은 오른쪽으로 붙여 두면 두 카드가 어긋나 보인다.
+        const float StatW = 140f, StatH = 56f, StatGap = 12f;
+        float statLeft = (390f - (StatW * 2f + StatGap)) * 0.5f;
 
-        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 66, cw, 74, Mint, 22);
-        subText = Label(movesCard.transform, "l", "", 12, TextAnchor.UpperRight, MintInk, 0, 0, 0, 0);
-        Anchor(subText.transform, 1, 1, -16, -12, cw - 32, 18);
-        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(34 * PS), TextAnchor.UpperRight, Ink);
+        var scoreCard = Card(safe, "statscore", statLeft, 68, StatW, StatH, Cream, 18);
+        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 10, TextAnchor.UpperCenter, StatLabel, 0, 0, 0, 0);
+        Anchor(sl.transform, 0.5f, 1, 0, -8, StatW - 16, 14);
+        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
+        scoreText.fontStyle = FontStyle.Bold;
+        Anchor(scoreText.transform, 0.5f, 1, 0, -22, StatW - 16, 32);
+
+        var movesCard = Card(safe, "statmoves", statLeft + StatW + StatGap, 68, StatW, StatH, Mint, 18);
+        subText = Label(movesCard.transform, "l", "", 10, TextAnchor.UpperCenter, MintInk, 0, 0, 0, 0);
+        Anchor(subText.transform, 0.5f, 1, 0, -8, StatW - 16, 14);
+        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
         rightText.fontStyle = FontStyle.Bold;
-        Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
+        Anchor(rightText.transform, 0.5f, 1, 0, -22, StatW - 16, 32);
 
         // ---- 제한시간 바 ----
         // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
-        var bar = Card(safe, "bar", 24, 152, 342, 14, Cream, 7);
+        var bar = Card(safe, "bar", 60, 132, 270, 12, Cream, 6);
         timerBar = bar.transform.parent.gameObject;
         timerFill = NewImage("fill", bar.transform, Coral);
         timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
@@ -210,7 +214,7 @@ public class GameUI : MonoBehaviour
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 176, iw, 44, e.Tint, 14);
+            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 152, iw, 40, e.Tint, 14);
             HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
             itemBtnFill[i] = f;
             itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();

@@ -780,10 +780,12 @@ public class BoardView : MonoBehaviour
     // 조각은 보드 아래 트레이에 놓인다. 손가락으로 집어 보드로 끌어다 놓는다.
     // 트레이도 보드와 같은 월드 좌표에 그린다 — 그래야 드래그가 한 좌표계에서 끝난다.
 
-    public const int TraySlots = 3;
-    public const float TrayY = -3.4f;        // 트레이 중심 (칸 단위)
-    public const float TrayCell = 0.62f;     // 트레이 안 칸 크기
-    public const float TrayRadius = 2.05f;   // 슬롯 하나가 차지하는 반경
+    // 0 = 지금 블록, 1 = 다음 블록. 다음 것은 미리보기라 고를 수 없다.
+    public const int TraySlots = 2;
+    public const int CurrentSlot = 0;
+    public const float TrayY = -3.0f;        // 트레이 중심 (칸 단위)
+    public const float TrayCell = 0.46f;     // 트레이 안 칸 크기 — 작게
+    public const float TrayRadius = 1.55f;   // 슬롯 하나가 차지하는 반경
 
     SpriteRenderer[] trayPad;                // 슬롯 바닥
     SpriteRenderer[][] trayCells;            // 슬롯마다 조각 칸
@@ -791,8 +793,8 @@ public class BoardView : MonoBehaviour
     /// <summary>슬롯 i 의 중심 월드 좌표.</summary>
     public static Vector2 TraySlotCenter(int i)
     {
-        float span = (Board.W - 1) / (float)TraySlots;
-        return new Vector2(span * (i + 0.5f) - 0.5f, TrayY);
+        float mid = (Board.W - 1) * 0.5f;
+        return new Vector2(mid + (i == CurrentSlot ? -2.4f : 2.4f), TrayY);
     }
 
     void BuildTray()
@@ -835,11 +837,12 @@ public class BoardView : MonoBehaviour
     {
         if (trayCells == null || i < 0 || i >= TraySlots) return;
 
-        trayPad[i].color = selected
+        trayPad[i].color = (i == CurrentSlot && selected)
             ? new Color(1f, 1f, 1f, 0.34f)
             : TrayPadColor;
 
         var cells = trayCells[i];
+        bool isNext = i != CurrentSlot;
         if (piece == null)
         {
             foreach (var sr in cells) sr.enabled = false;
@@ -849,9 +852,9 @@ public class BoardView : MonoBehaviour
         var center = TraySlotCenter(i);
         float cx, cy;
         PieceCenter(piece, out cx, out cy);
-        // 고른 조각은 살짝 들어올려 '집었다' 를 알린다
-        float lift = selected ? 0.22f : 0f;
-        float scale = selected ? TrayCell * 1.10f : TrayCell;
+        // 지금 블록은 조금 크게, 다음 블록은 작고 흐리게 — 무엇을 쓰는 중인지 갈린다
+        float lift = selected ? 0.18f : 0f;
+        float scale = isNext ? TrayCell * 0.78f : TrayCell * (selected ? 1.12f : 1.0f);
 
         for (int k = 0; k < cells.Length; k++)
         {
@@ -863,9 +866,8 @@ public class BoardView : MonoBehaviour
                 center.x + (cell.X - cx) * scale,
                 center.y + (cell.Y - cy) * scale + lift, 0.5f);
             cells[k].transform.localScale = Vector3.one * scale * 0.94f;
-            cells[k].color = dimmed
-                ? new Color(color.r, color.g, color.b, 0.35f)
-                : color;
+            float alpha = dimmed ? 0.35f : (isNext ? 0.55f : 1f);
+            cells[k].color = new Color(color.r, color.g, color.b, alpha);
         }
     }
 
