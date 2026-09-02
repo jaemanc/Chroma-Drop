@@ -337,6 +337,10 @@ public class GameManager : MonoBehaviour
         if (Wallet.Count(it) <= 0) return false;
         if (!EnsureSelected()) return false;
 
+        // 이미 장전돼 있으면 또 쓰지 않는다.
+        // 안 막으면 버튼을 누를 때마다 보유량이 계속 깎인다.
+        if (it == ShopItem.BombPiece && pendingBomb) return false;
+
         switch (it)
         {
             case ShopItem.BombPiece:
@@ -446,6 +450,20 @@ public class GameManager : MonoBehaviour
         if (result.Spawns.Count > 0) sfx.PlayItem();
 
         score += result.ScoreGained;
+
+        // 아무 칸도 안 터진 수에는 벌칙으로 벽돌이 하나 생긴다.
+        // 그 자리에 아이템이 있었으면 아이템은 사라진다.
+        if (result.Destroyed.Count == 0)
+        {
+            Point put;
+            if (board.PenaltyObstacle(out put) >= 0)
+            {
+                view.Refresh(board, palette);
+                yield return view.LandCells(new List<Point> { put }, landTime);
+                sfx.PlayExpire();
+                Shake(0.18f, 0.14f);
+            }
+        }
 
         // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
         if (!taRunning)

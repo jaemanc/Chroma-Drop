@@ -322,4 +322,51 @@ public class GameSmokeTests
         Assert.IsNotNull(gm.TraySlot(1), "새 다음 블록이 안 채워졌다");
         Assert.AreSame(gm.TraySlot(0), gm.CurrentPiece, "놓은 뒤에도 지금 블록이 잡혀 있어야 한다");
     }
+
+    // 회귀: 폭탄이 이미 장전돼 있으면 또 쓰이면 안 된다.
+    // 안 막으면 버튼을 누를 때마다 보유량이 계속 깎인다.
+    [UnityTest]
+    public IEnumerator 폭탄은_한_번만_장전되고_중복_차감되지_않는다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 515);
+        yield return null;
+
+        while (Wallet.Count(ShopItem.BombPiece) > 0) Wallet.Use(ShopItem.BombPiece);
+        Wallet.Add(ShopItem.BombPiece, 3);
+
+        Assert.IsTrue(gm.UseItem(ShopItem.BombPiece), "첫 장전이 안 됐다");
+        Assert.AreEqual(2, Wallet.Count(ShopItem.BombPiece), "하나만 소모해야 한다");
+
+        for (int i = 0; i < 5; i++)
+            Assert.IsFalse(gm.UseItem(ShopItem.BombPiece), "이미 장전됐는데 또 쓰였다");
+
+        Assert.AreEqual(2, Wallet.Count(ShopItem.BombPiece), "중복으로 차감됐다");
+        Assert.IsTrue(gm.BombArmed);
+    }
+
+    // 아무것도 안 터지는 수를 두면 벌칙으로 벽돌이 하나 생긴다
+    [UnityTest]
+    public IEnumerator 아무것도_안_터지면_벽돌이_생긴다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 2468);
+        yield return null;
+
+        var board = gm.BoardRef;
+        int before = board.CountObstacles();
+
+        // 판을 바둑판으로 만들어 어디에 놓아도 2x2 가 안 생기게 한다
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                board.SetTile(x, y, (x + y) % 2);
+
+        Assert.IsTrue(gm.TryStamp(5, 5), "놓지 못했다");
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.Busy && Time.realtimeSinceStartup - t0 < 20) yield return null;
+
+        Assert.Greater(board.CountObstacles(), before, "안 터졌는데 벽돌이 안 생겼다");
+    }
 }

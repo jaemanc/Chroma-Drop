@@ -168,6 +168,15 @@ namespace ColorMatcher.Core
         public bool InBounds(int x, int y) { return x >= 0 && x < W && y >= 0 && y < H; }
 
         public bool IsObstacle(int x, int y) { return tiles[x, y] == Obstacle; }
+
+        /// <summary>판에 있는 벽돌 수.</summary>
+        public int CountObstacles()
+        {
+            int n = 0;
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) if (tiles[x, y] == Obstacle) n++;
+            return n;
+        }
         /// <summary>남은 내구도. 콘크리트가 아니면 0.</summary>
         public int GetObstacleHp(int x, int y) { return tiles[x, y] == Obstacle ? obstacleHp[x, y] : 0; }
         public void SetObstacle(int x, int y, int hp)
@@ -578,6 +587,25 @@ namespace ColorMatcher.Core
         }
 
         /// <summary>빈칸이 아닌 일반 칸을 콘크리트로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
+        /// <summary>아무 칸도 안 터진 수에 대한 벌칙으로 벽돌 하나를 놓는다.
+        /// 그 자리에 아이템이 있었으면 아이템은 사라지고 벽돌이 대신 들어선다.
+        /// 놓을 자리를 못 찾으면 -1.</summary>
+        public int PenaltyObstacle(out Point where)
+        {
+            where = new Point(0, 0);
+            var open = new List<Point>();
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++)
+                    if (IsColor(tiles[x, y])) open.Add(new Point(x, y));
+            if (open.Count == 0) return -1;
+
+            var p = open[rng.Next(open.Count)];
+            bool hadItem = items[p.X, p.Y] != ItemType.None;
+            SetObstacle(p.X, p.Y, Rules.ObstacleHp);   // SetObstacle 이 아이템을 지운다
+            where = p;
+            return hadItem ? 1 : 0;
+        }
+
         public int SpawnObstacles(int count)
         {
             int placed = 0;

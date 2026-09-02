@@ -210,11 +210,13 @@ public class GameUI : MonoBehaviour
         int ni = Shop.Items.Length;
         itemBtnLabel = new Text[ni];
         itemBtnFill = new Image[ni];
-        float iw = (390f - 48f - (ni - 1) * 10f) / ni;
+        // 보드 판의 왼쪽 위 모서리(프로토 x 12, y 211)에 살짝 걸치게 둔다.
+        // 판 한가운데를 덮으면 블록이 가려진다.
+        const float ItemW = 88f, ItemH = 40f, ItemGap = 8f;
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 152, iw, 40, e.Tint, 14);
+            var f = Card(safe, "item" + i, 18 + i * (ItemW + ItemGap), 186, ItemW, ItemH, e.Tint, 14);
             HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
             itemBtnFill[i] = f;
             itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();

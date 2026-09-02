@@ -291,6 +291,22 @@ class CoreTests
         b8.ApplyGravity();
         Assert(b8.IsObstacle(3, 5) && b8.GetTile(3, 6) == over, "벽돌 위 블록은 벽돌에 얹힌다");
 
+        // 아무것도 안 터진 수에는 벽돌이 하나 생긴다
+        var b9 = CheckerBoard();
+        int before9 = b9.CountObstacles();
+        Point put;
+        Assert(b9.PenaltyObstacle(out put) >= 0, "벌칙 벽돌을 놓을 자리를 찾는다");
+        Assert(b9.CountObstacles() == before9 + 1, "벌칙 벽돌이 하나 늘어난다");
+        Assert(b9.IsObstacle(put.X, put.Y), "돌려준 자리에 벽돌이 있다");
+
+        // 그 자리에 아이템이 있었으면 아이템은 사라진다
+        var b10 = CheckerBoard();
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) b10.SetItem(x, y, ItemType.Bomb5);
+        Point put2;
+        Assert(b10.PenaltyObstacle(out put2) == 1, "아이템 자리에 놓였음을 알린다");
+        Assert(b10.GetItem(put2.X, put2.Y) == ItemType.None, "벽돌이 들어서며 아이템이 사라진다");
+
         // 진행할수록 콘크리트가 늘어난다
         Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
         // 한 수 걸러 생기므로 짝수 수끼리 비교한다
