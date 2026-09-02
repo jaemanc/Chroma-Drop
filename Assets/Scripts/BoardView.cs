@@ -20,7 +20,8 @@ public class BoardView : MonoBehaviour
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
     SpriteRenderer[] ghost;
-    SpriteRenderer[] ghostRing;   // 고스트 테두리 — 타일 색과 무관하게 위치를 읽히게 한다
+    SpriteRenderer[] ghostRing;   // 놓일 자리 윤곽 — 타일 색과 무관하게 위치를 읽히게 한다
+    SpriteRenderer[] carryShadow; // 들고 있는 조각 아래 그림자
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
     Sprite bomb;                  // 폭탄 조각 아이콘
@@ -118,6 +119,7 @@ public class BoardView : MonoBehaviour
         ghost = new SpriteRenderer[8]; // 최대 조각 5칸 + 여유
         ghostRing = new SpriteRenderer[8];
         ghostX = new int[8]; ghostY = new int[8]; ghostBase = new Color[8];
+        carryShadow = new SpriteRenderer[8];
         for (int i = 0; i < ghost.Length; i++)
         {
             var rg = new GameObject("ghostring_" + i);
@@ -128,6 +130,14 @@ public class BoardView : MonoBehaviour
             rsr.sortingOrder = 5;
             rsr.enabled = false;
             ghostRing[i] = rsr;
+
+            var sg = new GameObject("carryshadow_" + i);
+            sg.transform.SetParent(transform, false);
+            var ssr = sg.AddComponent<SpriteRenderer>();
+            ssr.sprite = tile;
+            ssr.sortingOrder = 5;
+            ssr.enabled = false;
+            carryShadow[i] = ssr;
 
             var go = new GameObject("ghost_" + i);
             go.transform.SetParent(transform, false);
@@ -154,6 +164,7 @@ public class BoardView : MonoBehaviour
             blast[i] = bsr;
         }
 
+        BuildTray();
         BuildParticlePool();
         BuildRingPool();
     }
@@ -712,32 +723,188 @@ public class BoardView : MonoBehaviour
     }
 
 
-    public void ShowGhost(Piece p, int ax, int ay, bool can, Color pieceColor)
+    /// <summary>조각을 '들고 다니는' 모습으로 그린다.
+    ///
+    ///   놓일 자리 : 스냅된 칸에 윤곽(ghostRing) — 어디에 떨어질지 읽힌다
+    ///   손에 든 것 : 커서를 그대로 따라가며 살짝 들어올려진 채 그림자를 깔고 떠 있다
+    ///
+    /// 칸에 딱딱 붙여 그리면 들고 다니는 게 아니라 이미 놓인 것처럼 보인다.
+    /// (fx, fy) 는 칸으로 반올림하기 전의 연속 좌표다.</summary>
+    public void ShowGhost(Piece p, float fx, float fy, int ax, int ay, bool can, Color pieceColor)
     {
-        // 놓을 수 없으면 붉은 테두리 — 팔레트가 무슨 색이든 구분된다.
         ghostRingColor = can ? Color.white : new Color(1f, 0.35f, 0.35f);
         ghostCount = p.Cells.Count;
 
+        // 조각의 한가운데를 커서에 맞춘다. 왼쪽 아래 칸 기준으로 잡으면 손에서 어긋난다.
+        float cx = MaxCell(p, 0) * 0.5f, cy = MaxCell(p, 1) * 0.5f;
+
         for (int i = 0; i < ghost.Length; i++)
         {
-            if (i < p.Cells.Count)
+            if (i >= p.Cells.Count)
             {
-                int gx = ax + p.Cells[i].X, gy = ay + p.Cells[i].Y;
-                ghost[i].enabled = true;
-                ghost[i].sprite = tile;
-                ghost[i].transform.localPosition = new Vector3(gx, gy, -1);
-                ghostX[i] = gx; ghostY[i] = gy;
-                ghostBase[i] = can
-                    ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
-                    : new Color(0.1f, 0.1f, 0.12f, 0.75f);
-                ghost[i].color = ghostBase[i];
-
-                ghostRing[i].enabled = true;
-                ghostRing[i].transform.localPosition = new Vector3(gx, gy, -1.05f);
-                ghostRing[i].color = ghostRingColor;
+                ghost[i].enabled = false;
+                ghostRing[i].enabled = false;
+                carryShadow[i].enabled = false;
+                continue;
             }
-            else { ghost[i].enabled = false; ghostRing[i].enabled = false; }
+
+            // 1) 놓일 자리 — 스냅된 칸
+            int gx = ax + p.Cells[i].X, gy = ay + p.Cells[i].Y;
+            ghostX[i] = gx; ghostY[i] = gy;
+            ghostRing[i].enabled = true;
+            ghostRing[i].transform.localPosition = new Vector3(gx, gy, -1.05f);
+            ghostRing[i].color = ghostRingColor;
+
+            // 2) 들고 있는 조각 — 커서를 따라가는 연속 좌표
+            float px = fx + p.Cells[i].X - cx;
+            float py = fy + p.Cells[i].Y - cy;
+
+            carryShadow[i].enabled = true;
+            carryShadow[i].transform.localPosition = new Vector3(px + ShadowOffX, py + ShadowOffY, -1.5f);
+            carryShadow[i].transform.localScale = Vector3.one * CarryScale * 0.96f;
+            carryShadow[i].color = ShadowColor;
+
+            ghost[i].enabled = true;
+            ghost[i].sprite = tile;
+            ghost[i].transform.localPosition = new Vector3(px, py + CarryLift, -2f);
+            ghost[i].transform.localScale = Vector3.one * CarryScale;
+            ghostBase[i] = can
+                ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
+                : new Color(0.55f, 0.30f, 0.30f, 0.85f);
+            ghost[i].color = ghostBase[i];
         }
+    }
+
+    // ---------- 트레이 ----------
+    //
+    // 조각은 보드 아래 트레이에 놓인다. 손가락으로 집어 보드로 끌어다 놓는다.
+    // 트레이도 보드와 같은 월드 좌표에 그린다 — 그래야 드래그가 한 좌표계에서 끝난다.
+
+    public const int TraySlots = 3;
+    public const float TrayY = -3.4f;        // 트레이 중심 (칸 단위)
+    public const float TrayCell = 0.62f;     // 트레이 안 칸 크기
+    public const float TrayRadius = 2.05f;   // 슬롯 하나가 차지하는 반경
+
+    SpriteRenderer[] trayPad;                // 슬롯 바닥
+    SpriteRenderer[][] trayCells;            // 슬롯마다 조각 칸
+
+    /// <summary>슬롯 i 의 중심 월드 좌표.</summary>
+    public static Vector2 TraySlotCenter(int i)
+    {
+        float span = (Board.W - 1) / (float)TraySlots;
+        return new Vector2(span * (i + 0.5f) - 0.5f, TrayY);
+    }
+
+    void BuildTray()
+    {
+        trayPad = new SpriteRenderer[TraySlots];
+        trayCells = new SpriteRenderer[TraySlots][];
+
+        for (int i = 0; i < TraySlots; i++)
+        {
+            var c = TraySlotCenter(i);
+
+            var pad = new GameObject("traypad_" + i);
+            pad.transform.SetParent(transform, false);
+            pad.transform.localPosition = new Vector3(c.x, c.y, 1f);
+            pad.transform.localScale = Vector3.one * (TrayRadius * 2f);
+            var psr = pad.AddComponent<SpriteRenderer>();
+            psr.sprite = MakePanelSprite(0.22f);
+            psr.color = TrayPadColor;
+            psr.sortingOrder = -3;
+            trayPad[i] = psr;
+
+            trayCells[i] = new SpriteRenderer[5];   // 조각은 최대 5칸
+            for (int k = 0; k < trayCells[i].Length; k++)
+            {
+                var go = new GameObject("tray_" + i + "_" + k);
+                go.transform.SetParent(transform, false);
+                var sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = tile;
+                sr.sortingOrder = 3;
+                sr.enabled = false;
+                trayCells[i][k] = sr;
+            }
+        }
+    }
+
+    static readonly Color TrayPadColor = new Color(1f, 1f, 1f, 0.16f);
+
+    /// <summary>트레이 슬롯을 그린다. piece 가 null 이면 빈 슬롯.</summary>
+    public void SetTraySlot(int i, Piece piece, Color color, bool selected, bool dimmed)
+    {
+        if (trayCells == null || i < 0 || i >= TraySlots) return;
+
+        trayPad[i].color = selected
+            ? new Color(1f, 1f, 1f, 0.34f)
+            : TrayPadColor;
+
+        var cells = trayCells[i];
+        if (piece == null)
+        {
+            foreach (var sr in cells) sr.enabled = false;
+            return;
+        }
+
+        var center = TraySlotCenter(i);
+        float cx, cy;
+        PieceCenter(piece, out cx, out cy);
+        // 고른 조각은 살짝 들어올려 '집었다' 를 알린다
+        float lift = selected ? 0.22f : 0f;
+        float scale = selected ? TrayCell * 1.10f : TrayCell;
+
+        for (int k = 0; k < cells.Length; k++)
+        {
+            if (k >= piece.Cells.Count) { cells[k].enabled = false; continue; }
+            var cell = piece.Cells[k];
+            cells[k].enabled = true;
+            cells[k].sprite = tile;
+            cells[k].transform.localPosition = new Vector3(
+                center.x + (cell.X - cx) * scale,
+                center.y + (cell.Y - cy) * scale + lift, 0.5f);
+            cells[k].transform.localScale = Vector3.one * scale * 0.94f;
+            cells[k].color = dimmed
+                ? new Color(color.r, color.g, color.b, 0.35f)
+                : color;
+        }
+    }
+
+    static void PieceCenter(Piece p, out float cx, out float cy)
+    {
+        int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+        foreach (var c in p.Cells)
+        {
+            if (c.X < minX) minX = c.X; if (c.X > maxX) maxX = c.X;
+            if (c.Y < minY) minY = c.Y; if (c.Y > maxY) maxY = c.Y;
+        }
+        cx = (minX + maxX) * 0.5f;
+        cy = (minY + maxY) * 0.5f;
+    }
+
+    /// <summary>이 월드 좌표가 어느 트레이 슬롯인가. 없으면 -1.</summary>
+    public static int TrayHit(Vector2 world)
+    {
+        for (int i = 0; i < TraySlots; i++)
+        {
+            var c = TraySlotCenter(i);
+            if (Mathf.Abs(world.x - c.x) <= TrayRadius && Mathf.Abs(world.y - c.y) <= TrayRadius)
+                return i;
+        }
+        return -1;
+    }
+
+    // 들고 있는 조각: 살짝 크게, 살짝 위로, 아래에 그림자.
+    const float CarryScale = 1.10f;
+    const float CarryLift  = 0.22f;   // 들어올린 높이 (칸 단위)
+    const float ShadowOffX = 0.07f;
+    const float ShadowOffY = -0.16f;
+    static readonly Color ShadowColor = new Color(0.06f, 0.07f, 0.12f, 0.34f);
+
+    static int MaxCell(Piece p, int axis)
+    {
+        int m = 0;
+        foreach (var c in p.Cells) { int v = axis == 0 ? c.X : c.Y; if (v > m) m = v; }
+        return m;
     }
 
     /// <summary>폭탄 조각 고스트 — 던질 칸엔 폭탄 아이콘, 터질 범위는 붉게 미리 보여준다.</summary>
@@ -800,8 +967,9 @@ public class BoardView : MonoBehaviour
         ghostCount = 0;
         blastCount = 0;
         if (blast != null) foreach (var b in blast) if (b != null) b.enabled = false;
-        foreach (var g in ghost) if (g != null) g.enabled = false;
+        foreach (var g in ghost) if (g != null) { g.enabled = false; g.transform.localScale = Vector3.one; }
         foreach (var g in ghostRing) if (g != null) g.enabled = false;
+        if (carryShadow != null) foreach (var g in carryShadow) if (g != null) g.enabled = false;
     }
 
     // 고스트 테두리를 천천히 맥동시켜 배경 타일에 묻히지 않게 한다.

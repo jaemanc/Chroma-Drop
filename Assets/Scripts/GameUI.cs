@@ -174,38 +174,27 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 24, 20, 342, 18);
+        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 222, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         float cw = (390f - 48f - 14f) / 2f;
-        var scoreCard = Card(safe, "statscore", 24, 44, cw, 74, Cream, 22);
+        var scoreCard = Card(safe, "statscore", 24, 66, cw, 74, Cream, 22);
         var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 12, TextAnchor.UpperLeft, StatLabel, 0, 0, 0, 0);
         Anchor(sl.transform, 0, 1, 16, -12, cw - 32, 18);
         scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
         scoreText.fontStyle = FontStyle.Bold;
         Anchor(scoreText.transform, 0, 1, 16, -30, cw - 32, 46);
 
-        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 44, cw, 74, Mint, 22);
+        var movesCard = Card(safe, "statmoves", 24 + cw + 14, 66, cw, 74, Mint, 22);
         subText = Label(movesCard.transform, "l", "", 12, TextAnchor.UpperRight, MintInk, 0, 0, 0, 0);
         Anchor(subText.transform, 1, 1, -16, -12, cw - 32, 18);
         rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(34 * PS), TextAnchor.UpperRight, Ink);
         rightText.fontStyle = FontStyle.Bold;
         Anchor(rightText.transform, 1, 1, -16, -30, cw - 32, 46);
 
-        // ---- 들고 있는 조각 / 다음 조각 ----
-        // 지금 손에 든 것이 무엇인지가 가장 중요하다. 왼쪽에 크고 쨍하게,
-        // 다음 것들은 오른쪽에 작고 흐리게 둬서 한눈에 갈린다.
-        Label(safe, "holdlabel", Spaced("HOLDING"), 10, TextAnchor.MiddleLeft, Ink, 24, 112, 160, 14);
-        holdRoot = NewRT("hold", safe);
-        Place(holdRoot, Top, Top, new Vector2(0.5f, 0.5f), P(94, 158), Sz(140, 60));
-
-        Label(safe, "nextlabel", Spaced("NEXT"), 10, TextAnchor.MiddleRight, Muted, 206, 112, 160, 14);
-        nextRoot = NewRT("next", safe);
-        Place(nextRoot, Top, Top, new Vector2(0.5f, 0.5f), P(288, 158), Sz(160, 60));
-
         // ---- 제한시간 바 ----
         // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
-        var bar = Card(safe, "bar", 24, 198, 342, 14, Cream, 7);
+        var bar = Card(safe, "bar", 24, 152, 342, 14, Cream, 7);
         timerBar = bar.transform.parent.gameObject;
         timerFill = NewImage("fill", bar.transform, Coral);
         timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
@@ -213,6 +202,7 @@ public class GameUI : MonoBehaviour
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
 
         // ---- 아이템 (보유량이 0 이면 흐려진다) ----
+        // 하단은 트레이가 쓰므로 상단 정보줄 아래에 붙인다
         int ni = Shop.Items.Length;
         itemBtnLabel = new Text[ni];
         itemBtnFill = new Image[ni];
@@ -220,15 +210,16 @@ public class GameUI : MonoBehaviour
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 690, iw, 54, e.Tint, 16);
+            var f = Card(safe, "item" + i, 24 + i * (iw + 10), 176, iw, 44, e.Tint, 14);
             HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
             itemBtnFill[i] = f;
             itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();
         }
 
         // ---- 하단 조작 ----
-        HookButton(Card(safe, "home", 24, 762, cw, 58, Cream, 22), () => gm.GoHome(), "HOME", 19);
-        HookButton(Card(safe, "rotate", 24 + cw + 14, 762, cw, 58, Lilac, 22), () => gm.RotateCurrent(), "ROTATE", 19);
+        // 하단은 트레이가 쓴다. 홈·회전은 상단 모서리에 작은 아이콘으로 둔다.
+        HookButton(Card(safe, "home", 24, 14, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
+        HookButton(Card(safe, "rotate", 314, 14, 52, 44, Lilac, 14), () => gm.RotateCurrent(), "\u21BB", 20);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
         Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
@@ -355,38 +346,6 @@ public class GameUI : MonoBehaviour
 
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
     /// <summary>지금 들고 있는 조각. 크게, 채도를 올려 쨍하게 그린다.
-    /// 다음 조각과 섞이면 무엇을 들고 있는지 알 수 없다.</summary>
-    public void SetHolding(Piece piece, Color[] palette)
-    {
-        if (piece == null) { foreach (var img in holdCells) img.gameObject.SetActive(false); return; }
-
-        while (holdCells.Count < piece.Cells.Count)
-        {
-            var img = NewImage("h" + holdCells.Count, holdRoot, Color.white);
-            img.sprite = roundSmall; img.type = Image.Type.Sliced;
-            var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(HoldCell, HoldCell);
-            holdCells.Add(img);
-        }
-
-        // 조각 모양의 한가운데를 상자 한가운데에 맞춘다.
-        // 좌표를 그대로 쓰면 조각마다 위치가 들쭉날쭉해진다.
-        float cx, cy;
-        Center(piece, out cx, out cy);
-
-        var c = Vivid(palette[piece.Color]);
-        int idx = 0;
-        foreach (var cell in piece.Cells)
-        {
-            var img = holdCells[idx++];
-            img.gameObject.SetActive(true);
-            img.color = c;
-            img.rectTransform.anchoredPosition =
-                new Vector2((cell.X - cx) * HoldStep, (cell.Y - cy) * HoldStep);
-        }
-        for (int i = idx; i < holdCells.Count; i++) holdCells[i].gameObject.SetActive(false);
-    }
 
     /// <summary>조각이 차지한 칸의 한가운데.</summary>
     static void Center(Piece p, out float cx, out float cy)
@@ -407,48 +366,6 @@ public class GameUI : MonoBehaviour
     const float NextStep = 27f;
 
     /// <summary>채도와 밝기를 올려 쨍하게. 판 위 블록은 채도를 낮춰 그리므로
-    /// 그대로 쓰면 손에 든 것이 배경에 묻힌다.</summary>
-    static Color Vivid(Color c)
-    {
-        float h, s, v;
-        Color.RGBToHSV(c, out h, out s, out v);
-        s = Mathf.Clamp01(s * 2.1f + 0.18f);
-        v = Mathf.Clamp01(v * 1.06f + 0.04f);
-        return Color.HSVToRGB(h, s, v);
-    }
-
-    public void SetNext(IReadOnlyList<Piece> pieces, Color[] palette)
-    {
-        int need = 0;
-        for (int i = 0; i < pieces.Count && i < 2; i++) need += pieces[i].Cells.Count;
-        while (nextCells.Count < need)
-        {
-            var img = NewImage("n" + nextCells.Count, nextRoot, Color.white);
-            var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(NextCell, NextCell);
-            nextCells.Add(img);
-        }
-        int idx = 0;
-        for (int i = 0; i < pieces.Count && i < 2; i++)
-        {
-            var p = pieces[i];
-            var col = palette[p.Color];
-            col.a = 0.65f;                      // 다음 것은 흐리게 — 지금 든 것과 헷갈리지 않게
-            float cx, cy;
-            Center(p, out cx, out cy);
-            float slot = (i - 0.5f) * 150f;     // 두 조각을 좌우로 나눠 놓는다
-            foreach (var c in p.Cells)
-            {
-                var img = nextCells[idx++];
-                img.gameObject.SetActive(true);
-                img.color = col;
-                img.rectTransform.anchoredPosition =
-                    new Vector2(slot + (c.X - cx) * NextStep, (c.Y - cy) * NextStep);
-            }
-        }
-        for (int i = idx; i < nextCells.Count; i++) nextCells[i].gameObject.SetActive(false);
-    }
 
     // ---------- 홈 ----------
 

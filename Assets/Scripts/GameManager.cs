@@ -46,8 +46,10 @@ public class GameManager : MonoBehaviour
     static readonly Color ChainFlash = new Color(1f, 0.72f, 0.18f);
 
     Board board;
-    Piece current;
-    readonly Queue<Piece> queue = new Queue<Piece>();
+    Piece current;                                   // 지금 집은 조각 (트레이에서 고른 것)
+    readonly Piece[] tray = new Piece[BoardView.TraySlots];
+    int selectedSlot = -1;                           // -1 이면 아무것도 안 집은 상태
+    bool dragging;                                   // 손가락으로 끌고 있는 중인가
     System.Random pieceRng;
     Color[] palette;
 
@@ -68,6 +70,9 @@ public class GameManager : MonoBehaviour
     public bool BombArmed { get { return pendingBomb; } }
 
     Vector3 camBase;
+
+    /// <summary>상단 HUD 가 차지하는 높이 비율. 이만큼 보드를 아래로 민다.</summary>
+    const float HudRoom = 0.13f;
     Coroutine shakeCo;
 
     void Awake()
@@ -159,18 +164,17 @@ public class GameManager : MonoBehaviour
         touchActive = false;
 
         pendingBomb = false;
-        queue.Clear();
-        current = Piece.CreateRandom(pieceRng, Rules.ColorCount);
-        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
-        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
+        selectedSlot = -1;
+        dragging = false;
+        for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+        current = null;
 
         view.Build();
         view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
         view.SetVisible(true);
         view.Refresh(board, palette);
         ui.ShowGame();
-        ui.SetNext(new List<Piece>(queue), palette);
-        ui.SetHolding(current, palette);
+        RefreshTray();
 
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
@@ -257,49 +261,92 @@ public class GameManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.R)) RotateCurrent();
 
+        // 모바일이 기준이다. 터치가 없으면 마우스로 같은 흐름을 흉내낸다.
         Vector2 sp;
-        bool stamp = false;
-        float lift = 0;
+        bool down = false, held = false, up = false;
 
         if (Input.touchCount > 0)
         {
             var t = Input.GetTouch(0);
             sp = t.position;
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject(t.fingerId))
-            { view.HideGhost(); touchActive = false; return; }
-            if (t.phase == TouchPhase.Began) touchActive = true;
-            if (!touchActive) { view.HideGhost(); return; }
-            if (t.phase == TouchPhase.Ended) { stamp = true; touchActive = false; }
-            else if (t.phase == TouchPhase.Canceled) { touchActive = false; view.HideGhost(); return; }
-            lift = ghostLiftCells;
+            { CancelDrag(); return; }
+            down = t.phase == TouchPhase.Began;
+            held = t.phase == TouchPhase.Moved || t.phase == TouchPhase.Stationary;
+            up = t.phase == TouchPhase.Ended;
+            if (t.phase == TouchPhase.Canceled) { CancelDrag(); return; }
         }
         else
         {
             sp = Input.mousePosition;
             if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject())
-            { view.HideGhost(); return; }
-            stamp = Input.GetMouseButtonDown(0);
+            { CancelDrag(); return; }
+            down = Input.GetMouseButtonDown(0);
+            held = Input.GetMouseButton(0);
+            up = Input.GetMouseButtonUp(0);
         }
 
         Vector3 w = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
-        int cx = Mathf.RoundToInt(w.x);
-        int cy = Mathf.RoundToInt(w.y + lift);
-        int ax = cx - MaxCell(current, 0) / 2;
-        int ay = cy - MaxCell(current, 1) / 2;
 
-        bool can = board.CanPlace(current, ax, ay);
-        if (pendingBomb)
+        // 손가락이 조각을 가리지 않게 위로 띄운다. 끌고 있을 때만.
+        float lift = (dragging && Input.touchCount > 0) ? ghostLiftCells : 0f;
+        Vector2 aim = new Vector2(w.x, w.y + lift);
+
+        // ---- 누르는 순간 ----
+        if (down)
         {
-            // 폭탄은 터질 범위를 빨갛게
+            int slot = BoardView.TrayHit(new Vector2(w.x, w.y));
+            if (slot >= 0 && tray[slot] != null)
+            {
+                // 트레이에서 집었다. 그대로 끌어도 되고, 떼고 보드를 눌러도 된다.
+                selectedSlot = slot;
+                current = tray[slot];
+                dragging = true;
+                sfx.PlayStamp();
+                RefreshTray();
+                return;
+            }
+        }
+
+        // ---- 아무것도 안 집었으면 보드를 만져도 반응하지 않는다 ----
+        if (selectedSlot < 0 || current == null) { view.HideGhost(); return; }
+
+        int ax = Mathf.RoundToInt(aim.x) - MaxCell(current, 0) / 2;
+        int ay = Mathf.RoundToInt(aim.y) - MaxCell(current, 1) / 2;
+        bool can = board.CanPlace(current, ax, ay);
+
+        // 트레이 위에 있으면 아직 보드로 안 가져온 것이다
+        bool overTray = BoardView.TrayHit(new Vector2(w.x, w.y)) >= 0 && !dragging;
+
+        if (overTray) { view.HideGhost(); }
+        else if (pendingBomb)
+        {
             view.ShowBombGhost(ax, ay, can, can ? board.EffectCells(ItemType.Bomb5, ax, ay) : null);
         }
         else
         {
-            view.ShowGhost(current, ax, ay, can, palette[current.Color]);
-            // 여기 놓으면 어느 칸이 사라지는지 흰색으로 예고한다
+            // 커서 좌표를 그대로 넘긴다 — 칸에 붙여 그리면 들고 다니는 느낌이 안 난다
+            view.ShowGhost(current, aim.x, aim.y, ax, ay, can, palette[current.Color]);
             view.ShowMatchPreview(can ? board.PreviewStamp(current, ax, ay) : null);
         }
-        if (stamp && can) StartCoroutine(DoStamp(ax, ay));
+
+        // ---- 놓기 ----
+        // 끌다가 떼면 그 자리에, 집어만 뒀으면 보드를 눌렀을 때 놓는다.
+        bool release = dragging ? up : down;
+        if (!release) { if (held) dragging = dragging || false; return; }
+
+        if (overTray) return;
+        if (can) { StartCoroutine(DoStamp(ax, ay)); return; }
+
+        // 놓을 수 없는 자리에서 떼면 집은 상태만 유지한다
+        if (dragging) { dragging = false; RefreshTray(); }
+    }
+
+    /// <summary>드래그를 취소한다. 집은 상태는 유지해 다시 보드를 누를 수 있게 둔다.</summary>
+    void CancelDrag()
+    {
+        if (dragging) { dragging = false; RefreshTray(); }
+        view.HideGhost();
     }
 
     /// <summary>상점 아이템을 쓴다. 보유량이 없거나 지금 쓸 수 없으면 false.</summary>
@@ -307,6 +354,7 @@ public class GameManager : MonoBehaviour
     {
         if (Phase != GamePhase.Playing || busy) return false;
         if (Wallet.Count(it) <= 0) return false;
+        if (!EnsureSelected()) return false;
 
         switch (it)
         {
@@ -318,7 +366,8 @@ public class GameManager : MonoBehaviour
         }
 
         Wallet.Use(it);
-        ui.SetHolding(current, palette);   // 폭탄으로 바뀐 조각을 바로 보여준다
+        tray[selectedSlot] = current;      // 폭탄으로 바뀐 조각을 트레이에도 반영
+        RefreshTray();
         sfx.PlayItem();
         // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
         if (!taRunning) StartPieceTimer();
@@ -328,14 +377,43 @@ public class GameManager : MonoBehaviour
     public void RotateCurrent()
     {
         if (Phase != GamePhase.Playing || busy) return;
+        if (current == null || selectedSlot < 0) return;   // 집은 게 없으면 돌릴 것도 없다
         current = current.Rotated();
-        ui.SetHolding(current, palette);   // 돌린 모양이 바로 보여야 한다
+        tray[selectedSlot] = current;                      // 트레이에도 돌린 모양을 반영한다
+        RefreshTray();
     }
 
     /// <summary>프로그램/테스트용 스탬프 진입점. 성공 시 코루틴 시작.</summary>
+    /// <summary>트레이에서 조각을 집는다. 비었거나 범위 밖이면 false.</summary>
+    public bool SelectSlot(int i)
+    {
+        if (Phase != GamePhase.Playing || busy) return false;
+        if (i < 0 || i >= tray.Length || tray[i] == null) return false;
+        selectedSlot = i;
+        current = tray[i];
+        dragging = false;
+        RefreshTray();
+        return true;
+    }
+
+    /// <summary>지금 집어 놓은 슬롯. 아무것도 안 집었으면 -1.</summary>
+    public int SelectedSlot { get { return selectedSlot; } }
+
+    /// <summary>트레이 슬롯의 조각. 비었으면 null.</summary>
+    public Piece TraySlot(int i) { return i >= 0 && i < tray.Length ? tray[i] : null; }
+
+    /// <summary>아무것도 안 집었으면 첫 조각을 집는다. 테스트·자동화가 쓴다.</summary>
+    bool EnsureSelected()
+    {
+        if (current != null && selectedSlot >= 0) return true;
+        for (int i = 0; i < tray.Length; i++) if (tray[i] != null) return SelectSlot(i);
+        return false;
+    }
+
     public bool TryStamp(int ax, int ay)
     {
         if (Phase != GamePhase.Playing || busy || board == null) return false;
+        if (!EnsureSelected()) return false;
         if (!board.CanPlace(current, ax, ay)) return false;
         StartCoroutine(DoStamp(ax, ay));
         return true;
@@ -398,11 +476,13 @@ public class GameManager : MonoBehaviour
         }
         view.Refresh(board, palette);
 
-        // 다음 조각
-        current = queue.Dequeue();
-        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
-        ui.SetNext(new List<Piece>(queue), palette);
-        ui.SetHolding(current, palette);
+        // 쓴 조각은 트레이에서 빠지고, 세 칸이 다 비면 한꺼번에 새로 채운다
+        if (selectedSlot >= 0) tray[selectedSlot] = null;
+        selectedSlot = -1;
+        dragging = false;
+        current = null;
+        RefillTrayIfEmpty();
+        RefreshTray();
 
         busy = false;
         if (!taRunning)
@@ -410,6 +490,25 @@ public class GameManager : MonoBehaviour
             if (movesLeft <= 0) { EndGame(); yield break; }
             StartPieceTimer();
         }
+    }
+
+    /// <summary>트레이를 다시 그린다. 고른 슬롯은 들어올려 표시한다.</summary>
+    void RefreshTray()
+    {
+        for (int i = 0; i < tray.Length; i++)
+        {
+            var p = tray[i];
+            var c = p != null ? palette[p.Color] : Color.white;
+            // 끌고 있는 동안에는 그 슬롯을 흐리게 — 조각이 손에 따라 나와 있다는 표시
+            view.SetTraySlot(i, p, c, i == selectedSlot, dragging && i == selectedSlot);
+        }
+    }
+
+    /// <summary>트레이가 비면 세 칸을 한꺼번에 다시 채운다.</summary>
+    void RefillTrayIfEmpty()
+    {
+        foreach (var p in tray) if (p != null) return;
+        for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, Rules.ColorCount);
     }
 
     /// <summary>제한 시간이 다 된 조각은 버려진다. 기회도 한 번 소모한다 —
@@ -423,10 +522,12 @@ public class GameManager : MonoBehaviour
 
         movesLeft--;
         pendingBomb = false;   // 폭탄은 그 조각에만 붙는다. 다음 조각으로 넘어가지 않는다.
-        current = queue.Dequeue();
-        queue.Enqueue(Piece.CreateRandom(pieceRng, Rules.ColorCount));
-        ui.SetNext(new List<Piece>(queue), palette);
-        ui.SetHolding(current, palette);
+        selectedSlot = -1;
+        dragging = false;
+        current = null;
+        // 시간이 다 됐으면 트레이를 통째로 새로 뽑는다
+        for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, Rules.ColorCount);
+        RefreshTray();
 
         busy = false;
         if (movesLeft <= 0) EndGame();
@@ -554,9 +655,15 @@ public class GameManager : MonoBehaviour
         lastW = Screen.width; lastH = Screen.height;
         float aspect = (float)Mathf.Max(1, Screen.width) / Mathf.Max(1, Screen.height);
         // 가로 여백이 카메라 크기를 결정한다. 보드 판이 잘리지 않는 선까지 좁혔다.
-        float half = Mathf.Max(Board.H / 2f + 2.5f, (Board.W / 2f + 0.44f) / aspect);
+        // 보드와 트레이가 함께 들어와야 한다. 트레이는 보드 아래 TrayY 에 있다.
+        float need = (Board.H - 1) - (BoardView.TrayY - BoardView.TrayRadius) + 1.5f;
+        float half = Mathf.Max(need * 0.5f, (Board.W / 2f + 0.44f) / aspect);
         cam.orthographicSize = half;
-        camBase = new Vector3((Board.W - 1) / 2f, (Board.H - 1) / 2f + half * 0.06f, -10);
+
+        // 보드를 위로, 트레이를 아래로. 다만 상단 HUD(점수·타이머·아이템)가
+        // 보드를 덮지 않도록 전체를 그만큼 아래로 민다.
+        float mid = ((Board.H - 1) + (BoardView.TrayY - BoardView.TrayRadius)) * 0.5f;
+        camBase = new Vector3((Board.W - 1) / 2f, mid + half * HudRoom, -10);
         if (shakeCo == null) cam.transform.position = camBase;
         FitBackground();
     }
