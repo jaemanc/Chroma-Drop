@@ -50,6 +50,7 @@ public class GameManager : MonoBehaviour
     readonly Piece[] tray = new Piece[BoardView.TraySlots];
     int selectedSlot = -1;                           // -1 이면 아무것도 안 집은 상태
     bool dragging;                                   // 손가락으로 끌고 있는 중인가
+    bool pressedTraySlot;                            // 트레이의 지금 블록에서 누르기 시작했나
     System.Random pieceRng;
     Color[] palette;
 
@@ -73,7 +74,7 @@ public class GameManager : MonoBehaviour
 
     /// <summary>상단 HUD 가 차지하는 높이 비율. 이만큼 보드를 아래로 민다.
     /// HUD 를 줄였으므로 예전보다 작다.</summary>
-    const float HudRoom = 0.075f;
+    const float HudRoom = 0.095f;
     Coroutine shakeCo;
 
     void Awake()
@@ -115,6 +116,16 @@ public class GameManager : MonoBehaviour
         bg.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
         bg.color = Color.white;      // 채도·명도는 파일에 구워져 있다 (Tools/tune-image.py)
         bg.sortingOrder = -20;
+    }
+
+    /// <summary>보드 바깥에 붙는 HUD(타이머·아이템 줄)를 제자리에 맞춘다.
+    /// 패널이 꺼져 있으면 사각형 크기가 0 이라 한 번만 계산해선 안 된다 — 매 프레임 맞춘다.</summary>
+    void LayoutHud()
+    {
+        if (ui == null || cam == null) return;
+        // 보드 판은 칸 범위(0 ~ H-1)보다 여백·테두리만큼 넓다
+        const float PanelEdge = 0.85f;
+        ui.FollowWorld(cam, (Board.W - 1) / 2f, (Board.H - 1) + PanelEdge, -PanelEdge);
     }
 
     void FitBackground()
@@ -255,6 +266,7 @@ public class GameManager : MonoBehaviour
         }
 
         ui.UpdateHud(this);
+        LayoutHud();
         if (busy) { view.HideGhost(); return; }
         HandleInput();
     }
@@ -293,6 +305,8 @@ public class GameManager : MonoBehaviour
         if (down)
         {
             dragging = true;
+            // 트레이의 지금 블록을 눌렀는지 기억한다 — 제자리에서 떼면 회전이다.
+            pressedTraySlot = BoardView.TrayHit(new Vector2(w.x, w.y)) == BoardView.CurrentSlot;
             RefreshTray();
         }
         if (!dragging) { view.HideGhost(); return; }
@@ -316,9 +330,23 @@ public class GameManager : MonoBehaviour
             view.ShowMatchPreview(can ? board.PreviewStamp(current, ax, ay) : null);
         }
 
-        // 손을 떼면 놓는다. 못 놓는 자리면 그냥 취소한다.
+        // 손을 떼면 놓는다.
         if (!up) return;
         dragging = false;
+
+        // 트레이에서 눌러 트레이에서 뗐으면 놓는 게 아니라 회전이다.
+        // 회전 버튼을 없앴으므로 이게 유일한 회전 수단이다.
+        bool onTray = BoardView.TrayHit(new Vector2(w.x, w.y)) == BoardView.CurrentSlot;
+        if (pressedTraySlot && onTray)
+        {
+            pressedTraySlot = false;
+            view.HideGhost();
+            RotateCurrent();
+            sfx.PlayItem();
+            return;
+        }
+        pressedTraySlot = false;
+
         if (can) StartCoroutine(DoStamp(ax, ay));
         else { view.HideGhost(); RefreshTray(); }
     }
@@ -657,6 +685,8 @@ public class GameManager : MonoBehaviour
         float mid = ((Board.H - 1) + (BoardView.TrayY - BoardView.TrayRadius)) * 0.5f;
         camBase = new Vector3((Board.W - 1) / 2f, mid + half * HudRoom, -10);
         if (shakeCo == null) cam.transform.position = camBase;
+
+        LayoutHud();
         FitBackground();
     }
 

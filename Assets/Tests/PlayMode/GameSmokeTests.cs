@@ -369,4 +369,71 @@ public class GameSmokeTests
 
         Assert.Greater(board.CountObstacles(), before, "안 터졌는데 벽돌이 안 생겼다");
     }
+
+    // 회전 버튼을 없앴으므로 RotateCurrent 가 여전히 조각만 바꾸는지 지킨다
+    [UnityTest]
+    public IEnumerator 회전은_조각만_바꾸고_보드는_그대로다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 313);
+        yield return null;
+
+        var board = gm.BoardRef;
+        var before = new int[Board.W, Board.H];
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) before[x, y] = board.GetTile(x, y);
+
+        for (int r = 0; r < 4; r++) { gm.RotateCurrent(); yield return null; }
+
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                Assert.AreEqual(before[x, y], board.GetTile(x, y), "회전이 보드를 바꿨다");
+
+        // 돌린 모양이 트레이에도 반영돼야 한다
+        Assert.AreSame(gm.CurrentPiece, gm.TraySlot(0), "트레이가 돌린 조각을 안 들고 있다");
+    }
+
+    // 타이머와 아이템 줄은 보드 판 바깥에 있어야 한다.
+    // 프로토 좌표로 고정하면 화면 비율이 달라질 때 판 위로 올라탄다 —
+    // 그래서 월드 좌표를 따라가게 해 뒀고, 그게 실제로 지켜지는지 화면 좌표로 확인한다.
+    [UnityTest]
+    public IEnumerator 타이머와_아이템_줄이_보드를_덮지_않는다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 777);
+        yield return null;
+        yield return null;
+
+        var cam = Camera.main;
+        Assert.IsNotNull(cam);
+        var ui = Object.FindObjectOfType<GameUI>();
+
+        // 보드 판의 위·아래 끝 (칸 범위보다 여백·테두리만큼 넓다)
+        const float PanelEdge = 0.85f;
+        float boardTopY = cam.WorldToScreenPoint(new Vector3(0, (Board.H - 1) + PanelEdge, 0)).y;
+        float boardBottomY = cam.WorldToScreenPoint(new Vector3(0, -PanelEdge, 0)).y;
+        float trayTopY = cam.WorldToScreenPoint(
+            new Vector3(0, BoardView.TrayY + BoardView.TrayRadius, 0)).y;
+
+        var timer = FindRect(ui.gameObject, "timerrow");
+        var items = FindRect(ui.gameObject, "itemrow");
+        Assert.IsNotNull(timer, "타이머 줄이 없다");
+        Assert.IsNotNull(items, "아이템 줄이 없다");
+
+        Assert.GreaterOrEqual(Bottom(timer), boardTopY, "타이머가 보드를 덮는다");
+        Assert.LessOrEqual(Top(items), boardBottomY, "아이템 줄이 보드를 덮는다");
+        Assert.GreaterOrEqual(Bottom(items), trayTopY, "아이템 줄이 트레이를 덮는다");
+    }
+
+    static RectTransform FindRect(GameObject root, string name)
+    {
+        foreach (var rt in root.GetComponentsInChildren<RectTransform>(true))
+            if (rt.name == name) return rt;
+        return null;
+    }
+    static readonly Vector3[] corners = new Vector3[4];
+    static float Bottom(RectTransform r) { r.GetWorldCorners(corners); return corners[0].y; }
+    static float Top(RectTransform r) { r.GetWorldCorners(corners); return corners[1].y; }
 }

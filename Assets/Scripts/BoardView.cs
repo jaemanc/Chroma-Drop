@@ -783,7 +783,7 @@ public class BoardView : MonoBehaviour
     // 0 = 지금 블록, 1 = 다음 블록. 다음 것은 미리보기라 고를 수 없다.
     public const int TraySlots = 2;
     public const int CurrentSlot = 0;
-    public const float TrayY = -3.0f;        // 트레이 중심 (칸 단위)
+    public const float TrayY = -4.6f;        // 트레이 중심 (칸 단위). 보드와 사이를 띄운다
     public const float TrayCell = 0.40f;     // 트레이 안 칸 크기 — 작게
     public const float TrayRadius = 1.55f;   // 슬롯 하나가 차지하는 반경
 

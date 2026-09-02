@@ -59,7 +59,7 @@ public class GameUI : MonoBehaviour
     bool rankNationTab;
     Coroutine rankCo;
     const int RankRowCount = 10;
-    RectTransform nextRoot, holdRoot;
+    RectTransform itemRow, timerRow;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
 
@@ -174,31 +174,37 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 222, 18);
+        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 282, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
         // 한쪽은 왼쪽, 한쪽은 오른쪽으로 붙여 두면 두 카드가 어긋나 보인다.
-        const float StatW = 140f, StatH = 56f, StatGap = 12f;
+        const float StatW = 94f, StatH = 38f, StatGap = 10f;
         float statLeft = (390f - (StatW * 2f + StatGap)) * 0.5f;
 
         var scoreCard = Card(safe, "statscore", statLeft, 68, StatW, StatH, Cream, 18);
-        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 10, TextAnchor.UpperCenter, StatLabel, 0, 0, 0, 0);
-        Anchor(sl.transform, 0.5f, 1, 0, -8, StatW - 16, 14);
-        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
+        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 8, TextAnchor.UpperCenter, StatLabel, 0, 0, 0, 0);
+        Anchor(sl.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
+        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
         scoreText.fontStyle = FontStyle.Bold;
-        Anchor(scoreText.transform, 0.5f, 1, 0, -22, StatW - 16, 32);
+        Anchor(scoreText.transform, 0.5f, 1, 0, -15, StatW - 10, 22);
 
         var movesCard = Card(safe, "statmoves", statLeft + StatW + StatGap, 68, StatW, StatH, Mint, 18);
-        subText = Label(movesCard.transform, "l", "", 10, TextAnchor.UpperCenter, MintInk, 0, 0, 0, 0);
-        Anchor(subText.transform, 0.5f, 1, 0, -8, StatW - 16, 14);
-        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
+        subText = Label(movesCard.transform, "l", "", 8, TextAnchor.UpperCenter, MintInk, 0, 0, 0, 0);
+        Anchor(subText.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
+        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
         rightText.fontStyle = FontStyle.Bold;
-        Anchor(rightText.transform, 0.5f, 1, 0, -22, StatW - 16, 32);
+        Anchor(rightText.transform, 0.5f, 1, 0, -15, StatW - 10, 22);
 
         // ---- 제한시간 바 ----
         // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
-        var bar = Card(safe, "bar", 60, 132, 270, 12, Cream, 6);
+        timerRow = NewRT("timerrow", safe);
+        timerRow.anchorMin = timerRow.anchorMax = timerRow.pivot = new Vector2(0.5f, 0.5f);
+        timerRow.sizeDelta = Sz(300, 14);
+        var bar = Card(timerRow, "bar", 60, 7, 270, 12, Cream, 6);
+        var brt = (RectTransform)bar.transform.parent;
+        brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
+        brt.anchoredPosition = Vector2.zero;
         timerBar = bar.transform.parent.gameObject;
         timerFill = NewImage("fill", bar.transform, Coral);
         timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
@@ -210,13 +216,24 @@ public class GameUI : MonoBehaviour
         int ni = Shop.Items.Length;
         itemBtnLabel = new Text[ni];
         itemBtnFill = new Image[ni];
-        // 보드 판의 왼쪽 위 모서리(프로토 x 12, y 211)에 살짝 걸치게 둔다.
-        // 판 한가운데를 덮으면 블록이 가려진다.
+        // 보드와 트레이 사이에 둔다. 둘 다 월드 좌표에 있으므로 이 줄도 월드를 따라간다 —
+        // 프로토 좌표로 고정하면 화면 비율이 달라질 때 판 위로 올라탄다.
         const float ItemW = 88f, ItemH = 40f, ItemGap = 8f;
+        itemRow = NewRT("itemrow", safe);
+        itemRow.anchorMin = itemRow.anchorMax = itemRow.pivot = new Vector2(0.5f, 0.5f);
+        itemRow.sizeDelta = Sz(390, ItemH);
+
+        float itemsW = ni * ItemW + (ni - 1) * ItemGap;
+        float itemLeft = (390f - itemsW) * 0.5f;
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            var f = Card(safe, "item" + i, 18 + i * (ItemW + ItemGap), 186, ItemW, ItemH, e.Tint, 14);
+            var f = Card(itemRow, "item" + i, itemLeft + i * (ItemW + ItemGap), ItemH * 0.5f,
+                         ItemW, ItemH, e.Tint, 14);
+            var frt = (RectTransform)f.transform.parent;
+            frt.anchorMin = frt.anchorMax = new Vector2(0.5f, 0.5f);
+            frt.pivot = new Vector2(0.5f, 0.5f);
+            frt.anchoredPosition = new Vector2((itemLeft + i * (ItemW + ItemGap) + ItemW * 0.5f - 195f) * PS, 0);
             HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
             itemBtnFill[i] = f;
             itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();
@@ -225,7 +242,6 @@ public class GameUI : MonoBehaviour
         // ---- 하단 조작 ----
         // 하단은 트레이가 쓴다. 홈·회전은 상단 모서리에 작은 아이콘으로 둔다.
         HookButton(Card(safe, "home", 24, 14, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
-        HookButton(Card(safe, "rotate", 314, 14, 52, 44, Lilac, 14), () => gm.RotateCurrent(), "\u21BB", 20);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
         Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
@@ -327,6 +343,57 @@ public class GameUI : MonoBehaviour
     }
 
     /// <summary>매 프레임 HUD 갱신 (Playing 중 GameManager가 호출)</summary>
+    /// <summary>아이템 줄을 월드 좌표에 맞춰 옮긴다. 보드·트레이와 같은 자리에 붙어 있어야
+    /// 화면 비율이 바뀌어도 판 위로 올라타지 않는다.</summary>
+    /// <summary>타이머는 보드 위 경계 위로, 아이템 줄은 아래 경계 밑으로 민다.
+    /// 크기를 추정하지 않고 실제 사각형을 재서 밀어내므로 화면 비율이 어떻든 안 겹친다.</summary>
+    public void FollowWorld(Camera cam, float worldX, float boardTopY, float boardBottomY)
+    {
+        if (cam == null) return;
+        PlaceOutside(timerRow, cam, worldX, boardTopY, true);
+        PlaceOutside(itemRow, cam, worldX, boardBottomY, false);
+    }
+
+    /// <summary>경계선 바깥에 붙인다. above 면 위, 아니면 아래.</summary>
+    void PlaceOutside(RectTransform rt, Camera cam, float worldX, float worldEdgeY, bool above)
+    {
+        if (rt == null) return;
+
+        PlaceAtWorld(rt, cam, new Vector3(worldX, worldEdgeY, 0));
+
+        var canvas = GetComponent<Canvas>();
+        float scale = canvas != null && canvas.scaleFactor > 0 ? canvas.scaleFactor : 1f;
+        float marginPx = EdgeMargin * scale;
+
+        rt.GetWorldCorners(rectCorners);
+        float top = rectCorners[1].y, bottom = rectCorners[0].y;
+        float edge = RectTransformUtility.WorldToScreenPoint(cam, new Vector3(worldX, worldEdgeY, 0)).y;
+
+        float deltaPx = above ? (edge + marginPx) - bottom : (edge - marginPx) - top;
+        rt.anchoredPosition += new Vector2(0, deltaPx / scale);
+    }
+
+    /// <summary>보드 경계와 띄우는 간격 (캔버스 단위).</summary>
+    const float EdgeMargin = 26f;
+    static readonly Vector3[] rectCorners = new Vector3[4];
+
+    /// <summary>월드 좌표를 이 RectTransform 의 부모 기준 좌표로 옮긴다.
+    /// 캔버스가 Overlay 냐 Camera 냐에 따라 변환이 달라지므로 API 로 처리한다 —
+    /// position 에 화면 픽셀을 그냥 넣으면 Camera 모드에서 엉뚱한 데로 간다.</summary>
+    void PlaceAtWorld(RectTransform rt, Camera cam, Vector3 world)
+    {
+        if (rt == null) return;
+        var canvas = GetComponent<Canvas>();
+        var uiCam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
+                  ? canvas.worldCamera : null;
+
+        Vector2 screen = RectTransformUtility.WorldToScreenPoint(cam, world);
+        Vector2 local;
+        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                (RectTransform)rt.parent, screen, uiCam, out local))
+            rt.anchoredPosition = local;
+    }
+
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
