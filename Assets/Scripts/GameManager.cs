@@ -35,6 +35,11 @@ public class GameManager : MonoBehaviour
     public bool Busy { get { return busy; } }
     public int Score { get { return score; } }
     public int MovesLeft { get { return movesLeft; } }
+
+    /// <summary>지금까지 부순 블록 수와 목표.</summary>
+    public int Broken { get { return broken; } }
+    public int ClearTarget { get { return stage.ClearBlocks; } }
+    public bool Cleared { get { return cleared; } }
     public bool TimeAttackMode { get { return taRunning; } }
     public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, taDeadline - Time.time) : 0; } }
     /// <summary>조각 제한시간 남은 비율 (1 → 0). 타임어택에서는 쓰지 않는다.</summary>
@@ -63,6 +68,8 @@ public class GameManager : MonoBehaviour
     SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
 
     int score, movesLeft, totalMoves;
+    int broken;                 // 이 판에서 지금까지 부순 블록 수
+    bool cleared;               // 목표를 채웠는가
     bool busy, taRunning, touchActive;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
@@ -180,6 +187,8 @@ public class GameManager : MonoBehaviour
         taRunning = timeAttack;
         totalMoves = movesLeft = timeAttack ? 9999 : stage.Moves;
         score = 0;
+        broken = 0;
+        cleared = false;
         busy = false;
         touchActive = false;
 
@@ -189,6 +198,9 @@ public class GameManager : MonoBehaviour
         for (int i = 0; i < tray.Length; i++) tray[i] = Piece.CreateRandom(pieceRng, stage.ColorCount);
         selectedSlot = BoardView.CurrentSlot;
         current = tray[BoardView.CurrentSlot];
+
+        // 못 깨는 강철을 판에 심는다 (스테이지 설정이 개수를 정한다)
+        if (!taRunning && stage.SteelCount > 0) board.SpawnSteel(stage.SteelCount);
 
         view.Build();
         view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
@@ -208,13 +220,16 @@ public class GameManager : MonoBehaviour
         busy = false;
         view.HideGhost();
 
+        if (!taRunning) cleared = broken >= stage.ClearBlocks;
+        if (cleared) Progress.Clear(stageLevel);
+
         string key = BestKey(taRunning, difficulty);
         int best = PlayerPrefs.GetInt(key, 0);
         bool newBest = score > best;
         if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
 
         if (newBest) sfx.PlayWin(); else sfx.PlayLose();
-        ui.ShowResult(taRunning, score, best, newBest, earnedCoins);
+        ui.ShowResult(taRunning, score, best, newBest, earnedCoins, stageLevel, cleared);
 
         // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
         earnedCoins = Rules.CoinsFor(score);
@@ -486,6 +501,7 @@ public class GameManager : MonoBehaviour
         if (result.Spawns.Count > 0) sfx.PlayItem();
 
         score += result.ScoreGained;
+        broken += result.TilesDestroyed;
 
         // 아무 칸도 안 터진 수에는 벌칙으로 벽돌이 하나 생긴다.
         // 그 자리에 아이템이 있었으면 아이템은 사라진다.
@@ -516,6 +532,8 @@ public class GameManager : MonoBehaviour
         busy = false;
         if (!taRunning)
         {
+            // 목표를 채웠으면 수가 남아도 그 자리에서 끝난다
+            if (broken >= stage.ClearBlocks) { cleared = true; EndGame(); yield break; }
             if (movesLeft <= 0) { EndGame(); yield break; }
             StartPieceTimer();
         }

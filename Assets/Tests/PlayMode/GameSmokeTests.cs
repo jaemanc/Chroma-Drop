@@ -448,4 +448,61 @@ public class GameSmokeTests
     static readonly Vector3[] corners = new Vector3[4];
     static float Bottom(RectTransform r) { r.GetWorldCorners(corners); return corners[0].y; }
     static float Top(RectTransform r) { r.GetWorldCorners(corners); return corners[1].y; }
+
+    // 목표만큼 부수면 수가 남아도 클리어되고 다음 스테이지가 열린다
+    [UnityTest]
+    public IEnumerator 목표를_채우면_클리어되고_다음_스테이지가_열린다()
+    {
+        Progress.ResetAll();
+        gm = NewGm();
+        gm.stageLevel = 1;
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 1357);
+        yield return null;
+
+        Assert.AreEqual(10, gm.ClearTarget, "1스테이지 목표가 설정과 다르다");
+        Assert.AreEqual(0, gm.Broken);
+        Assert.IsFalse(gm.Cleared);
+
+        // 큰 정사각형이 한 번에 터지도록 판을 깔아 목표를 넘긴다
+        var board = gm.BoardRef;
+        for (int x = 3; x <= 7; x++)
+            for (int y = 3; y <= 7; y++) board.SetTile(x, y, 1);
+
+        Assert.IsTrue(gm.TryStamp(5, 5), "놓지 못했다");
+        float t0 = Time.realtimeSinceStartup;
+        while (gm.Busy && Time.realtimeSinceStartup - t0 < 20) yield return null;
+        yield return null;
+
+        Assert.GreaterOrEqual(gm.Broken, gm.ClearTarget, "목표만큼 안 부쉈다");
+        Assert.IsTrue(gm.Cleared, "클리어 처리가 안 됐다");
+        Assert.AreEqual(2, Progress.Unlocked, "다음 스테이지가 안 열렸다");
+
+        Progress.ResetAll();
+    }
+
+    // 5스테이지마다 난이도 축이 실제로 올라간다
+    [UnityTest]
+    public IEnumerator 스테이지가_오를수록_어려워진다()
+    {
+        Assert.Greater(StageTable.Count, 1, "스테이지 설정이 없다");
+
+        var prev = StageTable.Get(1);
+        for (int lv = 2; lv <= StageTable.Count; lv++)
+        {
+            var cur = StageTable.Get(lv);
+            Assert.Greater(cur.ClearBlocks, prev.ClearBlocks, lv + "판 목표가 안 늘었다");
+            Assert.LessOrEqual(cur.Moves, prev.Moves, lv + "판 수가 늘었다");
+            Assert.LessOrEqual(cur.PieceTimeMaxMs, prev.PieceTimeMaxMs, lv + "판 시간이 늘었다");
+            Assert.GreaterOrEqual(cur.SteelCount, prev.SteelCount, lv + "판 강철이 줄었다");
+            prev = cur;
+        }
+
+        // 1~5 는 벽돌 없음, 11 부터 못 깨는 강철이 등장한다
+        for (int lv = 1; lv <= 5; lv++)
+            Assert.AreEqual(0, StageTable.Get(lv).ObstacleFromMove, lv + "판에 벽돌이 있다");
+        Assert.AreEqual(0, StageTable.Get(10).SteelCount, "10판에 강철이 있다");
+        Assert.Greater(StageTable.Get(11).SteelCount, 0, "11판에 강철이 없다");
+        yield return null;
+    }
 }

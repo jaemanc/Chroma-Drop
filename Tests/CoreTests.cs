@@ -307,6 +307,42 @@ class CoreTests
         Assert(b10.PenaltyObstacle(out put2) == 1, "아이템 자리에 놓였음을 알린다");
         Assert(b10.GetItem(put2.X, put2.Y) == ItemType.None, "벽돌이 들어서며 아이템이 사라진다");
 
+        // 강철은 무슨 수를 써도 안 부서진다
+        var b11 = CheckerBoard();
+        Assert(b11.SpawnSteel(3) == 3, "강철 3개를 놓는다");
+        Assert(b11.CountSteel() == 3, "강철이 판에 남아 있다");
+
+        var b12 = CheckerBoard();
+        b12.SetTile(6, 6, Board.Steel);
+        var dot = new Piece("dot", new List<Point> { new Point(0, 0) }, 0);
+        Assert(!b12.CanPlace(dot, 6, 6), "강철 위에는 못 놓는다");
+
+        // 폭탄으로도 안 없어진다 (터진 뒤 중력으로 내려갈 수는 있으므로 개수로 본다)
+        int steelBefore = b12.CountSteel();
+        b12.SetItem(7, 6, ItemType.Bomb5);
+        b12.Detonate(7, 6);
+        Assert(b12.CountSteel() == steelBefore, "폭발해도 강철이 남는다");
+
+        // 매칭에도 안 낀다
+        var b13 = CheckerBoard();
+        for (int x = 4; x <= 5; x++)
+            for (int y = 4; y <= 5; y++) b13.SetTile(x, y, 1);
+        b13.SetTile(5, 5, Board.Steel);
+        bool touched = false;
+        foreach (var m in b13.FindSquares())
+            for (int dx = 0; dx < m.Size; dx++)
+                for (int dy = 0; dy < m.Size; dy++)
+                    if (m.X + dx == 5 && m.Y + dy == 5) touched = true;
+        Assert(!touched, "강철은 매칭에 안 낀다");
+
+        // 강철도 중력을 받는다
+        var b14 = CheckerBoard();
+        b14.SetTile(3, 7, Board.Steel);
+        b14.SetTile(3, 5, Board.Empty);
+        b14.SetTile(3, 6, Board.Empty);
+        b14.ApplyGravity();
+        Assert(b14.IsSteel(3, 5) && !b14.IsSteel(3, 7), "강철도 빈칸만큼 내려온다");
+
         // 진행할수록 콘크리트가 늘어난다
         Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
         // 한 수 걸러 생기므로 짝수 수끼리 비교한다

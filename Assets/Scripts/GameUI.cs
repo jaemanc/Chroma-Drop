@@ -60,6 +60,7 @@ public class GameUI : MonoBehaviour
     Coroutine rankCo;
     const int RankRowCount = 10;
     RectTransform itemRow, timerRow;
+    Text gameEyebrow;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
 
@@ -174,7 +175,7 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 282, 18);
+        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 26, 282, 18);
 
         // ---- 점수 / 남은 수 카드 ----
         // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
@@ -397,6 +398,19 @@ public class GameUI : MonoBehaviour
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
+
+        // 목표 진행도는 아이브로우 줄에 얹는다 — 보드 위쪽 여백이 좁다
+        if (gameEyebrow != null)
+        {
+            if (g.TimeAttackMode) { gameEyebrow.text = Spaced("CHROMA DROP"); gameEyebrow.color = Muted; }
+            else
+            {
+                bool done = g.Broken >= g.ClearTarget;
+                gameEyebrow.text = "STAGE " + g.stageLevel + "   " + Mathf.Min(g.Broken, g.ClearTarget)
+                                 + " / " + g.ClearTarget;
+                gameEyebrow.color = done ? Coral : Muted;
+            }
+        }
         timerBar.SetActive(true);
         float frac;
         if (g.TimeAttackMode)
@@ -808,11 +822,16 @@ public class GameUI : MonoBehaviour
     }
 
     public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
+    { ShowResult(ta, score, best, newBest, coins, 0, false); }
+
+    public void ShowResult(bool ta, int score, int best, bool newBest, int coins, int level, bool cleared)
     {
         resultPanel.SetActive(true);
         // 목표 점수를 없앴으므로 성공/실패가 아니라 '끝났다 + 얼마 냈다' 만 보여준다.
-        resultTitle.text = ta ? "TIME'S UP!" : "GAME OVER";
-        resultTitle.color = newBest ? Coral : Ink;
+        // 타임어택은 성공/실패가 없다. 스테이지는 목표를 채웠는지로 갈린다.
+        if (ta) resultTitle.text = "TIME'S UP!";
+        else resultTitle.text = cleared ? "STAGE " + level + " CLEAR!" : "STAGE " + level + " FAILED";
+        resultTitle.color = (cleared || newBest) ? Coral : Ink;
         resultScore.text = score.ToString("N0");
         resultBest.text = newBest ? "NEW BEST!" : "BEST  " + best.ToString("N0");
         resultBest.color = newBest ? Coral : Body;

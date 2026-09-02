@@ -140,7 +140,8 @@ namespace ColorMatcher.Core
         public const int W = 14, H = 14, Empty = -1;
 
         // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
-        public const int Obstacle = -2;      // 콘크리트: 매칭에 안 끼고, 중력도 안 받고, 옆 칸이 터질 때만 금이 간다
+        public const int Obstacle = -2;      // 벽돌: 매칭에 안 끼고, 옆 칸이 터질 때만 금이 간다
+        public const int Steel = -3;         // 강철: 무슨 수를 써도 안 부서진다. 중력은 받는다
         public const int MinMatch = 2;    // 최소 매칭 정사각형 한 변
         public const int BaseTileScore = 10;
         public const double ChainBonus = 0.5;
@@ -168,6 +169,35 @@ namespace ColorMatcher.Core
         public bool InBounds(int x, int y) { return x >= 0 && x < W && y >= 0 && y < H; }
 
         public bool IsObstacle(int x, int y) { return tiles[x, y] == Obstacle; }
+        public bool IsSteel(int x, int y) { return tiles[x, y] == Steel; }
+
+        /// <summary>블록이 통과하지 못하는 칸. 매칭에도 안 낀다.</summary>
+        static bool IsBlocker(int t) { return t == Obstacle || t == Steel; }
+
+        /// <summary>판에 있는 강철 수.</summary>
+        public int CountSteel()
+        {
+            int n = 0;
+            for (int x = 0; x < W; x++)
+                for (int y = 0; y < H; y++) if (tiles[x, y] == Steel) n++;
+            return n;
+        }
+
+        /// <summary>빈칸이 아닌 일반 칸을 강철로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
+        public int SpawnSteel(int count)
+        {
+            int placed = 0;
+            for (int t = 0; t < count * 40 && placed < count; t++)
+            {
+                int x = rng.Next(W), y = rng.Next(H);
+                if (!IsColor(tiles[x, y])) continue;
+                tiles[x, y] = Steel;
+                items[x, y] = ItemType.None;
+                obstacleHp[x, y] = 0;
+                placed++;
+            }
+            return placed;
+        }
 
         /// <summary>판에 있는 벽돌 수.</summary>
         public int CountObstacles()
@@ -195,7 +225,7 @@ namespace ColorMatcher.Core
             {
                 int x = px + c.X, y = py + c.Y;
                 if (!InBounds(x, y)) return false;
-                if (tiles[x, y] == Obstacle) return false;   // 콘크리트는 덮어쓸 수 없다 — 옆에 놓아서 깨야 한다
+                if (IsBlocker(tiles[x, y])) return false;   // 벽돌·강철은 덮어쓸 수 없다
             }
             return true;
         }
@@ -236,6 +266,7 @@ namespace ColorMatcher.Core
                 if (t == ItemType.None) continue;
                 foreach (var e in EffectCells(t, a.X, a.Y))
                 {
+                    if (tiles[e.X, e.Y] == Steel) continue;
                     if (!seen.Add(Key(e.X, e.Y))) continue;
                     res.Add(e);
                     if (items[e.X, e.Y] != ItemType.None) actQueue.Enqueue(e);
@@ -346,6 +377,7 @@ namespace ColorMatcher.Core
                 if (t == ItemType.None) continue;
                 foreach (var e in EffectCells(t, a.X, a.Y))
                 {
+                    if (tiles[e.X, e.Y] == Steel) continue;   // 강철은 폭발도 못 뚫는다
                     int k = Key(e.X, e.Y);
                     if (toDestroy.ContainsKey(k)) continue;
                     toDestroy[k] = e;

@@ -16,6 +16,7 @@ using UnityEngine;
 public class StageSetting
 {
     public int Level = 1;
+    public int ClearBlocks = 10;         // 이만큼 부수면 클리어
     public int Moves = 30;
 
     public int PieceTimeMaxMs = 12000;   // 첫 조각
@@ -28,6 +29,7 @@ public class StageSetting
     public int ObstacleHp = 2;
 
     public bool PenaltyObstacle;         // 아무것도 안 터진 수에 벽돌이 생기는가
+    public int SteelCount;               // 판을 열 때 놓는 '못 깨는' 강철 수
 
     /// <summary>남은 수에 선형 비례하는 조각 제한 시간(ms). 첫 조각 Max, 마지막 Min.</summary>
     public int PieceTimeMs(int movesLeft, int totalMoves)
@@ -114,6 +116,7 @@ public static class StageTable
             stages.Add(new StageSetting
             {
                 Level = (int)Json.Num(m, "level", d.Level),
+                ClearBlocks = (int)Json.Num(m, "clearBlocks", d.ClearBlocks),
                 Moves = (int)Json.Num(m, "moves", d.Moves),
                 PieceTimeMaxMs = (int)Json.Num(m, "pieceTimeMaxMs", d.PieceTimeMaxMs),
                 PieceTimeMinMs = (int)Json.Num(m, "pieceTimeMinMs", d.PieceTimeMinMs),
@@ -123,6 +126,7 @@ public static class StageTable
                 ObstacleMax = (int)Json.Num(m, "obstacleMax", d.ObstacleMax),
                 ObstacleHp = (int)Json.Num(m, "obstacleHp", d.ObstacleHp),
                 PenaltyObstacle = Json.Bool(m, "penaltyObstacle", d.PenaltyObstacle),
+                SteelCount = (int)Json.Num(m, "steelCount", d.SteelCount),
             });
         }
         stages.Sort((a, b) => a.Level.CompareTo(b.Level));

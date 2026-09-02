@@ -25,6 +25,7 @@ public class BoardView : MonoBehaviour
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
     Sprite bomb;                  // 폭탄 조각 아이콘
+    Sprite steel;                 // 못 깨는 강철 칸
     int obstacleMaxHp = Rules.ObstacleHp;   // 이 판의 방해블록 내구도
 
     /// <summary>이번 판의 방해블록 내구도. 손상 단계를 이 값에 맞춰 환산한다.</summary>
@@ -151,6 +152,7 @@ public class BoardView : MonoBehaviour
 
         // 폭발 범위 미리보기 — 고스트(5,6)보다 아래, 타일 위
         bomb = MakeBombSprite();
+        steel = MakeSteelSprite();
         var blastSprite = MakePanelSprite(0.3f);
         blast = new SpriteRenderer[96];   // 대각선·행/열 아이템까지 덮을 만큼
         for (int i = 0; i < blast.Length; i++)
@@ -277,6 +279,20 @@ public class BoardView : MonoBehaviour
     {
         var sr = tiles[x, y];
         var ov = overlays[x, y];
+
+        if (c == Board.Steel)
+        {
+            // 강철은 상태가 없다 — 늘 같은 모습이어야 '못 부순다' 가 읽힌다
+            sr.sprite = tile;
+            sr.color = EmptyColor;
+            sr.transform.localScale = Vector3.one * ObstacleStyle.Scale;
+
+            ov.enabled = true;
+            ov.sprite = steel;
+            ov.color = Color.white;
+            ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
+            return;
+        }
 
         if (c == Board.Obstacle)
         {
@@ -1362,6 +1378,61 @@ public class BoardView : MonoBehaviour
     }
 
     static float Frac(float v) { return v - Mathf.Floor(v); }
+
+    /// <summary>못 깨는 강철. 벽돌(부술 수 있음)과 헷갈리지 않게 차가운 금속과 리벳으로 그린다.
+    /// 손상 단계가 없다 — 늘 같은 모습이라 '이건 안 부서진다' 가 바로 읽힌다.</summary>
+    static Sprite MakeSteelSprite()
+    {
+        const int S = 48;
+        float r = S * ObstacleStyle.RoundFrac;
+        float line = S * ObstacleStyle.LineFrac;
+
+        var body    = new Color(0.36f, 0.40f, 0.47f);
+        var light   = new Color(0.55f, 0.60f, 0.68f);
+        var shadow  = new Color(0.22f, 0.25f, 0.31f);
+        var outline = new Color(0.10f, 0.11f, 0.16f);
+        var rivet   = new Color(0.70f, 0.75f, 0.82f);
+
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+
+                // 위에서 아래로 떨어지는 금속 그라데이션 + 대각선 결
+                float g = 1f - fy / S;
+                Color c = Color.Lerp(light, shadow, g);
+                float grain = Mathf.Sin((fx + fy) * 0.55f) * 0.5f + 0.5f;
+                c = Color.Lerp(c, body, grain * 0.40f);
+
+                // 사방 리벳 — 딱 봐도 박아놓은 판
+                for (int ry = 0; ry < 2; ry++)
+                    for (int rx = 0; rx < 2; rx++)
+                    {
+                        float cx = rx == 0 ? S * 0.24f : S * 0.76f;
+                        float cy = ry == 0 ? S * 0.24f : S * 0.76f;
+                        float rd = Mathf.Sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
+                        if (rd < S * 0.06f) c = Color.Lerp(rivet, c, rd / (S * 0.06f));
+                    }
+
+                float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
+                if (edge > line && edge < line + S * 0.12f)
+                    c = Color.Lerp(c, (fy > S * 0.5f) ? light : shadow, 0.45f);
+                if (edge <= line) c = outline;
+
+                c.a = a;
+                px[y * S + x] = c;
+            }
+
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
 
     static Sprite MakeShockSprite()
     {
