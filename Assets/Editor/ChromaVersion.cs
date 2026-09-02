@@ -4,5 +4,5 @@
 
 public static class ChromaVersion
 {
-    public const string Value = "1.0";
+    public const string Value = "2.0";
 }

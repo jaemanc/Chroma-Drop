@@ -896,7 +896,7 @@ public class BoardView : MonoBehaviour
     }
 
     // 들고 있는 조각: 살짝 크게, 살짝 위로, 아래에 그림자.
-    const float CarryScale = 1.04f;
+    const float CarryScale = 1.01f;
     const float CarryLift  = 0.22f;   // 들어올린 높이 (칸 단위)
     const float ShadowOffX = 0.07f;
     const float ShadowOffY = -0.16f;
