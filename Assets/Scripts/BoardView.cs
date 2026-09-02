@@ -784,7 +784,7 @@ public class BoardView : MonoBehaviour
     public const int TraySlots = 2;
     public const int CurrentSlot = 0;
     public const float TrayY = -3.0f;        // 트레이 중심 (칸 단위)
-    public const float TrayCell = 0.46f;     // 트레이 안 칸 크기 — 작게
+    public const float TrayCell = 0.40f;     // 트레이 안 칸 크기 — 작게
     public const float TrayRadius = 1.55f;   // 슬롯 하나가 차지하는 반경
 
     SpriteRenderer[] trayPad;                // 슬롯 바닥
@@ -896,7 +896,7 @@ public class BoardView : MonoBehaviour
     }
 
     // 들고 있는 조각: 살짝 크게, 살짝 위로, 아래에 그림자.
-    const float CarryScale = 1.10f;
+    const float CarryScale = 1.04f;
     const float CarryLift  = 0.22f;   // 들어올린 높이 (칸 단위)
     const float ShadowOffX = 0.07f;
     const float ShadowOffY = -0.16f;
