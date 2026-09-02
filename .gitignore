@@ -29,7 +29,7 @@ ExportedObj/
 # Auto-generated solution/project files
 *.csproj
 *.sln
-*.slnxS
+*.slnx
 *.suo
 *.user
 *.userprefs
