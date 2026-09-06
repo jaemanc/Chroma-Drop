@@ -141,7 +141,9 @@ namespace ColorMatcher.Core
 
         // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
         public const int Obstacle = -2;      // 벽돌: 매칭에 안 끼고, 옆 칸이 터질 때만 금이 간다
-        public const int Steel = -3;         // 강철: 무슨 수를 써도 안 부서진다. 중력은 받는다
+        // 강철: 매칭에 안 끼고 위에 놓을 수 없다. 중력은 받는다.
+        // 내구도 0 이면 무슨 수를 써도 안 부서지고, 1 이상이면 옆 칸이 터질 때마다 그만큼 깎인다.
+        public const int Steel = -3;
         public const int MinMatch = 2;    // 최소 매칭 정사각형 한 변
         public const int BaseTileScore = 10;
         public const double ChainBonus = 0.5;
@@ -183,8 +185,11 @@ namespace ColorMatcher.Core
             return n;
         }
 
-        /// <summary>빈칸이 아닌 일반 칸을 강철로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
-        public int SpawnSteel(int count)
+        /// <summary>빈칸이 아닌 일반 칸을 안 깨지는 강철로 바꾼다. 실제로 놓은 개수를 돌려준다.</summary>
+        public int SpawnSteel(int count) { return SpawnSteel(count, 0); }
+
+        /// <summary>강철을 놓는다. hp 0 이면 안 깨지고, 1 이상이면 그만큼 옆이 터져야 부서진다.</summary>
+        public int SpawnSteel(int count, int hp)
         {
             int placed = 0;
             for (int t = 0; t < count * 40 && placed < count; t++)
@@ -193,7 +198,7 @@ namespace ColorMatcher.Core
                 if (!IsColor(tiles[x, y])) continue;
                 tiles[x, y] = Steel;
                 items[x, y] = ItemType.None;
-                obstacleHp[x, y] = 0;
+                obstacleHp[x, y] = hp;
                 placed++;
             }
             return placed;
@@ -209,6 +214,12 @@ namespace ColorMatcher.Core
         }
         /// <summary>남은 내구도. 콘크리트가 아니면 0.</summary>
         public int GetObstacleHp(int x, int y) { return tiles[x, y] == Obstacle ? obstacleHp[x, y] : 0; }
+
+        /// <summary>강철에 남은 내구도. 0 이면 안 깨지는 강철이거나 강철이 아니다.</summary>
+        public int GetSteelHp(int x, int y) { return tiles[x, y] == Steel ? obstacleHp[x, y] : 0; }
+
+        /// <summary>강철에 내구도를 준다. 0 이면 안 깨지는 강철이 된다.</summary>
+        public void SetSteelHp(int x, int y, int hp) { if (tiles[x, y] == Steel) obstacleHp[x, y] = hp; }
         public void SetObstacle(int x, int y, int hp)
         {
             tiles[x, y] = Obstacle;
@@ -388,12 +399,14 @@ namespace ColorMatcher.Core
             }
 
             // 콘크리트: 인접 칸이 터지면 금이 간다. 웨이브당 1 만 깎는다.
+            // 내구도를 준 강철도 같은 규칙으로 깎인다 (내구도 0 인 강철은 안 깨진다).
             var cracked = new HashSet<int>();
             var crackSeeds = new List<Point>(order);   // 순회 중 order 에 추가되므로 복사본으로 돈다
             foreach (var pt in crackSeeds)
                 foreach (var e in Neighbors(pt))
                 {
-                    if (tiles[e.X, e.Y] != Obstacle) continue;
+                    int t = tiles[e.X, e.Y];
+                    if (t != Obstacle && !(t == Steel && obstacleHp[e.X, e.Y] > 0)) continue;
                     int k = Key(e.X, e.Y);
                     if (!cracked.Add(k)) continue;
                     if (--obstacleHp[e.X, e.Y] > 0) continue;

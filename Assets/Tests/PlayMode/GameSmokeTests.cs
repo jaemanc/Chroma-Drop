@@ -13,8 +13,8 @@ public class GameSmokeTests
 {
     GameManager gm;
 
-    // 수 제한은 스테이지 설정이 갖는다
-    static int Moves { get { return StageTable.Get(1).Moves; } }
+    // 수 제한은 스테이지 설정이 갖는다 (피스 제한 스테이지면 그 값이 대신한다)
+    static int Moves { get { return StageTable.Get(1).MoveBudget; } }
 
     GameManager NewGm()
     {
@@ -57,7 +57,6 @@ public class GameSmokeTests
         Assert.AreEqual(GamePhase.Playing, gm.Phase);
         Assert.AreEqual(Moves, gm.MovesLeft);
 
-        gm.RotateCurrent(); // 회전이 예외 없이 동작
         Assert.IsTrue(gm.TryStamp(3, 3), "고정 시드에서 (3,3) 배치는 항상 가능해야 함");
 
         float t0 = Time.realtimeSinceStartup;
@@ -374,28 +373,41 @@ public class GameSmokeTests
         Assert.Greater(board.CountObstacles(), before, "안 터졌는데 벽돌이 안 생겼다");
     }
 
-    // 회전 버튼을 없앴으므로 RotateCurrent 가 여전히 조각만 바꾸는지 지킨다
+    // 회전 조작을 없앴으므로 방향은 조각이 나올 때 정해진다.
+    // 같은 모양이 늘 같은 방향으로만 나오면 회전을 없앤 의미가 사라진다.
     [UnityTest]
-    public IEnumerator 회전은_조각만_바꾸고_보드는_그대로다()
+    public IEnumerator 조각은_무작위_방향으로_나온다()
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 313);
-        yield return null;
 
-        var board = gm.BoardRef;
-        var before = new int[Board.W, Board.H];
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++) before[x, y] = board.GetTile(x, y);
+        var seen = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>>();
+        for (int seed = 1; seed <= 40; seed++)
+        {
+            gm.StartGame(GameManager.Difficulty, false, seed);
+            yield return null;
 
-        for (int r = 0; r < 4; r++) { gm.RotateCurrent(); yield return null; }
+            for (int slot = 0; slot < BoardView.TraySlots; slot++)
+            {
+                var p = gm.TraySlot(slot);
+                if (p == null) continue;
+                if (!seen.ContainsKey(p.Name)) seen[p.Name] = new System.Collections.Generic.HashSet<string>();
+                seen[p.Name].Add(Shape(p));
+            }
+        }
 
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
-                Assert.AreEqual(before[x, y], board.GetTile(x, y), "회전이 보드를 바꿨다");
+        int turned = 0;
+        foreach (var kv in seen) if (kv.Value.Count > 1) turned++;
+        Assert.Greater(turned, 0, "어떤 조각도 두 방향으로 나오지 않는다 — 방향이 안 섞였다");
+    }
 
-        // 돌린 모양이 트레이에도 반영돼야 한다
-        Assert.AreSame(gm.CurrentPiece, gm.TraySlot(0), "트레이가 돌린 조각을 안 들고 있다");
+    /// <summary>조각의 칸 배치를 문자열 하나로. 같은 모양·같은 방향이면 같은 문자열이다.</summary>
+    static string Shape(Piece p)
+    {
+        var cells = new System.Collections.Generic.List<string>();
+        foreach (var c in p.Cells) cells.Add(c.X + "," + c.Y);
+        cells.Sort(System.StringComparer.Ordinal);
+        return string.Join(" ", cells.ToArray());
     }
 
     // 타이머와 아이템 줄은 보드 판 바깥에 있어야 한다.
@@ -467,7 +479,7 @@ public class GameSmokeTests
         gm.StartGame(GameManager.Difficulty, false, 1357);
         yield return null;
 
-        Assert.AreEqual(10, gm.ClearTarget, "1스테이지 목표가 설정과 다르다");
+        Assert.AreEqual(StageTable.Get(1).ClearBlocks, gm.ClearTarget, "1스테이지 목표가 설정과 다르다");
         Assert.AreEqual(0, gm.Broken);
         Assert.IsFalse(gm.Cleared);
 
@@ -494,22 +506,28 @@ public class GameSmokeTests
     {
         Assert.Greater(StageTable.Count, 1, "스테이지 설정이 없다");
 
+        // 스테이지마다 종류가 달라지므로 모든 축이 매판 오르지는 않는다.
+        // 좌표 스테이지는 블록을 안 세고(clearBlocks 0) 수를 넉넉히 주며,
+        // 강철 스테이지는 그 판만 강철이 솟는다. 그래서 비교는 '같은 종류끼리' 한다.
         var prev = StageTable.Get(1);
+        var prevCount = StageTable.Get(1);   // 마지막으로 본 '블록을 세는 판'
         for (int lv = 2; lv <= StageTable.Count; lv++)
         {
             var cur = StageTable.Get(lv);
-            Assert.Greater(cur.ClearBlocks, prev.ClearBlocks, lv + "판 목표가 안 늘었다");
-            Assert.LessOrEqual(cur.Moves, prev.Moves, lv + "판 수가 늘었다");
+            if (cur.ClearBlocks > 0)
+            {
+                Assert.Greater(cur.ClearBlocks, prevCount.ClearBlocks, lv + "판 목표가 안 늘었다");
+                Assert.LessOrEqual(cur.Moves, prevCount.Moves, lv + "판 수가 늘었다");
+                prevCount = cur;
+            }
             Assert.LessOrEqual(cur.PieceTimeMaxMs, prev.PieceTimeMaxMs, lv + "판 시간이 늘었다");
-            Assert.GreaterOrEqual(cur.SteelCount, prev.SteelCount, lv + "판 강철이 줄었다");
             prev = cur;
         }
 
-        // 1~5 는 벽돌 없음, 11 부터 못 깨는 강철이 등장한다
+        // 1~5 는 벽돌 없음. 강철은 구간 기본값이 아니라 '강철 스테이지' 에만 깔린다.
         for (int lv = 1; lv <= 5; lv++)
             Assert.AreEqual(0, StageTable.Get(lv).ObstacleFromMove, lv + "판에 벽돌이 있다");
-        Assert.AreEqual(0, StageTable.Get(10).SteelCount, "10판에 강철이 있다");
-        Assert.Greater(StageTable.Get(11).SteelCount, 0, "11판에 강철이 없다");
+        Assert.Greater(StageTable.Get(3).SteelCount, 0, "3판이 강철 스테이지가 아니다");
         yield return null;
     }
 
@@ -571,6 +589,289 @@ public class GameSmokeTests
         var home = FindRect(ui.gameObject, "rhome");
         Assert.LessOrEqual(Right(next), Left(retry), "NEXT 와 RETRY 가 겹친다");
         Assert.LessOrEqual(Right(retry), Left(home), "RETRY 와 HOME 이 겹친다");
+    }
+
+    // ---------- 스테이지 종류 ----------
+
+    [Test]
+    public void 무늬_목표_칸은_판_안에_들어온다()
+    {
+        foreach (var name in new[] { "diamond", "heart", "paw", "cross", "rows", "cols", "scatter" })
+        {
+            var t = StageTargets.Build(name, 2, new System.Random(7));   // 행/열은 2줄이면 충분하다
+            Assert.IsNotNull(t, name + " 무늬를 못 만든다");
+
+            int n = StageTargets.Count(t);
+            Assert.Greater(n, 0, name + " 에 목표 칸이 하나도 없다");
+            Assert.Less(n, Board.W * Board.H / 2, name + " 이 판의 절반을 넘는다 — 다 깨기 전에 수가 떨어진다");
+        }
+
+        Assert.AreEqual(8, StageTargets.Count(StageTargets.Build("scatter", 8, new System.Random(3))),
+                        "scatter 는 요청한 수만큼 흩뿌려야 한다");
+        Assert.IsNull(StageTargets.Build("", 0, new System.Random(1)), "무늬가 없으면 좌표 목표도 없다");
+        Assert.AreEqual(0, StageTargets.Count(null), "좌표 목표가 없으면 0 칸이다");
+    }
+
+    [Test]
+    public void 피스_제한_스테이지는_수_예산이_피스_수다()
+    {
+        var s = new StageSetting { Moves = 30 };
+        Assert.AreEqual(30, s.MoveBudget, "제한이 없으면 수 그대로다");
+        Assert.IsFalse(s.HasCellGoal);
+
+        s.PieceLimit = 18;
+        Assert.AreEqual(18, s.MoveBudget, "피스 제한이 수를 대신해야 한다");
+
+        s.TargetPattern = "heart";
+        Assert.IsTrue(s.HasCellGoal);
+    }
+
+    // stages.json 의 kind 라벨은 설명용이다. 동작은 수치가 정하므로 둘이 어긋나면 읽는 사람이 속는다.
+    [Test]
+    public void 종류_라벨이_실제_설정과_맞는다()
+    {
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+        {
+            var s = StageTable.Get(lv);
+            var kinds = new System.Collections.Generic.List<string>(s.Kind.Split('+'));
+            string at = lv + "판(" + s.Kind + ")";
+
+            Assert.IsNotEmpty(s.Kind, lv + "판에 종류 라벨이 없다");
+            foreach (var k in kinds)
+                switch (k)
+                {
+                    case "blocks": Assert.Greater(s.ClearBlocks, 0, at + " 는 블록을 안 센다"); break;
+                    case "pieces": Assert.Greater(s.PieceLimit, 0, at + " 에 피스 제한이 없다"); break;
+                    case "steel": Assert.Greater(s.SteelCount, 0, at + " 에 강철이 없다"); break;
+                    case "cells": Assert.IsTrue(s.HasCellGoal, at + " 에 좌표 목표가 없다"); break;
+                    case "pollution": Assert.IsTrue(s.HasPollution, at + " 에 오염이 없다"); break;
+                    default: Assert.Fail(at + " 에 모르는 종류가 있다: " + k); break;
+                }
+
+            // 반대 방향 — 설정에 있는 특징은 라벨에도 나와야 한다 (블록 목표는 기본이라 뺀다)
+            if (s.PieceLimit > 0) Assert.Contains("pieces", kinds, at + " 라벨에 pieces 가 빠졌다");
+            if (s.SteelCount > 0) Assert.Contains("steel", kinds, at + " 라벨에 steel 이 빠졌다");
+            if (s.HasCellGoal) Assert.Contains("cells", kinds, at + " 라벨에 cells 가 빠졌다");
+            if (s.HasPollution) Assert.Contains("pollution", kinds, at + " 라벨에 pollution 이 빠졌다");
+
+            // 오염 근원은 '못 깨는 칸이 하나뿐' 이라는 전제로 찾는다. 강철과 섞으면 엉뚱한 데서 번진다.
+            Assert.IsFalse(s.HasPollution && s.SteelCount > 0, at + " 는 오염과 강철을 같이 쓴다");
+
+            // 10단위는 겹친 판, 나머지는 한 종류
+            bool combo = s.Kind.Contains("+");
+            Assert.AreEqual(lv % 10 == 0, combo, at + " 의 겹침이 10단위 규칙과 다르다");
+        }
+    }
+
+    // 난이도 손잡이(stages.json 최상단 difficulty)는 축마다 방향이 다르다.
+    // 없던 것이 생기거나 있던 것이 사라지면 스테이지 종류 자체가 바뀌어 버린다.
+    [Test]
+    public void 난이도_손잡이가_모든_축을_움직인다()
+    {
+        var raw = Sample();
+        var mid = Sample(); StageTable.ApplyDifficulty(mid, StageTable.BaseDifficulty);
+        Assert.AreEqual(raw.ClearBlocks, mid.ClearBlocks, "기준 난이도가 파일 값을 바꿨다");
+        Assert.AreEqual(raw.Moves, mid.Moves, "기준 난이도가 수를 바꿨다");
+        Assert.AreEqual(raw.SteelCount, mid.SteelCount, "기준 난이도가 강철을 바꿨다");
+
+        var easy = Sample(); StageTable.ApplyDifficulty(easy, 1);
+        var hard = Sample(); StageTable.ApplyDifficulty(hard, 5);
+        Assert.Less(easy.ClearBlocks, hard.ClearBlocks, "목표가 난이도를 안 탄다");
+        Assert.Greater(easy.Moves, hard.Moves, "수가 난이도를 안 탄다");
+        Assert.Greater(easy.PieceLimit, hard.PieceLimit, "피스 제한이 난이도를 안 탄다");
+        Assert.Greater(easy.PieceTimeMaxMs, hard.PieceTimeMaxMs, "조각 시간이 난이도를 안 탄다");
+        Assert.Less(easy.SteelCount, hard.SteelCount, "강철이 난이도를 안 탄다");
+        Assert.Greater(easy.PollutionEvery, hard.PollutionEvery, "오염 주기가 난이도를 안 탄다");
+
+        // 없던 것은 어떤 난이도에서도 생기지 않는다
+        var plain = new StageSetting { ClearBlocks = 20, Moves = 20 };
+        StageTable.ApplyDifficulty(plain, 5);
+        Assert.AreEqual(0, plain.SteelCount, "안 쓰던 강철이 생겼다");
+        Assert.AreEqual(0, plain.PollutionEvery, "안 쓰던 오염이 생겼다");
+        Assert.AreEqual(0, plain.PieceLimit, "안 쓰던 피스 제한이 생겼다");
+
+        // 있던 것은 가장 쉬운 난이도에서도 사라지지 않는다
+        var thin = new StageSetting { SteelCount = 1, PollutionEvery = 1, PieceLimit = 1, ObstacleMax = 1 };
+        StageTable.ApplyDifficulty(thin, 1);
+        Assert.Greater(thin.SteelCount, 0, "강철 스테이지에서 강철이 사라졌다");
+        Assert.Greater(thin.PollutionEvery, 0, "오염 스테이지에서 오염이 사라졌다");
+        Assert.Greater(thin.PieceLimit, 0, "피스 제한이 사라졌다");
+        Assert.Greater(thin.ObstacleMax, 0, "벽돌이 사라졌다");
+    }
+
+    static StageSetting Sample()
+    {
+        return new StageSetting
+        {
+            ClearBlocks = 100, Moves = 30, PieceLimit = 20,
+            PieceTimeMaxMs = 12000, PieceTimeMinMs = 9000,
+            SteelCount = 10, ObstacleMax = 3, PollutionEvery = 3,
+        };
+    }
+
+    [Test]
+    public void 모든_스테이지에_목표와_수가_있다()
+    {
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+        {
+            var s = StageTable.Get(lv);
+            Assert.IsTrue(s.ClearBlocks > 0 || s.HasCellGoal, lv + " 단계에 목표가 없다");
+            Assert.Greater(s.MoveBudget, 0, lv + " 단계에 쓸 수가 없다");
+            if (s.HasCellGoal)
+                Assert.IsNotNull(StageTargets.Build(s.TargetPattern, s.TargetCount, new System.Random(1)),
+                                 lv + " 단계의 무늬 이름(" + s.TargetPattern + ")을 모른다");
+        }
+    }
+
+    // 목표 칸은 블록 가장자리에서 빛나고 바깥 3px 까지 번진다. 블록 뒤에 깔면 배경에 묻혀 안 보이고,
+    // 블록보다 작으면 바깥으로 못 번진다. 깨도 사라지지 않고 흐려진다 — 어디를 깼는지 보여야 한다.
+    [UnityTest]
+    public IEnumerator 목표_칸에만_표시가_붙는다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 4242);   // 홈 화면에서는 BoardView 가 꺼져 있다
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        var m = StageTargets.Build("diamond", 0, new System.Random(1));
+        view.SetMarks(m);
+        yield return null;
+
+        int mx = -1, my = -1;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                var sr = view.transform.Find("m_" + x + "_" + y).GetComponent<SpriteRenderer>();
+                Assert.AreEqual(m[x, y], sr.enabled, "(" + x + "," + y + ") 표시가 목표와 다르다");
+                if (!m[x, y]) continue;
+
+                var tile = view.transform.Find("t_" + x + "_" + y).GetComponent<SpriteRenderer>();
+                Assert.Greater(sr.sortingOrder, tile.sortingOrder, "표시가 블록 뒤에 있어 안 보인다");
+                Assert.Greater(sr.transform.localScale.x, tile.transform.localScale.x,
+                               "표시가 블록보다 작아 바깥으로 안 번진다");
+                if (mx < 0) { mx = x; my = y; }
+            }
+
+        // 남은 칸은 밝아졌다 어두워지며 계속 뛴다
+        var glow = view.transform.Find("m_" + mx + "_" + my).GetComponent<SpriteRenderer>();
+        var fill = view.transform.Find("mf_" + mx + "_" + my).GetComponent<SpriteRenderer>();
+        var first = glow.color;
+        yield return null;
+        yield return null;
+        Assert.AreNotEqual(first, glow.color, "목표 칸이 반짝이지 않는다");
+
+        // 깨고 나면 빛이 꺼져야 한다. 켜 둔 채 색만 바꾸면 아직 깨야 할 칸처럼 계속 물들어 보인다.
+        view.ClearMark(mx, my);
+        Assert.IsFalse(glow.enabled, "깬 칸에서 빛이 계속 새어나온다");
+
+        var done = fill.color;
+        Assert.Less(done.a, 0.25f, "깬 칸의 흔적이 너무 진하다");
+        yield return null;
+        yield return null;
+        Assert.AreEqual(done, fill.color, "깬 칸이 아직도 반짝인다");
+    }
+
+    // 오염은 근원(못 깨는 칸) 바로 옆으로만 번지고, 번진 오염은 깰 수 있는 벽돌이다.
+    [UnityTest]
+    public IEnumerator 오염은_근원_옆으로_번진다()
+    {
+        int lv = 0;
+        for (int i = 1; i <= StageTable.Count && lv == 0; i++)
+            if (StageTable.Get(i).HasPollution && !StageTable.Get(i).HasCellGoal) lv = i;
+        Assert.Greater(lv, 0, "오염 스테이지가 하나도 없다");
+
+        gm = NewGm();
+        gm.stageLevel = lv;
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, false, 777);
+        yield return null;
+
+        var b = gm.BoardRef;
+        int sx = -1, sy = -1, steel = 0;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (b.IsSteel(x, y)) { steel++; sx = x; sy = y; }
+        Assert.AreEqual(1, steel, "오염 근원은 판에 하나뿐이어야 한다");
+        Assert.AreEqual(0, b.CountObstacles(), "판을 열자마자 오염이 번져 있다");
+
+        // 딱 한 번 번질 만큼만 둔다. 더 두면 중력이 근원과 오염을 따로 옮겨서
+        // '바로 옆' 인지 나중에 확인할 수 없다.
+        int every = StageTable.Get(lv).PollutionEvery;
+        for (int i = 0; i < every && gm.Phase == GamePhase.Playing; i++)
+        {
+            Assert.IsTrue(StampAnywhere(gm), "놓을 자리를 못 찾았다");
+            float t0 = Time.realtimeSinceStartup;
+            while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
+        }
+
+        Assert.Greater(b.CountObstacles(), 0, "수를 뒀는데 오염이 안 번졌다");
+
+        // 번진 오염은 근원 바로 옆이어야 한다 (근원도 중력을 받으므로 자리를 다시 찾는다)
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (b.IsSteel(x, y)) { sx = x; sy = y; }
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (b.IsObstacle(x, y))
+                    Assert.LessOrEqual(Mathf.Max(Mathf.Abs(x - sx), Mathf.Abs(y - sy)), 1,
+                                       "(" + x + "," + y + ") 오염이 근원 옆이 아니다");
+    }
+
+    /// <summary>놓을 수 있는 아무 자리에나 놓는다. 자리가 없으면 false.</summary>
+    static bool StampAnywhere(GameManager g)
+    {
+        var b = g.BoardRef;
+        var p = g.CurrentPiece;
+        if (b == null || p == null) return false;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (b.CanPlace(p, x, y) && g.TryStamp(x, y)) return true;
+        return false;
+    }
+
+    // 최상단 목표 문구는 제 칸 안에 있어야 한다. 넘치면 왼쪽 홈 버튼 위로 글자가 올라탄다.
+    [UnityTest]
+    public IEnumerator 목표_문구가_HUD_와_안_겹친다()
+    {
+        gm = NewGm();
+        yield return null;
+        var ui = Object.FindObjectOfType<GameUI>();
+
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+        {
+            gm.stageLevel = lv;
+            gm.StartGame(GameManager.Difficulty, false, 1234 + lv);
+            yield return null;
+
+            var eyebrow = FindRect(ui.gameObject, "eyebrow").GetComponent<UnityEngine.UI.Text>();
+            var sub = FindRect(ui.gameObject, "goalsub").GetComponent<UnityEngine.UI.Text>();
+            Assert.IsNotEmpty(eyebrow.text, lv + " 단계에 목표 문구가 없다");
+            Assert.IsTrue(eyebrow.fontStyle == FontStyle.Bold || eyebrow.fontStyle == FontStyle.BoldAndItalic,
+                          "미션 문구가 볼드가 아니다");
+
+            // 종류마다 문구가 하나씩. 겹친 판은 가장 특이한 것이 큰 줄을 가져간다.
+            var s = StageTable.Get(lv);
+            string want = s.HasCellGoal ? "TARGET"
+                        : s.HasPollution ? "ROT"
+                        : s.PieceLimit > 0 ? "PIECES"
+                        : s.SteelCount > 0 ? "STEEL"
+                        : "BLOCKS";
+            StringAssert.Contains(want, eyebrow.text, lv + "판(" + s.Kind + ") 문구가 종류와 안 맞는다");
+            Assert.LessOrEqual(eyebrow.preferredWidth, eyebrow.rectTransform.rect.width,
+                               lv + " 단계 목표 문구가 칸을 넘친다: " + eyebrow.text);
+            Assert.LessOrEqual(sub.preferredWidth, sub.rectTransform.rect.width,
+                               lv + " 단계 진행도 줄이 칸을 넘친다: " + sub.text);
+
+            // 두 줄 다 홈 버튼 오른쪽, 스탯 카드 위에 있어야 한다
+            var home = FindRect(ui.gameObject, "home");
+            var score = FindRect(ui.gameObject, "statscore");
+            foreach (var line in new[] { eyebrow.rectTransform, sub.rectTransform })
+            {
+                Assert.GreaterOrEqual(Left(line), Right(home), lv + " 단계 문구가 홈 버튼과 겹친다");
+                Assert.GreaterOrEqual(Bottom(line), Top(score), lv + " 단계 문구가 스탯 카드와 겹친다");
+            }
+        }
     }
 
     static float Left(RectTransform r) { r.GetWorldCorners(corners); return corners[0].x; }

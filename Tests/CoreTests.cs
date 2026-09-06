@@ -343,6 +343,30 @@ class CoreTests
         b14.ApplyGravity();
         Assert(b14.IsSteel(3, 5) && !b14.IsSteel(3, 7), "강철도 빈칸만큼 내려온다");
 
+        // 내구도를 준 강철은 옆이 터질 때마다 깎이고, 다 깎이면 부서진다.
+        // 내구도 0 인 강철(오염 근원)은 예전 그대로 안 부서진다.
+        {
+            var bs = new Board(2, 77);
+            Assert(bs.SpawnSteel(2, 3) == 2, "내구도를 준 강철을 놓는다");
+            Assert(SteelHpSum(bs) == 6, "강철이 내구도를 들고 있다");
+
+            // 강철 하나를 콕 집어 옆 칸을 터뜨린다.
+            // 터진 뒤에는 중력으로 자리가 바뀌므로 판 전체의 합으로 본다.
+            var b15 = CheckerBoard();
+            b15.SetTile(6, 6, Board.Steel);
+            b15.SetSteelHp(6, 6, 2);
+            Fill(b15, 4, 5, 2, 1);              // (6,6) 옆에 2x2 매칭을 깐다
+            b15.Resolve();
+            Assert(SteelHpSum(b15) < 2, "옆이 터졌는데 강철이 안 깎인다");
+
+            // 안 깨지는 강철(hp 0)은 옆이 아무리 터져도 남는다
+            var b16 = CheckerBoard();
+            b16.SetTile(6, 6, Board.Steel);
+            Fill(b16, 4, 5, 2, 1);
+            b16.Resolve();
+            Assert(b16.CountSteel() == 1, "내구도 0 강철이 부서졌다");
+        }
+
         // 진행할수록 콘크리트가 늘어난다
         Assert(Rules.ObstaclesAfterMove(0, 20) == 0, "초반에는 콘크리트가 안 생긴다");
         // 한 수 걸러 생기므로 짝수 수끼리 비교한다
@@ -351,6 +375,15 @@ class CoreTests
     }
 
     // ── 헬퍼 ──
+
+    /// <summary>판에 남은 강철 내구도의 합. 중력으로 자리가 바뀌어도 흔들리지 않는다.</summary>
+    static int SteelHpSum(Board b)
+    {
+        int n = 0;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) n += b.GetSteelHp(x, y);
+        return n;
+    }
 
     /// <summary>(x,y) 좌하단 size x size 를 색 c 로 채운다.</summary>
     static void Fill(Board b, int x, int y, int size, int c)

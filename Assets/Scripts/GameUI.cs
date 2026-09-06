@@ -61,6 +61,7 @@ public class GameUI : MonoBehaviour
     const int RankRowCount = 10;
     RectTransform itemRow, timerRow;
     Text gameEyebrow;
+    Text goalSub;        // 목표 문구 아래 진행도 한 줄
     RectTransform nextBtn, retryBtn, homeBtn;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
@@ -176,7 +177,11 @@ public class GameUI : MonoBehaviour
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
         // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 11, TextAnchor.MiddleCenter, Muted, 84, 22, 282, 18);
+        // 최상단 두 줄: 이 판이 어떤 판인지(미션) + 얼마나 왔는지(진행도).
+        // 왼쪽 홈 버튼(x 24~76)과 아래 스탯 카드(y 56~) 사이의 빈 띠에 들어간다.
+        // 미션 줄은 크게 — 판에 들어서자마자 읽혀야 하는 한 줄이다.
+        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 17, TextAnchor.MiddleCenter, Ink, 84, 13, 282, 28);
+        goalSub = Label(safe, "goalsub", "", 9, TextAnchor.MiddleCenter, Muted, 84, 41, 282, 14);
 
         // ---- 점수 / 남은 수 카드 ----
         // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
@@ -242,7 +247,7 @@ public class GameUI : MonoBehaviour
         }
 
         // ---- 하단 조작 ----
-        // 하단은 트레이가 쓴다. 홈·회전은 상단 모서리에 작은 아이콘으로 둔다.
+        // 하단은 트레이가 쓴다. 홈은 상단 모서리에 작은 아이콘으로 둔다.
         HookButton(Card(safe, "home", 24, 10, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
@@ -400,18 +405,17 @@ public class GameUI : MonoBehaviour
     {
         scoreText.text = g.Score.ToString("N0");
 
-        // 목표 진행도는 아이브로우 줄에 얹는다 — 보드 위쪽 여백이 좁다
+        // 맨 윗줄은 목표 문구, 그 아래는 진행도 — 보드 위쪽 여백이 좁아 두 줄까지가 한계다
         if (gameEyebrow != null)
         {
-            if (g.TimeAttackMode) { gameEyebrow.text = Spaced("CHROMA DROP"); gameEyebrow.color = Muted; }
+            if (g.TimeAttackMode) { gameEyebrow.text = "TIME ATTACK!"; gameEyebrow.color = Ink; }
             else
             {
-                bool done = g.Broken >= g.ClearTarget;
-                gameEyebrow.text = "STAGE " + g.stageLevel + "   " + Mathf.Min(g.Broken, g.ClearTarget)
-                                 + " / " + g.ClearTarget;
-                gameEyebrow.color = done ? Coral : Muted;
+                gameEyebrow.text = GoalLine(g);
+                gameEyebrow.color = g.GoalMet ? Coral : Ink;
             }
         }
+        if (goalSub != null) goalSub.text = g.TimeAttackMode ? "" : ProgressLine(g);
         timerBar.SetActive(true);
         float frac;
         if (g.TimeAttackMode)
@@ -423,13 +427,43 @@ public class GameUI : MonoBehaviour
         }
         else
         {
-            subText.text = Spaced("MOVES LEFT");
+            subText.text = Spaced(g.PieceLimited ? "PIECES LEFT" : "MOVES LEFT");
             rightText.text = g.MovesLeft.ToString();
             frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
         }
         frac = Mathf.Clamp01(frac);
         timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
         timerFill.color = Color.Lerp(Coral, Palette.Hex(0x7FCFC0), frac);
+    }
+
+    /// <summary>이 판의 성격을 한마디로. 다섯 종류마다 문구가 하나씩이라
+    /// 판에 들어서는 순간 무슨 판인지 읽힌다.
+    /// 겹친 판은 가장 특이한 것을 큰 줄에 세우고 나머지는 아래 줄로 내린다 —
+    /// 다 이어 붙이면 글자가 왼쪽 홈 버튼까지 밀고 나간다.</summary>
+    static string GoalLine(GameManager g)
+    {
+        var st = g.Stage;
+        if (g.MarksTotal > 0) return "POP TARGET BLOCKS!";
+        if (st.HasPollution) return "CLEAR THE ROT!";
+        if (g.PieceLimited) return "JUST " + st.PieceLimit + " PIECES!!";
+        if (st.SteelCount > 0) return "STEEL PIECES?!";
+        if (st.ClearBlocks > 0) return "POP " + st.ClearBlocks + " BLOCKS!";
+        return "KEEP POPPING!";
+    }
+
+    /// <summary>지금 얼마나 왔는지 + 큰 줄에 못 실은 나머지 조건.</summary>
+    static string ProgressLine(GameManager g)
+    {
+        var st = g.Stage;
+        string s = "STAGE " + g.stageLevel;
+        if (g.ClearTarget > 0) s += "   " + Mathf.Min(g.Broken, g.ClearTarget) + " / " + g.ClearTarget;
+        if (g.MarksTotal > 0) s += "   TARGET " + (g.MarksTotal - g.MarksLeft) + " / " + g.MarksTotal;
+
+        // 겹친 판에서 큰 줄이 이미 가져간 것은 빼고 남은 것만 붙인다
+        if (g.MarksTotal > 0 && st.HasPollution) s += "   ROT";
+        if (g.PieceLimited && (g.MarksTotal > 0 || st.HasPollution)) s += "   " + st.PieceLimit + "P";
+        if (st.SteelCount > 0 && (g.MarksTotal > 0 || st.HasPollution || g.PieceLimited)) s += "   STEEL";
+        return s;
     }
 
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>

@@ -1,8 +1,11 @@
 {
+  "difficulty": 1,
   "version": 1,
   "stages": [
     {
       "level": 1,
+      "kind": "blocks",
+      "rules": 1,
       "clearBlocks": 10,
       "moves": 30,
       "pieceTimeMaxMs": 12000,
@@ -13,10 +16,17 @@
       "obstacleMax": 0,
       "obstacleHp": 2,
       "penaltyObstacle": false,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 2,
+      "kind": "pieces",
+      "rules": 1,
       "clearBlocks": 19,
       "moves": 30,
       "pieceTimeMaxMs": 12000,
@@ -27,10 +37,17 @@
       "obstacleMax": 0,
       "obstacleHp": 2,
       "penaltyObstacle": false,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 24,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 3,
+      "kind": "steel",
+      "rules": 1,
       "clearBlocks": 31,
       "moves": 30,
       "pieceTimeMaxMs": 12000,
@@ -41,12 +58,20 @@
       "obstacleMax": 0,
       "obstacleHp": 2,
       "penaltyObstacle": false,
-      "steelCount": 0
+      "steelCount": 10,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1,
+      "steelHp": 5
     },
     {
       "level": 4,
-      "clearBlocks": 46,
-      "moves": 30,
+      "kind": "cells",
+      "rules": 1,
+      "clearBlocks": 0,
+      "moves": 32,
       "pieceTimeMaxMs": 12000,
       "pieceTimeMinMs": 9000,
       "colorCount": 4,
@@ -55,10 +80,17 @@
       "obstacleMax": 0,
       "obstacleHp": 2,
       "penaltyObstacle": false,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "diamond",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 5,
+      "kind": "pollution",
+      "rules": 1,
       "clearBlocks": 61,
       "moves": 30,
       "pieceTimeMaxMs": 12000,
@@ -69,10 +101,17 @@
       "obstacleMax": 0,
       "obstacleHp": 2,
       "penaltyObstacle": false,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 3,
+      "pollutionPerSpread": 1
     },
     {
       "level": 6,
+      "kind": "blocks",
+      "rules": 1,
       "clearBlocks": 77,
       "moves": 27,
       "pieceTimeMaxMs": 10000,
@@ -83,10 +122,17 @@
       "obstacleMax": 1,
       "obstacleHp": 2,
       "penaltyObstacle": true,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 7,
+      "kind": "pieces",
+      "rules": 1,
       "clearBlocks": 95,
       "moves": 27,
       "pieceTimeMaxMs": 10000,
@@ -97,10 +143,17 @@
       "obstacleMax": 1,
       "obstacleHp": 2,
       "penaltyObstacle": true,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 21,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 8,
+      "kind": "steel",
+      "rules": 1,
       "clearBlocks": 112,
       "moves": 27,
       "pieceTimeMaxMs": 10000,
@@ -111,12 +164,20 @@
       "obstacleMax": 1,
       "obstacleHp": 2,
       "penaltyObstacle": true,
-      "steelCount": 0
+      "steelCount": 12,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1,
+      "steelHp": 5
     },
     {
       "level": 9,
-      "clearBlocks": 131,
-      "moves": 27,
+      "kind": "cells",
+      "rules": 1,
+      "clearBlocks": 0,
+      "moves": 34,
       "pieceTimeMaxMs": 10000,
       "pieceTimeMinMs": 7000,
       "colorCount": 4,
@@ -125,10 +186,17 @@
       "obstacleMax": 1,
       "obstacleHp": 2,
       "penaltyObstacle": true,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "heart",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 10,
+      "kind": "blocks+cells",
+      "rules": 2,
       "clearBlocks": 150,
       "moves": 27,
       "pieceTimeMaxMs": 10000,
@@ -139,10 +207,17 @@
       "obstacleMax": 1,
       "obstacleHp": 2,
       "penaltyObstacle": true,
-      "steelCount": 0
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "heart",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 11,
+      "kind": "pollution",
+      "rules": 1,
       "clearBlocks": 170,
       "moves": 25,
       "pieceTimeMaxMs": 8000,
@@ -153,10 +228,17 @@
       "obstacleMax": 2,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 4
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 2,
+      "pollutionPerSpread": 1
     },
     {
       "level": 12,
+      "kind": "blocks",
+      "rules": 1,
       "clearBlocks": 190,
       "moves": 25,
       "pieceTimeMaxMs": 8000,
@@ -167,10 +249,17 @@
       "obstacleMax": 2,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 4
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 13,
+      "kind": "pieces",
+      "rules": 1,
       "clearBlocks": 211,
       "moves": 25,
       "pieceTimeMaxMs": 8000,
@@ -181,10 +270,17 @@
       "obstacleMax": 2,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 4
+      "steelCount": 0,
+      "pieceLimit": 19,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 14,
+      "kind": "steel",
+      "rules": 1,
       "clearBlocks": 232,
       "moves": 25,
       "pieceTimeMaxMs": 8000,
@@ -195,12 +291,20 @@
       "obstacleMax": 2,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 4
+      "steelCount": 14,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1,
+      "steelHp": 5
     },
     {
       "level": 15,
-      "clearBlocks": 254,
-      "moves": 25,
+      "kind": "cells",
+      "rules": 1,
+      "clearBlocks": 0,
+      "moves": 40,
       "pieceTimeMaxMs": 8000,
       "pieceTimeMinMs": 5500,
       "colorCount": 4,
@@ -209,10 +313,17 @@
       "obstacleMax": 2,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 4
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "paw",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 16,
+      "kind": "pollution",
+      "rules": 1,
       "clearBlocks": 276,
       "moves": 23,
       "pieceTimeMaxMs": 6500,
@@ -223,10 +334,17 @@
       "obstacleMax": 3,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 8
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 2,
+      "pollutionPerSpread": 2
     },
     {
       "level": 17,
+      "kind": "blocks",
+      "rules": 1,
       "clearBlocks": 298,
       "moves": 23,
       "pieceTimeMaxMs": 6500,
@@ -237,10 +355,17 @@
       "obstacleMax": 3,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 8
+      "steelCount": 0,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 18,
+      "kind": "pieces",
+      "rules": 1,
       "clearBlocks": 321,
       "moves": 23,
       "pieceTimeMaxMs": 6500,
@@ -251,10 +376,17 @@
       "obstacleMax": 3,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 8
+      "steelCount": 0,
+      "pieceLimit": 17,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1
     },
     {
       "level": 19,
+      "kind": "steel",
+      "rules": 1,
       "clearBlocks": 344,
       "moves": 23,
       "pieceTimeMaxMs": 6500,
@@ -265,11 +397,19 @@
       "obstacleMax": 3,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 8
+      "steelCount": 16,
+      "pieceLimit": 0,
+      "targetPattern": "",
+      "targetCount": 0,
+      "pollutionEvery": 0,
+      "pollutionPerSpread": 1,
+      "steelHp": 5
     },
     {
       "level": 20,
-      "clearBlocks": 367,
+      "kind": "cells+pieces+pollution",
+      "rules": 3,
+      "clearBlocks": 0,
       "moves": 23,
       "pieceTimeMaxMs": 6500,
       "pieceTimeMinMs": 4500,
@@ -279,7 +419,12 @@
       "obstacleMax": 3,
       "obstacleHp": 3,
       "penaltyObstacle": true,
-      "steelCount": 8
+      "steelCount": 0,
+      "pieceLimit": 26,
+      "targetPattern": "paw",
+      "targetCount": 0,
+      "pollutionEvery": 3,
+      "pollutionPerSpread": 1
     }
   ]
 }

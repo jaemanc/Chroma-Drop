@@ -102,7 +102,7 @@ open Builds/Mac/ChromaDrop.app
 인자: `-output <경로>` 로 결과 위치를 바꿀 수 있다 (기본 `Builds/Mac/ChromaDrop.app`).
 에디터에서는 메뉴 `ChromaDrop > Build > Mac 앱 (로컬 확인용)`.
 
-**조작**: 마우스 클릭 = 스탬프, `R` = 회전, `⌘Q` = 종료.
+**조작**: 마우스 클릭 = 스탬프, `⌘Q` = 종료. (회전 조작은 없다)
 
 ```bash
 # 실행 여부 / 런타임 로그 확인

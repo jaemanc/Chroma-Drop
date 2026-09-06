@@ -16,20 +16,68 @@ public class BoardView : MonoBehaviour
     // 화면 폭 390px ↔ 월드 16유닛 이므로 1px = 0.041 유닛
     const float Px = 16f / 390f;
     const float TileScale = 0.96f;   // 칸 대비 블록 크기 — 1.0 이면 칸을 꽉 채운다
+    // 목표 칸은 '블록에서 빛이 새어나오는' 것으로 표시한다.
+    // 블록 모양 그대로 빛이 차 있고, 그 빛이 칸 밖으로 부옇게 번진다.
+    const float MarkScale = 1.7f;   // 빛이 번져 나가는 범위 (칸 단위)
+
+    static readonly Color MarkWhite = new Color(1f, 1f, 1f, 0.95f);               // 별빛 가루의 밝은 쪽
+    static readonly Color MarkGold = new Color(1f, 0.85f, 0.30f, 0.95f);          // 별빛 가루의 노란 쪽
+
+    // 가장자리 반짝임은 빨 → 노 → 초 → 파 를 돌고 다시 빨로 잇는다.
+    static readonly Color[] MarkCycle = {
+        new Color(1.00f, 0.30f, 0.32f),   // 빨
+        new Color(1.00f, 0.85f, 0.25f),   // 노
+        new Color(0.36f, 0.86f, 0.42f),   // 초
+        new Color(0.34f, 0.62f, 1.00f),   // 파
+    };
+    static readonly Color SteelSpark = new Color(0.78f, 0.86f, 0.96f);            // 강철에서 튀는 차가운 빛
+    static readonly Color MarkDim = new Color(0.07f, 0.09f, 0.18f);               // 빛이 잦아든 쪽 (판 네이비)
+    static readonly Color MarkDoneColor = new Color(0.72f, 0.76f, 0.80f, 0.16f);  // 깬 칸 — 흔적만 남긴다
+
+    // 오염 스테이지에서는 벽돌·강철이 오염으로 읽혀야 한다. 스프라이트는 그대로 두고 색만 물들인다.
+    // 독을 뜻하는 색은 초록이다 — 보라로는 '오염' 이 안 읽힌다.
+    static readonly Color RotColor = new Color(0.55f, 0.95f, 0.35f);        // 번진 오염 — 깰 수 있다
+    static readonly Color RotSourceColor = new Color(0.20f, 0.55f, 0.18f);  // 오염 근원 — 못 깬다
+    static readonly Color RotSmoke = new Color(0.45f, 0.90f, 0.35f);        // 피어오르는 독연기
 
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
+    SpriteRenderer[,] marks;      // 좌표 목표 — 블록 가장자리에서 바깥으로 번지는 빛
+    SpriteRenderer[,] markFills;  // 그 블록 위를 덮는 그라데이션 — 칸 자체가 물들어 보이게
+    readonly List<Point> markList = new List<Point>();    // 아직 깨야 하는 칸
+    readonly List<Point> steelList = new List<Point>();   // 지금 판에 있는 강철 자리
+    readonly List<Point> rotList = new List<Point>();     // 오염 칸 자리 (연기가 피어오른다)
+    float smokeTimer;
+    Sprite markGlow, markFill;
+
+    // 목표 칸에서 피어오르는 별빛 가루. 파괴 버스트와 풀을 나눠 쓴다 —
+    // 버스트가 풀을 가득 채운 순간에 반짝임이 통째로 멈추면 안 된다.
+    const int MaxSparks = 600;
+    Sprite star;
+    Transform[] kTr;
+    SpriteRenderer[] kSr;
+    Vector2[] kVel;
+    float[] kLife, kMax, kSpin, kRot, kSize, kPhase;
+    bool[] kSmoke;                // 이 알갱이가 별빛인가 연기인가
+    int liveSparks;
+    float sparkTimer;
+    bool rotStage;                // 오염 스테이지인가 — 벽돌·강철을 오염 색으로 물들인다
     SpriteRenderer[] ghost;
     SpriteRenderer[] ghostRing;   // 놓일 자리 윤곽 — 타일 색과 무관하게 위치를 읽히게 한다
     SpriteRenderer[] carryShadow; // 들고 있는 조각 아래 그림자
     int ghostCount;               // 현재 표시 중인 고스트 칸 수 (펄스용)
     Color ghostRingColor;
     Sprite bomb;                  // 폭탄 조각 아이콘
-    Sprite steel;                 // 못 깨는 강철 칸
+    Sprite[] steelStages;         // 강철 — 손상 단계별 (0 = 온전)
     int obstacleMaxHp = Rules.ObstacleHp;   // 이 판의 방해블록 내구도
 
     /// <summary>이번 판의 방해블록 내구도. 손상 단계를 이 값에 맞춰 환산한다.</summary>
     public void SetObstacleMaxHp(int hp) { obstacleMaxHp = Mathf.Max(1, hp); }
+
+    int steelMaxHp = 5;   // 이 판의 강철 내구도. 손상 단계를 이 값에 맞춰 환산한다.
+
+    /// <summary>이번 판의 강철 내구도.</summary>
+    public void SetSteelMaxHp(int hp) { steelMaxHp = Mathf.Max(1, hp); }
     SpriteRenderer[] blast;       // 영향 범위 미리보기 (폭탄 5x5, 매칭 예고)
     int blastCount;
     Color blastColor;
@@ -67,6 +115,8 @@ public class BoardView : MonoBehaviour
 
         currentSkin = Wallet.Skin;
         tile = MakeTileSprite(currentSkin);
+        markGlow = MakeMarkGlowSprite();
+        markFill = MakeMarkFillSprite();
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
         // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
@@ -96,9 +146,33 @@ public class BoardView : MonoBehaviour
 
         tiles = new SpriteRenderer[Board.W, Board.H];
         overlays = new SpriteRenderer[Board.W, Board.H];
+        marks = new SpriteRenderer[Board.W, Board.H];
+        markFills = new SpriteRenderer[Board.W, Board.H];
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
+                // 블록 위를 덮는 그라데이션. 블록 색을 지우지 않고 물들이는 정도로만 얹는다.
+                var fg = new GameObject("mf_" + x + "_" + y);
+                fg.transform.SetParent(transform, false);
+                fg.transform.localPosition = new Vector3(x, y, -0.1f);
+                fg.transform.localScale = Vector3.one * TileScale;
+                var fsr = fg.AddComponent<SpriteRenderer>();
+                fsr.sprite = markFill;
+                fsr.sortingOrder = 1;       // 타일(0) 위, 아이템 아이콘(2) 아래
+                fsr.enabled = false;
+                markFills[x, y] = fsr;
+
+                // 가장자리 반짝임 — 블록보다 크고, 아이콘 위까지 올라온다
+                var mg = new GameObject("m_" + x + "_" + y);
+                mg.transform.SetParent(transform, false);
+                mg.transform.localPosition = new Vector3(x, y, -0.2f);
+                mg.transform.localScale = Vector3.one * MarkScale;
+                var msr = mg.AddComponent<SpriteRenderer>();
+                msr.sprite = markGlow;
+                msr.sortingOrder = 3;       // 타일(0)·아이템(2) 위, 범위 예고(4) 아래
+                msr.enabled = false;
+                marks[x, y] = msr;
+
                 var go = new GameObject("t_" + x + "_" + y);
                 go.transform.SetParent(transform, false);
                 go.transform.localPosition = new Vector3(x, y, 0);
@@ -152,7 +226,8 @@ public class BoardView : MonoBehaviour
 
         // 폭발 범위 미리보기 — 고스트(5,6)보다 아래, 타일 위
         bomb = MakeBombSprite();
-        steel = MakeSteelSprite();
+        steelStages = new Sprite[ObstacleStyle.Stages];
+        for (int i = 0; i < steelStages.Length; i++) steelStages[i] = MakeSteelSprite(i);
         var blastSprite = MakePanelSprite(0.3f);
         blast = new SpriteRenderer[96];   // 대각선·행/열 아이템까지 덮을 만큼
         for (int i = 0; i < blast.Length; i++)
@@ -168,6 +243,7 @@ public class BoardView : MonoBehaviour
 
         BuildTray();
         BuildParticlePool();
+        BuildSparklePool();
         BuildRingPool();
     }
 
@@ -207,6 +283,35 @@ public class BoardView : MonoBehaviour
             sr.enabled = false;
             pTr[i] = go.transform;
             pSr[i] = sr;
+        }
+    }
+
+    void BuildSparklePool()
+    {
+        star = MakeStarSprite();
+        kTr = new Transform[MaxSparks];
+        kSr = new SpriteRenderer[MaxSparks];
+        kVel = new Vector2[MaxSparks];
+        kLife = new float[MaxSparks];
+        kMax = new float[MaxSparks];
+        kSpin = new float[MaxSparks];
+        kRot = new float[MaxSparks];
+        kSize = new float[MaxSparks];
+        kPhase = new float[MaxSparks];
+        kSmoke = new bool[MaxSparks];
+
+        var root = new GameObject("sparkles").transform;
+        root.SetParent(transform, false);
+        for (int i = 0; i < MaxSparks; i++)
+        {
+            var go = new GameObject("k" + i);
+            go.transform.SetParent(root, false);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = star;
+            sr.sortingOrder = 7;      // 블록·표시 위, 파괴 파티클(8) 아래
+            sr.enabled = false;
+            kTr[i] = go.transform;
+            kSr[i] = sr;
         }
     }
 
@@ -282,14 +387,17 @@ public class BoardView : MonoBehaviour
 
         if (c == Board.Steel)
         {
-            // 강철은 상태가 없다 — 늘 같은 모습이어야 '못 부순다' 가 읽힌다
+            // 내구도 0 인 강철(오염 근원)은 늘 온전한 모습이다 — 안 부서지니 상태도 없다.
+            // 내구도를 준 강철은 맞을수록 금이 가고 모서리가 부스러진다.
+            int st = hp > 0 ? ObstacleStyle.StageFor(hp, steelMaxHp) : 0;
+
             sr.sprite = tile;
             sr.color = EmptyColor;
             sr.transform.localScale = Vector3.one * ObstacleStyle.Scale;
 
             ov.enabled = true;
-            ov.sprite = steel;
-            ov.color = Color.white;
+            ov.sprite = steelStages[st];
+            ov.color = rotStage ? RotSourceColor : Color.white;
             ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
             return;
         }
@@ -311,7 +419,7 @@ public class BoardView : MonoBehaviour
             // 위층: 콘크리트 본체. 색은 스프라이트에 구워져 있으므로 틴트는 흰색.
             ov.enabled = true;
             ov.sprite = obstacle[stage];
-            ov.color = Color.white;
+            ov.color = rotStage ? RotColor : Color.white;
             ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
             return;
         }
@@ -339,13 +447,238 @@ public class BoardView : MonoBehaviour
     /// <summary>보드 최종 상태를 즉시 반영 (색/아이템/위치·스케일 리셋)</summary>
     public void Refresh(Board b, Color[] palette)
     {
+        steelList.Clear();   // 강철은 중력으로 자리를 옮기므로 그릴 때마다 다시 모은다
+        rotList.Clear();
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
-                PaintTile(x, y, b.GetTile(x, y), b.GetObstacleHp(x, y), b.GetItem(x, y), palette);
+                int t = b.GetTile(x, y);
+                int hp = t == Board.Steel ? b.GetSteelHp(x, y) : b.GetObstacleHp(x, y);
+                if (t == Board.Steel) steelList.Add(new Point(x, y));
+                if (rotStage && (t == Board.Steel || t == Board.Obstacle)) rotList.Add(new Point(x, y));
+                PaintTile(x, y, t, hp, b.GetItem(x, y), palette);
                 tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
                 overlays[x, y].transform.localPosition = new Vector3(x, y, -0.5f);
             }
+    }
+
+    /// <summary>좌표 목표를 표시한다. null 이면 이 스테이지엔 목표 칸이 없다.</summary>
+    public void SetMarks(bool[,] m)
+    {
+        if (marks == null) return;
+
+        markList.Clear();
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                bool on = m != null && m[x, y];
+                marks[x, y].enabled = on;
+                markFills[x, y].enabled = on;
+                if (on) markList.Add(new Point(x, y));
+            }
+        PulseMarks();
+    }
+
+    /// <summary>오염 스테이지인가. 이 판에서는 벽돌이 곧 오염이고, 못 깨는 칸은 오염 근원이다 —
+    /// 그래서 칸마다 따로 표시할 필요 없이 판 전체를 한 번만 정해 주면 된다.</summary>
+    public void SetPollutionStage(bool on) { rotStage = on; }
+
+    /// <summary>목표 칸 하나를 깼다. 지우지 않고 흐리게 남긴다 — 어디를 깼는지 보이게.</summary>
+    public void ClearMark(int x, int y)
+    {
+        if (marks == null || !marks[x, y].enabled) return;
+        for (int i = 0; i < markList.Count; i++)
+            if (markList[i].X == x && markList[i].Y == y) { markList.RemoveAt(i); break; }
+
+        // 새어나오는 빛은 끈다. 켜 둔 채 색만 바꾸면 칸 전체가 계속 물들어 있어
+        // 아직 깨야 하는 칸처럼 보인다.
+        marks[x, y].enabled = false;
+
+        // 흔적은 칸 안쪽에만, 맥동 없이 옅게 남긴다 — 어디를 이미 깼는지는 보여야 한다.
+        markFills[x, y].enabled = true;
+        markFills[x, y].color = MarkDoneColor;
+    }
+
+    /// <summary>남은 목표 칸의 가장자리를 빨·노·초·파 순으로 물들인다.
+    /// 칸마다 위상을 어긋나게 줘서 칸 하나하나가 따로 읽힌다.</summary>
+    void PulseMarks()
+    {
+        float t = Time.time;
+        int n = MarkCycle.Length;
+
+        for (int i = 0; i < markList.Count; i++)
+        {
+            int x = markList[i].X, y = markList[i].Y;
+            // 가로·세로로 다른 보폭이라 이웃 칸끼리 색이 겹치지 않는다
+            float phase = Frac(x * 0.29f + y * 0.47f);
+
+            // 색 사이를 이어서 건너간다 — 뚝뚝 끊기면 반짝임이 아니라 점멸로 보인다
+            float u = (Frac(t * 0.42f + phase)) * n;
+            int a = (int)u % n;
+            var c = Color.Lerp(MarkCycle[a], MarkCycle[(a + 1) % n], Frac(u));
+
+            float blink = 0.5f + 0.5f * Mathf.Sin((t + phase * 1.7f) * 4f);
+            blink = blink * blink * (3f - 2f * blink);   // 양 끝에 머무는 시간을 늘린다
+
+            // 블록 밖으로 새어나오는 빛. 밝은 쪽에서 확 번지고 어두운 쪽에서는 거의 사라진다.
+            c.a = 0.10f + 0.42f * blink;
+            marks[x, y].color = c;
+
+            // 블록 속은 밝아지기만 하지 않고 어두워지기도 한다 —
+            // 한쪽으로만 움직이면 '조금 밝은 칸' 으로 보여서 눈에 안 띈다.
+            // 색은 얹지 않는다. 색까지 칠하면 무슨 색 블록인지 못 읽는다.
+            var lit = Color.Lerp(MarkDim, Color.white, blink);
+            lit.a = 0.42f;
+            markFills[x, y].color = lit;
+        }
+    }
+
+    /// <summary>남은 목표 칸에서 별빛 가루가 피어오른다. 한 번에 하나씩만 띄워
+    /// 칸이 많아도 화면이 번잡해지지 않게 한다.</summary>
+    void UpdateSparkles(float dt)
+    {
+        if (kSr == null || (liveSparks <= 0 && markList.Count == 0 && steelList.Count == 0)) return;
+
+        // 살아 있는 것부터 굴린다
+        for (int i = 0; i < MaxSparks; i++)
+        {
+            if (!kSr[i].enabled) continue;
+            kLife[i] += dt;
+            float k = kLife[i] / kMax[i];
+            if (k >= 1f) { kSr[i].enabled = false; liveSparks--; continue; }
+
+            float t = Time.time + kPhase[i];
+            var pos = kTr[i].localPosition;
+            var c = kSr[i].color;
+
+            if (kSmoke[i])
+            {
+                // 연기: 위로만 오르며 점점 커지고 옅어진다. 깜빡이지 않는다.
+                kVel[i].y += 0.25f * dt;
+                pos.x += (kVel[i].x + Mathf.Sin(t * 1.4f) * 0.35f) * dt;
+                pos.y += kVel[i].y * dt;
+
+                kTr[i].localScale = Vector3.one * kSize[i] * (0.4f + k * 1.3f);
+                c.a = Mathf.Sin(k * Mathf.PI) * 0.5f;
+            }
+            else
+            {
+                // 별빛: 중력을 안 받는다. 퍼지면서 잦아들되 살짝 떠오르고, 좌우로 흔들린다.
+                kVel[i] *= 0.985f;
+                kVel[i].y += 0.45f * dt;
+                pos.x += (kVel[i].x + Mathf.Sin(t * 3.2f) * 0.5f) * dt;
+                pos.y += kVel[i].y * dt;
+
+                // 확 나타났다가 오래 사그라든다 — 꺼지는 쪽이 길어야 '흩날린다' 로 읽힌다
+                const float PopIn = 0.15f;
+                float grow = k < PopIn ? k / PopIn : Mathf.Pow(1f - (k - PopIn) / (1f - PopIn), 0.7f);
+                kTr[i].localScale = Vector3.one * kSize[i] * grow;
+                c.a = grow * (0.62f + 0.38f * Mathf.Sin(t * 11f));   // 날리는 동안 저 혼자 깜빡인다
+            }
+
+            kTr[i].localPosition = pos;
+            kRot[i] += kSpin[i] * dt;
+            kTr[i].localRotation = Quaternion.Euler(0, 0, kRot[i]);
+            kSr[i].color = c;
+        }
+
+        int steelSpots = rotStage ? 0 : steelList.Count;   // 오염 판의 강철은 연기가 맡는다
+        int spots = markList.Count + steelSpots;
+        if (spots == 0) return;
+
+        // 자리가 많을수록 자주 튄다. 고정하면 무늬가 클 때 너무 뜸하다.
+        sparkTimer -= dt;
+        if (sparkTimer > 0f) return;
+        // 하한은 한 프레임(60fps)이다. 이보다 짧게 잡아 봐야 한 프레임에 한 번밖에 못 튄다.
+        sparkTimer = Mathf.Max(0.016f, 0.05f / spots);
+
+        // 한 자리에서 여러 개가 같이 튀어야 '가루' 로 보인다. 하나씩이면 점이 하나 뜨는 것뿐이다.
+        int pick = Random.Range(0, spots);
+        bool onSteel = pick >= markList.Count;
+        if (onSteel && steelSpots == 0) return;
+        var at = onSteel ? steelList[pick - markList.Count] : markList[pick];
+
+        // 강철은 목표 칸만큼 요란하면 안 된다 — 깨야 할 칸이 묻힌다
+        int n = onSteel ? Random.Range(1, 3) : Random.Range(5, 9);
+        for (int i = 0; i < n; i++) SpawnSparkle(at, onSteel);
+    }
+
+    /// <summary>오염 칸에서 초록 독연기가 천천히 피어오른다. 색만으로는 '깨야 하는 벽돌' 과
+    /// 구분이 어렵다 — 움직이는 연기가 있어야 오염이라는 게 바로 읽힌다.</summary>
+    void UpdateSmoke(float dt)
+    {
+        if (kSr == null || rotList.Count == 0) return;
+
+        smokeTimer -= dt;
+        if (smokeTimer > 0f) return;
+        smokeTimer = Mathf.Max(0.05f, 0.35f / rotList.Count);
+
+        var at = rotList[Random.Range(0, rotList.Count)];
+        SpawnSmoke(at);
+    }
+
+    void SpawnSmoke(Point at)
+    {
+        int idx = -1;
+        for (int i = 0; i < MaxSparks; i++)
+            if (!kSr[i].enabled) { idx = i; break; }
+        if (idx < 0) return;
+
+        // 옆으로는 거의 안 가고 위로만 오른다 — 연기는 퍼지는 게 아니라 오르는 것이다
+        kVel[idx] = new Vector2(Random.Range(-0.25f, 0.25f), Random.Range(0.5f, 1.0f));
+        kLife[idx] = 0f;
+        kMax[idx] = Random.Range(1.1f, 1.8f);
+        kSpin[idx] = Random.Range(-25f, 25f);
+        kRot[idx] = Random.value * 360f;
+        kPhase[idx] = Random.value * 10f;
+        kSize[idx] = Random.Range(0.45f, 0.75f);
+        kSmoke[idx] = true;
+
+        var c = RotSmoke;
+        c.a = 0f;
+        kSr[idx].sprite = soft;
+        kSr[idx].color = c;
+        kTr[idx].localPosition = new Vector3(at.X + Random.Range(-0.2f, 0.2f),
+                                             at.Y + Random.Range(-0.2f, 0.2f), -1.25f);
+        kTr[idx].localScale = Vector3.zero;
+        kTr[idx].localRotation = Quaternion.Euler(0, 0, kRot[idx]);
+        kSr[idx].enabled = true;
+        liveSparks++;
+    }
+
+    void SpawnSparkle(Point at) { SpawnSparkle(at, false); }
+
+    /// <summary>steel 이면 금속이 번쩍이는 정도로 작고 차갑게 튄다.</summary>
+    void SpawnSparkle(Point at, bool steel)
+    {
+        int idx = -1;
+        for (int i = 0; i < MaxSparks; i++)
+            if (!kSr[i].enabled) { idx = i; break; }
+        if (idx < 0) return;
+
+        float ang = Random.value * Mathf.PI * 2f;
+        kVel[idx] = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * Random.Range(0.9f, 2.4f);
+        kLife[idx] = 0f;
+        kMax[idx] = Random.Range(0.9f, 1.6f);       // 오래 날아야 칸 밖까지 퍼진다
+        kSpin[idx] = Random.Range(-160f, 160f);
+        kRot[idx] = Random.value * 360f;
+        kPhase[idx] = Random.value * 10f;           // 흔들림·깜빡임을 저마다 다른 박자로
+        // 큰 별 몇에 작은 가루 여럿 — 크기가 고르면 가루가 아니라 도형이 흩어지는 것처럼 보인다
+        kSize[idx] = Random.value < 0.25f ? Random.Range(0.30f, 0.46f) : Random.Range(0.12f, 0.24f);
+
+        if (steel) kSize[idx] *= 0.7f;
+        kSmoke[idx] = false;
+        kSr[idx].sprite = star;
+        var c = steel ? Color.Lerp(Color.white, SteelSpark, Random.value)
+                      : Color.Lerp(MarkWhite, MarkGold, Random.value);
+        c.a = 0f;                                   // 첫 프레임부터 커지며 나타난다
+        kSr[idx].color = c;
+        kTr[idx].localPosition = new Vector3(at.X + Random.Range(-0.28f, 0.28f),
+                                             at.Y + Random.Range(-0.28f, 0.28f), -1.3f);
+        kTr[idx].localScale = Vector3.zero;
+        kTr[idx].localRotation = Quaternion.Euler(0, 0, kRot[idx]);
+        kSr[idx].enabled = true;
+        liveSparks++;
     }
 
     /// <summary>연쇄 한 단계가 끝난 시점의 보드를 반영 (색/아이템만; 위치는 FallIn 이 잡는다).</summary>
@@ -631,7 +964,10 @@ public class BoardView : MonoBehaviour
     void Update()
     {
         PulseGhost();
+        PulseMarks();
         float dtr = Time.deltaTime;
+        UpdateSparkles(dtr);
+        UpdateSmoke(dtr);
         UpdateRings(dtr);
         if (liveParts <= 0) return;
         float dt = dtr;
@@ -800,7 +1136,7 @@ public class BoardView : MonoBehaviour
     public const int TraySlots = 2;
     public const int CurrentSlot = 0;
     public const float TrayY = -4.6f;        // 트레이 중심 (칸 단위). 보드와 사이를 띄운다
-    public const float TrayCell = 0.40f;     // 트레이 안 칸 크기 — 작게
+    public const float TrayCell = 0.60f;     // 트레이 안 칸 크기 — 블록보다 작게
     public const float TrayRadius = 1.55f;   // 슬롯 하나가 차지하는 반경
 
     SpriteRenderer[] trayPad;                // 슬롯 바닥
@@ -1127,6 +1463,92 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
+    /// <summary>블록 안에 차 있는 빛. 가운데가 가장 밝고 가장자리로 갈수록 옅어져
+    /// 블록 색이 비친다 — 블록이 스스로 빛나는 것처럼 보이게 하는 층이다.</summary>
+    static Sprite MakeMarkFillSprite()
+    {
+        const int S = 64;
+        const float R = 12f;   // 모서리 반경(px) — 블록의 둥근 정도에 맞춘다
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(R - fx, fx - (S - R), 0f);
+                float dy = Mathf.Max(R - fy, fy - (S - R), 0f);
+                float inside = R - Mathf.Sqrt(dx * dx + dy * dy);
+                if (inside <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
+
+                float nx = (fx - S * 0.5f) / (S * 0.5f);
+                float ny = (fy - S * 0.5f) / (S * 0.5f);
+                float a = Mathf.Clamp01(1f - Mathf.Sqrt(nx * nx + ny * ny) * 0.85f);
+
+                px[y * S + x] = new Color(1, 1, 1, a * a * Mathf.Clamp01(inside));
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    /// <summary>블록 밖으로 새어나오는 빛. 블록 모양만큼은 꽉 차 있고, 그 경계에서부터
+    /// 부옇게 번져 나가며 사라진다. 경계선이 보이면 '테두리' 로 읽히므로 안팎이 이어져야 한다.
+    /// 색은 쓰는 쪽에서 틴트로 주므로 흰색으로 굽는다.</summary>
+    static Sprite MakeMarkGlowSprite()
+    {
+        const int S = 96;
+        // 스프라이트 한 변이 MarkScale 월드다. 그 안에서 블록이 차지하는 크기를 구한다.
+        float half = S * 0.5f * (TileScale / MarkScale);
+        const float R = 7f;                 // 블록 모서리 반경(px)
+        float blur = S * 0.5f - half;       // 블록 경계에서 스프라이트 끝까지 = 번지는 폭
+
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                // 둥근 사각까지의 거리 (안쪽이 음수, 바깥이 양수)
+                float qx = Mathf.Abs(x + 0.5f - S * 0.5f) - (half - R);
+                float qy = Mathf.Abs(y + 0.5f - S * 0.5f) - (half - R);
+                float outside = Mathf.Sqrt(Mathf.Max(qx, 0f) * Mathf.Max(qx, 0f)
+                                         + Mathf.Max(qy, 0f) * Mathf.Max(qy, 0f))
+                              + Mathf.Min(Mathf.Max(qx, qy), 0f) - R;
+
+                // 블록 안은 꽉 차 있고, 밖으로는 완만하게 꺼진다
+                float a = outside <= 0f ? 1f : Mathf.Pow(Mathf.Clamp01(1f - outside / blur), 2.2f);
+
+                px[y * S + x] = new Color(1, 1, 1, a);
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    /// <summary>네 갈래 별빛 가루. 가운데 심지가 밝고 네 방향으로 뾰족하게 뻗는다.
+    /// 별 모양은 아스트로이드(√|x| + √|y| ≤ 1) 라 갈래 사이가 오목하게 파인다 —
+    /// 그래야 동그란 먼지가 아니라 '반짝임' 으로 읽힌다.</summary>
+    static Sprite MakeStarSprite()
+    {
+        const int S = 48;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float nx = (x + 0.5f) / S * 2f - 1f;
+                float ny = (y + 0.5f) / S * 2f - 1f;
+
+                float v = Mathf.Sqrt(Mathf.Abs(nx)) + Mathf.Sqrt(Mathf.Abs(ny));
+                float rays = Mathf.Clamp01((1f - v) * 2.6f);          // 네 갈래
+                float core = Mathf.Exp(-(nx * nx + ny * ny) * 26f);   // 가운데 심지
+
+                px[y * S + x] = new Color(1, 1, 1, Mathf.Clamp01(rays * 0.85f + core));
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
     // 타일 경계는 명확해야 한다. 밝은 판 위에서 옅은 테두리는 바로 사라진다.
     const float RimPx = 3.4f;      // 테두리 두께 (32px 스프라이트 기준 ≈ 11%)
     const float RimDark = 0.62f;   // 테두리 명도 배수 — 작을수록 진하다
@@ -1379,13 +1801,17 @@ public class BoardView : MonoBehaviour
 
     static float Frac(float v) { return v - Mathf.Floor(v); }
 
-    /// <summary>못 깨는 강철. 벽돌(부술 수 있음)과 헷갈리지 않게 차가운 금속과 리벳으로 그린다.
-    /// 손상 단계가 없다 — 늘 같은 모습이라 '이건 안 부서진다' 가 바로 읽힌다.</summary>
-    static Sprite MakeSteelSprite()
+    /// <summary>강철. 벽돌(점토색)과 헷갈리지 않게 차가운 금속과 리벳으로 그린다.
+    /// stage 는 손상 단계(0 = 온전 … Stages-1 = 곧 부서짐)다. 맞을수록
+    /// 금이 갈라지고 모서리가 부스러져 작은 알갱이로 떨어져 나간다.</summary>
+    static Sprite MakeSteelSprite(int stage)
     {
         const int S = 48;
         float r = S * ObstacleStyle.RoundFrac;
         float line = S * ObstacleStyle.LineFrac;
+
+        // 0 → 1 로 갈수록 심하게 망가진다
+        float dmg = ObstacleStyle.Stages <= 1 ? 0f : stage / (float)(ObstacleStyle.Stages - 1);
 
         var body    = new Color(0.36f, 0.40f, 0.47f);
         var light   = new Color(0.55f, 0.60f, 0.68f);
@@ -1425,6 +1851,27 @@ public class BoardView : MonoBehaviour
                 if (edge > line && edge < line + S * 0.12f)
                     c = Color.Lerp(c, (fy > S * 0.5f) ? light : shadow, 0.45f);
                 if (edge <= line) c = outline;
+
+                if (dmg > 0f)
+                {
+                    // ① 균열 — 대각으로 갈라진 금이 단계마다 한 줄씩 굵고 길어진다
+                    float crack = Mathf.Abs(Frac((fx * 0.9f - fy * 1.35f) / S + 0.18f) - 0.5f) * S;
+                    float wobble = Mathf.Sin(fy * 0.7f) * 1.3f;      // 자로 그은 듯한 직선을 피한다
+                    if (crack + wobble < 1.1f + dmg * 2.2f) c = Color.Lerp(c, outline, 0.85f);
+                    if (dmg > 0.45f)
+                    {
+                        float crack2 = Mathf.Abs(Frac((fx * 1.25f + fy * 0.8f) / S + 0.62f) - 0.5f) * S;
+                        if (crack2 + Mathf.Cos(fx * 0.6f) < dmg * 1.9f) c = Color.Lerp(c, outline, 0.75f);
+                    }
+
+                    // ② 부스러짐 — 가장자리부터 알갱이로 떨어져 나가 구멍이 뚫린다
+                    float bite = Frac(Mathf.Sin(fx * 12.9898f + fy * 78.233f) * 43758.55f);
+                    float rim = Mathf.Clamp01(1f - edge / (S * 0.30f));   // 가장자리일수록 1
+                    if (bite < dmg * 0.55f * rim * rim) a = 0f;
+
+                    // ③ 남은 몸통도 빛이 죽는다 — 밝기만으로도 상태가 읽히게
+                    c = Color.Lerp(c, shadow, dmg * 0.30f);
+                }
 
                 c.a = a;
                 px[y * S + x] = c;
