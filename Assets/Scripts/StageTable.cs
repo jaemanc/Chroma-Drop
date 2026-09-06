@@ -19,6 +19,7 @@ using UnityEngine;
 public class StageSetting
 {
     public int Level = 1;
+    public int Seconds = 180;            // 타임어택 한 판의 길이(초). 스테이지에서는 안 쓴다
     // 이 판이 어떤 종류인지 읽는 사람을 위한 라벨. 겹친 판은 "cells+pieces" 처럼 '+' 로 잇는다.
     // 동작을 정하는 건 아래 수치들이고, 라벨이 그것과 어긋나지 않는지는 테스트가 본다.
     public string Kind = "blocks";
@@ -45,6 +46,8 @@ public class StageSetting
     public int PieceLimit;               // >0 이면 '피스 N개 이내'. 수 제한을 이 값이 대신한다
     public int PollutionEvery;           // >0 이면 오염 스테이지. 이 수마다 근원 옆이 오염된다
     public int PollutionPerSpread = 1;   // 한 번에 오염되는 칸 수
+    public int PollutionHp = 2;          // 독벽돌을 부수는 데 필요한 인접 소거 횟수
+    public int PollutionSourceHits;      // 독벽돌을 이만큼 깨면 근원도 부서진다. 0 이면 안 부서진다
     public string TargetPattern = "";    // 목표 칸 무늬. 빈 문자열이면 좌표 목표가 없다
     public int TargetCount;              // scatter/rows/cols 에서 쓸 수. 그림 무늬는 제 모양대로다
 
@@ -101,6 +104,11 @@ public static class StageTable
     /// <summary>지금 난이도 (1~5). 파일 최상단 difficulty 가 정한다.</summary>
     public static int Difficulty { get; private set; }
 
+    static StageSetting timeAttack;
+
+    /// <summary>타임어택 한 판의 설정. 스테이지 종류가 전부 한꺼번에 걸린다.</summary>
+    public static StageSetting TimeAttack { get { Load(); return timeAttack; } }
+
     public static string OverridePath
     {
         get { return Path.Combine(Application.persistentDataPath, FileName); }
@@ -150,6 +158,39 @@ public static class StageTable
         return Mathf.Max(1, Mathf.RoundToInt(v * mul));
     }
 
+    /// <summary>설정 한 벌을 읽는다. 스테이지든 타임어택이든 같은 필드를 쓴다.
+    /// map 이 null 이면 전부 기본값이다.</summary>
+    static StageSetting Read(Dictionary<string, object> m)
+    {
+        var d = new StageSetting();
+        if (m == null) return d;
+        return new StageSetting
+        {
+            Level = (int)Json.Num(m, "level", d.Level),
+            Seconds = (int)Json.Num(m, "seconds", d.Seconds),
+            Kind = Json.Str(m, "kind", d.Kind),
+            ClearBlocks = (int)Json.Num(m, "clearBlocks", d.ClearBlocks),
+            Moves = (int)Json.Num(m, "moves", d.Moves),
+            PieceTimeMaxMs = (int)Json.Num(m, "pieceTimeMaxMs", d.PieceTimeMaxMs),
+            PieceTimeMinMs = (int)Json.Num(m, "pieceTimeMinMs", d.PieceTimeMinMs),
+            ColorCount = (int)Json.Num(m, "colorCount", d.ColorCount),
+            ObstacleFromMove = (int)Json.Num(m, "obstacleFromMove", d.ObstacleFromMove),
+            ObstacleEveryMoves = (int)Json.Num(m, "obstacleEveryMoves", d.ObstacleEveryMoves),
+            ObstacleMax = (int)Json.Num(m, "obstacleMax", d.ObstacleMax),
+            ObstacleHp = (int)Json.Num(m, "obstacleHp", d.ObstacleHp),
+            PenaltyObstacle = Json.Bool(m, "penaltyObstacle", d.PenaltyObstacle),
+            SteelCount = (int)Json.Num(m, "steelCount", d.SteelCount),
+            SteelHp = (int)Json.Num(m, "steelHp", d.SteelHp),
+            PieceLimit = (int)Json.Num(m, "pieceLimit", d.PieceLimit),
+            TargetPattern = Json.Str(m, "targetPattern", d.TargetPattern),
+            TargetCount = (int)Json.Num(m, "targetCount", d.TargetCount),
+            PollutionEvery = (int)Json.Num(m, "pollutionEvery", d.PollutionEvery),
+            PollutionPerSpread = (int)Json.Num(m, "pollutionPerSpread", d.PollutionPerSpread),
+            PollutionHp = (int)Json.Num(m, "pollutionHp", d.PollutionHp),
+            PollutionSourceHits = (int)Json.Num(m, "pollutionSourceHits", d.PollutionSourceHits),
+        };
+    }
+
     static void Load()
     {
         if (stages != null) return;
@@ -180,30 +221,13 @@ public static class StageTable
         {
             var m = Json.AsMap(item);
             if (m == null) continue;
-            var d = new StageSetting();
-            stages.Add(new StageSetting
-            {
-                Level = (int)Json.Num(m, "level", d.Level),
-                Kind = Json.Str(m, "kind", d.Kind),
-                ClearBlocks = (int)Json.Num(m, "clearBlocks", d.ClearBlocks),
-                Moves = (int)Json.Num(m, "moves", d.Moves),
-                PieceTimeMaxMs = (int)Json.Num(m, "pieceTimeMaxMs", d.PieceTimeMaxMs),
-                PieceTimeMinMs = (int)Json.Num(m, "pieceTimeMinMs", d.PieceTimeMinMs),
-                ColorCount = (int)Json.Num(m, "colorCount", d.ColorCount),
-                ObstacleFromMove = (int)Json.Num(m, "obstacleFromMove", d.ObstacleFromMove),
-                ObstacleEveryMoves = (int)Json.Num(m, "obstacleEveryMoves", d.ObstacleEveryMoves),
-                ObstacleMax = (int)Json.Num(m, "obstacleMax", d.ObstacleMax),
-                ObstacleHp = (int)Json.Num(m, "obstacleHp", d.ObstacleHp),
-                PenaltyObstacle = Json.Bool(m, "penaltyObstacle", d.PenaltyObstacle),
-                SteelCount = (int)Json.Num(m, "steelCount", d.SteelCount),
-                SteelHp = (int)Json.Num(m, "steelHp", d.SteelHp),
-                PieceLimit = (int)Json.Num(m, "pieceLimit", d.PieceLimit),
-                TargetPattern = Json.Str(m, "targetPattern", d.TargetPattern),
-                TargetCount = (int)Json.Num(m, "targetCount", d.TargetCount),
-                PollutionEvery = (int)Json.Num(m, "pollutionEvery", d.PollutionEvery),
-                PollutionPerSpread = (int)Json.Num(m, "pollutionPerSpread", d.PollutionPerSpread),
-            });
+            stages.Add(Read(m));
         }
+
+        // 타임어택은 스테이지가 아니라 손으로 잡은 한 벌이다. 파일에 없으면 코드 기본값으로 돈다.
+        // 난이도 손잡이를 먹이지 않는다 — 파일에 적은 4초가 배율에 밀려 5.6초가 되면 안 된다.
+        timeAttack = Read(root != null ? Json.AsMap(root.ContainsKey("timeAttack") ? root["timeAttack"] : null) : null);
+
         foreach (var st in stages) ApplyDifficulty(st, Difficulty);
         stages.Sort((a, b) => a.Level.CompareTo(b.Level));
     }

@@ -73,6 +73,9 @@ public class GameManager : MonoBehaviour
     SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
 
     int score, movesLeft, totalMoves;
+    int movesUsed;              // 이 판에서 지난 수. 벽돌·오염이 이 값을 보고 움직인다
+    int targetRounds;           // 타임어택에서 표시된 칸을 몇 벌째 깼나
+    int rotBroken;              // 이 판에서 부순 독벽돌 수. 근원을 무너뜨리는 조건이다
     int broken;                 // 이 판에서 지금까지 부순 블록 수
     bool[,] marks;              // 표시된 칸 (좌표 목표). null 이면 이 스테이지엔 없다
     int marksTotal, marksLeft;
@@ -223,7 +226,7 @@ public class GameManager : MonoBehaviour
 
         // 판을 만들기 전에 이 스테이지의 설정부터 정한다.
         // 뒤에 대입하면 보드·팔레트가 이전 스테이지 값으로 만들어진다.
-        stage = StageTable.Get(stageLevel);
+        stage = ta ? StageTable.TimeAttack : StageTable.Get(stageLevel);
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         curSeed = s;
@@ -235,6 +238,9 @@ public class GameManager : MonoBehaviour
         // 피스 제한 스테이지는 '남은 수' 가 곧 '남은 피스' 다 — 세는 것이 같으므로 카운터도 같은 것을 쓴다.
         totalMoves = movesLeft = timeAttack ? 9999 : stage.MoveBudget;
         score = 0;
+        movesUsed = 0;
+        targetRounds = 0;
+        rotBroken = 0;
         broken = 0;
         cleared = false;
         busy = false;
@@ -249,18 +255,19 @@ public class GameManager : MonoBehaviour
 
         // 강철을 판에 심는다. 내구도가 있어 옆을 그만큼 터뜨리면 부서진다 —
         // 안 깨지는 강철은 오염 근원뿐이다.
-        if (!taRunning && stage.SteelCount > 0) board.SpawnSteel(stage.SteelCount, stage.SteelHp);
+        if (stage.SteelCount > 0) board.SpawnSteel(stage.SteelCount, stage.SteelHp);
 
         BuildMarks(s);
-        if (!taRunning && stage.HasPollution) SpawnPollutionSource(new System.Random(s + 5));
+        if (stage.HasPollution) SpawnPollutionSource(new System.Random(s + 5));
 
         if (bg != null) bg.color = taRunning ? Color.white : StageTint(stageLevel);
 
         view.Build();
-        view.SetObstacleMaxHp(stage.ObstacleHp);
+        // 오염 판의 벽돌은 전부 독벽돌이다 — 손상 단계도 그 내구도로 환산해야 맞다
+        view.SetObstacleMaxHp(stage.HasPollution ? stage.PollutionHp : stage.ObstacleHp);
         view.SetSteelMaxHp(stage.SteelHp);
         view.SetMarks(marks);
-        view.SetPollutionStage(!taRunning && stage.HasPollution);
+        view.SetPollutionStage(stage.HasPollution);
         view.ApplySkin(Wallet.Skin);   // 상점에서 바꾼 스킨을 다음 판부터 반영
         view.SetVisible(true);
         view.Refresh(board, palette);
@@ -268,27 +275,35 @@ public class GameManager : MonoBehaviour
         RefreshTray();
 
         Phase = GamePhase.Playing;
-        if (timeAttack) taDeadline = Time.time + Rules.TimeAttackMs / 1000f;
-        else StartPieceTimer();
+        if (timeAttack) taDeadline = Time.time + Mathf.Max(10, stage.Seconds);
+        StartPieceTimer();
     }
 
     /// <summary>표시된 칸을 정한다. 강철이 올라앉은 칸은 무슨 수를 써도 못 깨므로
     /// 일반 칸으로 되돌린다 — 아니면 클리어할 수 없는 판이 나온다.</summary>
     void BuildMarks(int seed)
     {
-        marks = taRunning ? null
-              : StageTargets.Build(stage.TargetPattern, stage.TargetCount, new System.Random(seed + 3));
+        marks = StageTargets.Build(stage.TargetPattern, stage.TargetCount, new System.Random(seed + 3));
+
+        if (marks != null)
+        {
+            var rng = new System.Random(seed + 4);
+            for (int x = 0; x < Board.W; x++)
+                for (int y = 0; y < Board.H; y++)
+                {
+                    if (!marks[x, y] || !board.IsSteel(x, y)) continue;
+
+                    // 깨지는 강철은 치워 주고, 안 깨지는 오염 근원 위에는 표시를 걷는다.
+                    // 못 깨는 칸에 목표를 걸면 영영 못 지운다.
+                    if (board.GetSteelHp(x, y) > 0) board.SetTile(x, y, rng.Next(stage.ColorCount));
+                    else marks[x, y] = false;
+                }
+        }
         marksTotal = marksLeft = StageTargets.Count(marks);
 
         if (!taRunning && stage.ClearBlocks <= 0 && marksTotal == 0)
             Debug.LogWarning("[stage] " + stageLevel + " 단계에 목표가 없다 — "
                            + "clearBlocks 나 targetPattern 중 하나는 있어야 클리어할 수 있다.");
-        if (marks == null) return;
-
-        var rng = new System.Random(seed + 4);
-        for (int x = 0; x < Board.W; x++)
-            for (int y = 0; y < Board.H; y++)
-                if (marks[x, y] && board.IsSteel(x, y)) board.SetTile(x, y, rng.Next(stage.ColorCount));
     }
 
     /// <summary>오염 근원 하나를 심는다. 못 깨는 칸이라 표시된 칸은 피한다 —
@@ -305,33 +320,64 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    /// <summary>독벽돌을 충분히 부수면 근원까지 무너진다. 무너뜨리고 나면 더는 번지지 않는다.
+    /// PollutionSourceHits 가 0 인 판에서는 근원이 안 부서진다 (예전 그대로).</summary>
+    bool BreakPollutionSource()
+    {
+        if (stage.PollutionSourceHits <= 0 || rotBroken < stage.PollutionSourceHits) return false;
+
+        int sx, sy;
+        if (!FindPollutionSource(out sx, out sy)) return false;
+
+        board.SetTile(sx, sy, Board.Empty);
+        board.ApplyGravity();
+        board.Refill();
+        view.Refresh(board, palette);
+        view.SetPollutionStage(false);      // 근원이 사라졌으니 남은 벽돌은 그냥 벽돌이다
+
+        score += stage.PollutionSourceHits * TargetBonus;
+        ui.ShowChainPopup(0, stage.PollutionSourceHits * TargetBonus);
+        sfx.PlayWin();
+        Shake(0.3f, 0.2f, true);
+        rotBroken = 0;
+        return true;
+    }
+
     /// <summary>오염 근원의 지금 자리. 중력을 받아 내려오므로 좌표를 기억하지 않고 매번 찾는다.
     /// 오염 스테이지에는 못 깨는 칸이 근원 하나뿐이다.</summary>
     bool FindPollutionSource(out int sx, out int sy)
     {
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
-                if (board.IsSteel(x, y)) { sx = x; sy = y; return true; }
+                if (board.IsSteel(x, y) && board.GetSteelHp(x, y) == 0) { sx = x; sy = y; return true; }
         sx = sy = -1;
         return false;
     }
 
-    /// <summary>근원 바로 옆의 성한 칸을 오염시킨다. 번진 오염은 깰 수 있는 벽돌이라
-    /// 옆 칸을 터뜨려야 없어진다. 여덟 칸이 다 차면 더는 번지지 않는다.</summary>
+    /// <summary>오염 덩어리 가장자리 어디로든 한 칸씩 번진다. 번진 오염은 깰 수 있는 벽돌이라
+    /// 옆 칸을 터뜨려야 없어진다.
+    /// 근원 옆 여덟 칸만 보면 그 여덟이 차는 순간 더는 안 번진다 — 덩어리 전체의 가장자리를 본다.</summary>
     bool SpreadPollution()
     {
-        int sx, sy;
-        if (!FindPollutionSource(out sx, out sy)) return false;
-
         var open = new List<Point>();
-        for (int dx = -1; dx <= 1; dx++)
-            for (int dy = -1; dy <= 1; dy++)
+        var seen = new HashSet<int>();
+
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
             {
-                if (dx == 0 && dy == 0) continue;
-                int x = sx + dx, y = sy + dy;
-                if (!board.InBounds(x, y)) continue;
-                if (board.GetTile(x, y) < 0) continue;   // 이미 오염됐거나 특수 칸이다
-                open.Add(new Point(x, y));
+                // 근원(못 깨는 강철)과 이미 번진 오염(벽돌)이 다 씨앗이 된다
+                bool source = board.IsSteel(x, y) && board.GetSteelHp(x, y) == 0;
+                if (!source && !board.IsObstacle(x, y)) continue;
+
+                for (int dx = -1; dx <= 1; dx++)
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx, ny = y + dy;
+                        if (!board.InBounds(nx, ny)) continue;
+                        if (board.GetTile(nx, ny) < 0) continue;   // 이미 오염됐거나 특수 칸이다
+                        if (seen.Add(nx * Board.H + ny)) open.Add(new Point(nx, ny));
+                    }
             }
         if (open.Count == 0) return false;
 
@@ -339,7 +385,7 @@ public class GameManager : MonoBehaviour
         for (int i = 0; i < want && open.Count > 0; i++)
         {
             int k = pieceRng.Next(open.Count);
-            board.SetObstacle(open[k].X, open[k].Y, stage.ObstacleHp);
+            board.SetObstacle(open[k].X, open[k].Y, stage.PollutionHp);
             open.RemoveAt(k);
         }
         return true;
@@ -356,7 +402,11 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    /// <summary>이번에 비워진 칸 중 표시된 칸을 지운다. 한 번 깨진 칸은 다시 세지 않는다.</summary>
+    /// <summary>표시된 칸 한 벌을 다 깼을 때 주는 보너스 (칸당).</summary>
+    const int TargetBonus = 120;
+
+    /// <summary>이번에 비워진 칸 중 표시된 칸을 지운다. 한 번 깨진 칸은 다시 세지 않는다.
+    /// 타임어택은 끝이 시간이라 한 벌을 다 깨면 보너스를 주고 새 자리에 다시 깔아 준다.</summary>
     void ClearMarks(List<Point> destroyed)
     {
         if (marks == null) return;
@@ -368,6 +418,15 @@ public class GameManager : MonoBehaviour
             marksLeft--;
             view.ClearMark(p.X, p.Y);
         }
+
+        if (!taRunning || marksTotal <= 0 || marksLeft > 0) return;
+
+        int bonus = marksTotal * TargetBonus;
+        score += bonus;
+        ui.ShowChainPopup(0, bonus);
+        sfx.PlayItem();
+        BuildMarks(curSeed + 1000 * ++targetRounds);   // 다음 벌은 다른 자리에
+        view.SetMarks(marks);
     }
 
     void EndGame()
@@ -434,11 +493,9 @@ public class GameManager : MonoBehaviour
         if (Screen.width != lastW || Screen.height != lastH) FitCamera();
         if (Phase != GamePhase.Playing) return;
 
-        if (taRunning)
-        {
-            if (!busy && Time.time >= taDeadline) { EndGame(); return; }
-        }
-        else if (!busy && Time.time >= pieceDeadline)
+        // 타임어택은 전체 시간이 먼저다. 그 안에서 조각마다 놓을 시간이 따로 있다.
+        if (taRunning && !busy && Time.time >= taDeadline) { EndGame(); return; }
+        if (!busy && Time.time >= pieceDeadline)
         {
             StartCoroutine(ExpirePiece());
             return;
@@ -546,7 +603,7 @@ public class GameManager : MonoBehaviour
         RefreshTray();
         sfx.PlayItem();
         // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
-        if (!taRunning) StartPieceTimer();
+        StartPieceTimer();
         return true;
     }
 
@@ -603,6 +660,8 @@ public class GameManager : MonoBehaviour
             visual[p.X, p.Y] = current.Color;
         }
 
+        int rotBefore = stage.HasPollution ? board.CountObstacles() : 0;
+
         // 폭탄 조각은 매칭을 기다리지 않는다 — 심고 그 자리에서 바로 터뜨린다.
         ResolveResult result;
         if (pendingBomb)
@@ -635,6 +694,12 @@ public class GameManager : MonoBehaviour
         broken += result.TilesDestroyed;
         ClearMarks(result.Destroyed);
 
+        if (stage.HasPollution)
+        {
+            rotBroken += Mathf.Max(0, rotBefore - board.CountObstacles());
+            if (BreakPollutionSource()) yield return new WaitForSeconds(destroyFlash);
+        }
+
         // 아무 칸도 안 터진 수에는 벌칙으로 벽돌이 하나 생긴다.
         // 그 자리에 아이템이 있었으면 아이템은 사라진다.
         if (result.Destroyed.Count == 0 && stage.PenaltyObstacle)
@@ -650,14 +715,13 @@ public class GameManager : MonoBehaviour
         }
 
         // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
-        if (!taRunning)
+        movesUsed++;
         {
-            int used = totalMoves - movesLeft;
-            int add = stage.ObstaclesAfterMove(used, totalMoves);
+            int add = stage.ObstaclesAfterMove(movesUsed, totalMoves);
             if (add > 0 && board.SpawnObstacles(add, stage.ObstacleHp) > 0) sfx.PlayItem();
 
-            // 오염은 근원 옆으로 번진다. 난이도가 높을수록 자주, 여러 칸씩.
-            if (stage.HasPollution && used % stage.PollutionEvery == 0 && SpreadPollution()) sfx.PlayExpire();
+            // 오염은 근원 옆으로 번진다. 블록을 깼든 못 깼든 상관없이 그 턴에 번진다.
+            if (stage.HasPollution && movesUsed % stage.PollutionEvery == 0 && SpreadPollution()) sfx.PlayExpire();
         }
         view.Refresh(board, palette);
 
@@ -670,8 +734,8 @@ public class GameManager : MonoBehaviour
             // 목표를 채웠으면 수가 남아도 그 자리에서 끝난다
             if (GoalMet) { cleared = true; EndGame(); yield break; }
             if (movesLeft <= 0) { EndGame(); yield break; }
-            StartPieceTimer();
         }
+        StartPieceTimer();
     }
 
     /// <summary>새 조각 하나. 돌릴 방법이 없으므로 나올 때 방향을 무작위로 정한다 —
@@ -717,10 +781,18 @@ public class GameManager : MonoBehaviour
         movesLeft--;
         pendingBomb = false;   // 폭탄은 그 조각에만 붙는다. 다음 조각으로 넘어가지 않는다.
         dragging = false;
+
+        // 오염은 한 턴도 쉬지 않는다. 조각을 흘려보낸 턴에도 번진다.
+        movesUsed++;
+        if (stage.HasPollution && SpreadPollution())
+        {
+            view.Refresh(board, palette);
+            sfx.PlayExpire();
+        }
         AdvanceTray();
 
         busy = false;
-        if (movesLeft <= 0) EndGame();
+        if (!taRunning && movesLeft <= 0) EndGame();
         else StartPieceTimer();
     }
 

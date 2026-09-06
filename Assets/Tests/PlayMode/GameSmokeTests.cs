@@ -514,10 +514,15 @@ public class GameSmokeTests
         for (int lv = 2; lv <= StageTable.Count; lv++)
         {
             var cur = StageTable.Get(lv);
-            if (cur.ClearBlocks > 0)
+            // 좌표 목표가 있는 판은 무늬를 지우는 데 수가 더 드니 따로 논다 — 여기선 뺀다.
+            if (cur.ClearBlocks > 0 && !cur.HasCellGoal)
             {
                 Assert.Greater(cur.ClearBlocks, prevCount.ClearBlocks, lv + "판 목표가 안 늘었다");
-                Assert.LessOrEqual(cur.Moves, prevCount.Moves, lv + "판 수가 늘었다");
+                // 난이도는 '한 수에 깨야 하는 양' 이 정한다. 수를 계속 줄이는 것으로는
+                // 100판까지 못 간다 — 한 수에 깰 수 있는 양에 한계가 있기 때문이다.
+                Assert.GreaterOrEqual(cur.ClearBlocks / (float)cur.Moves,
+                                      prevCount.ClearBlocks / (float)prevCount.Moves - 0.001f,
+                                      lv + "판이 한 수당으로 보면 더 쉬워졌다");
                 prevCount = cur;
             }
             Assert.LessOrEqual(cur.PieceTimeMaxMs, prev.PieceTimeMaxMs, lv + "판 시간이 늘었다");
@@ -707,6 +712,17 @@ public class GameSmokeTests
             PieceTimeMaxMs = 12000, PieceTimeMinMs = 9000,
             SteelCount = 10, ObstacleMax = 3, PollutionEvery = 3,
         };
+    }
+
+    // 타임어택 설정은 손으로 잡은 값이다. 난이도 손잡이가 먹으면 파일에 적은 초가 그대로 안 나온다.
+    [Test]
+    public void 타임어택은_파일에_적은_값_그대로_쓴다()
+    {
+        var ta = StageTable.TimeAttack;
+        Assert.Greater(ta.Seconds, 0, "타임어택 길이가 없다");
+        Assert.AreEqual(ta.PieceTimeMaxMs, ta.PieceTimeMs(9999, 9999),
+                        "조각 시간이 파일 값과 다르다 — 난이도 배율이 먹었을 수 있다");
+        Assert.AreEqual(0, ta.PieceLimit, "타임어택에 피스 제한이 걸려 있다");
     }
 
     [Test]

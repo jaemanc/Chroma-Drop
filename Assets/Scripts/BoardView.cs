@@ -36,7 +36,7 @@ public class BoardView : MonoBehaviour
 
     // 오염 스테이지에서는 벽돌·강철이 오염으로 읽혀야 한다. 스프라이트는 그대로 두고 색만 물들인다.
     // 독을 뜻하는 색은 초록이다 — 보라로는 '오염' 이 안 읽힌다.
-    static readonly Color RotColor = new Color(0.55f, 0.95f, 0.35f);        // 번진 오염 — 깰 수 있다
+    static readonly Color RotColor = new Color(0.70f, 0.98f, 0.55f);        // 독벽돌 — 벽돌에 초록을 옅게 얹는다
     static readonly Color RotSourceColor = new Color(0.20f, 0.55f, 0.18f);  // 오염 근원 — 못 깬다
     static readonly Color RotSmoke = new Color(0.45f, 0.90f, 0.35f);        // 피어오르는 독연기
 
@@ -397,7 +397,7 @@ public class BoardView : MonoBehaviour
 
             ov.enabled = true;
             ov.sprite = steelStages[st];
-            ov.color = rotStage ? RotSourceColor : Color.white;
+            ov.color = (rotStage && hp == 0) ? RotSourceColor : Color.white;   // 근원만 오염색
             ov.transform.localScale = Vector3.one * ObstacleStyle.Scale;
             return;
         }

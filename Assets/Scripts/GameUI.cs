@@ -423,7 +423,7 @@ public class GameUI : MonoBehaviour
             subText.text = Spaced("TIME LEFT");
             int sec = Mathf.CeilToInt(g.TimeLeftSec);
             rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
-            frac = g.TimeLeftSec / (Rules.TimeAttackMs / 1000f);
+            frac = g.PieceTimerFrac;   // 막대는 이 조각을 놓을 시간. 전체 시간은 카드에 있다
         }
         else
         {
