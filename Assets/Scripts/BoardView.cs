@@ -1235,18 +1235,6 @@ public class BoardView : MonoBehaviour
         cy = (minY + maxY) * 0.5f;
     }
 
-    /// <summary>이 월드 좌표가 어느 트레이 슬롯인가. 없으면 -1.</summary>
-    public static int TrayHit(Vector2 world)
-    {
-        for (int i = 0; i < TraySlots; i++)
-        {
-            var c = TraySlotCenter(i);
-            if (Mathf.Abs(world.x - c.x) <= TrayRadius && Mathf.Abs(world.y - c.y) <= TrayRadius)
-                return i;
-        }
-        return -1;
-    }
-
     // 들고 있는 조각: 살짝 크게, 살짝 위로, 아래에 그림자.
     const float CarryScale = 1.01f;
     const float CarryLift  = 0.22f;   // 들어올린 높이 (칸 단위)

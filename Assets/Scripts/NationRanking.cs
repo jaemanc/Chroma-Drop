@@ -83,14 +83,6 @@ public static class NationRanking
         return outp;
     }
 
-    /// <summary>목록에서 특정 uid 의 순위(1부터). 없으면 0.</summary>
-    public static int RankOf(List<ScoreEntry> sorted, string uid)
-    {
-        for (int i = 0; i < sorted.Count; i++)
-            if (sorted[i].Uid == uid) return i + 1;
-        return 0;
-    }
-
     static void SortDesc(List<ScoreEntry> l)
     {
         l.Sort((a, b) =>

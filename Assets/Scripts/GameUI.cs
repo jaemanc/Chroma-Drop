@@ -469,19 +469,6 @@ public class GameUI : MonoBehaviour
     /// <summary>다음 조각 미리보기 (미니 셀 그리드)</summary>
     /// <summary>지금 들고 있는 조각. 크게, 채도를 올려 쨍하게 그린다.
 
-    /// <summary>조각이 차지한 칸의 한가운데.</summary>
-    static void Center(Piece p, out float cx, out float cy)
-    {
-        int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
-        foreach (var c in p.Cells)
-        {
-            if (c.X < minX) minX = c.X; if (c.X > maxX) maxX = c.X;
-            if (c.Y < minY) minY = c.Y; if (c.Y > maxY) maxY = c.Y;
-        }
-        cx = (minX + maxX) * 0.5f;
-        cy = (minY + maxY) * 0.5f;
-    }
-
     const float HoldCell = 56f;   // 들고 있는 조각 — 크게
     const float HoldStep = 60f;
     const float NextCell = 24f;   // 다음 조각 — 작게
@@ -1620,17 +1607,3 @@ public class SafeAreaFitter : MonoBehaviour
     }
 }
 
-/// <summary>은은한 맥동 스케일 (홈 타이틀/시작 버튼 등 강조용)</summary>
-public class UiPulse : MonoBehaviour
-{
-    public float amp = 0.04f, speed = 2.2f;
-    float phase;
-
-    void Awake() { phase = Random.value * 6.28318f; }
-
-    void Update()
-    {
-        float s = 1f + Mathf.Sin(Time.unscaledTime * speed + phase) * amp;
-        transform.localScale = new Vector3(s, s, 1f);
-    }
-}

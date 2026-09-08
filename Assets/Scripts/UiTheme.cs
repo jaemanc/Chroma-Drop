@@ -142,9 +142,6 @@ public class UiButton : MonoBehaviour, IPointerDownHandler, IPointerUpHandler
         if (label != null) label.fontSize = Mathf.RoundToInt(rt.rect.height * UiTheme.TextScale);
     }
 
-    /// <summary>선택 상태 표시처럼 종류를 바꿀 때.</summary>
-    public void SetKind(UiKind k) { kind = k; Apply(t); }
-
     public void OnPointerDown(PointerEventData e) { pressed = true; }
     public void OnPointerUp(PointerEventData e) { pressed = false; }
 

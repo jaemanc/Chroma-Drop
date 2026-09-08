@@ -120,9 +120,6 @@ public static class StageTable
 
     public static int Count { get { Load(); return stages.Count; } }
 
-    /// <summary>다시 읽는다.</summary>
-    public static void Reload() { stages = null; Load(); }
-
     /// <summary>레벨 설정. 범위를 넘으면 마지막 스테이지를 반복한다.</summary>
     public static StageSetting Get(int level)
     {
