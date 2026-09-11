@@ -9,7 +9,7 @@ using ColorMatcher.Core;
 
 public static class StageTargets
 {
-    // 무늬 하나가 판(14x14)의 절반쯤을 차지한다. 너무 크면 다 깨기 전에 수가 떨어진다.
+    // 무늬 하나가 판의 절반쯤을 차지한다. 너무 크면 다 깨기 전에 수가 떨어진다.
     static readonly string[] Heart = {
         ".##..##.",
         "#..##..#",

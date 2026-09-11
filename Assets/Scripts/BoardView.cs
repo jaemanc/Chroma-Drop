@@ -11,7 +11,8 @@ public class BoardView : MonoBehaviour
     // 보드는 배경보다 확실히 밝고 불투명해야 한다. 반투명으로 두면 일러스트에 묻힌다.
     static readonly Color EmptyColor = Palette.Hex(0xEAF6F2);   // 타일 영역 배경
     static readonly Color BoardCream = Palette.Hex(0xFDFBF2);   // 보드 서피스
-    static readonly Color BoardNavy  = Palette.Hex(0x1B2141);   // 테두리·그림자
+    static readonly Color BoardFrame = Palette.Hex(0xEEE8D9);   // 테두리 — 옅은 크림 (참고 UI 와 같은 톤)
+    static readonly Color BoardShadow = new Color(0.212f, 0.294f, 0.275f, 0.30f);   // 부드러운 그림자
 
     // 화면 폭 390px ↔ 월드 16유닛 이므로 1px = 0.041 유닛
     const float Px = 16f / 390f;
@@ -23,13 +24,6 @@ public class BoardView : MonoBehaviour
     static readonly Color MarkWhite = new Color(1f, 1f, 1f, 0.95f);               // 별빛 가루의 밝은 쪽
     static readonly Color MarkGold = new Color(1f, 0.85f, 0.30f, 0.95f);          // 별빛 가루의 노란 쪽
 
-    // 가장자리 반짝임은 빨 → 노 → 초 → 파 를 돌고 다시 빨로 잇는다.
-    static readonly Color[] MarkCycle = {
-        new Color(1.00f, 0.30f, 0.32f),   // 빨
-        new Color(1.00f, 0.85f, 0.25f),   // 노
-        new Color(0.36f, 0.86f, 0.42f),   // 초
-        new Color(0.34f, 0.62f, 1.00f),   // 파
-    };
     static readonly Color SteelSpark = new Color(0.78f, 0.86f, 0.96f);            // 강철에서 튀는 차가운 빛
     static readonly Color MarkDim = new Color(0.07f, 0.09f, 0.18f);               // 빛이 잦아든 쪽 (판 네이비)
     static readonly Color MarkDoneColor = new Color(0.72f, 0.76f, 0.80f, 0.16f);  // 깬 칸 — 흔적만 남긴다
@@ -42,6 +36,25 @@ public class BoardView : MonoBehaviour
 
     SpriteRenderer[,] tiles;
     SpriteRenderer[,] overlays;   // 아이템 아이콘
+    // 참고 아트(chroma_drop_game_board.html)에서 잘라낸 블록 그림.
+    // 있으면 이걸 그대로 쓰고, 없으면 아래 절차 생성 스프라이트로 돌아간다.
+    Sprite[] jellyArt;            // 팔레트 색 순서와 같은 4장 (보드 밖에서 쓰는 대표 얼굴)
+    Sprite[][] faceArt;           // 색마다 표정 여러 장 — 칸마다 다른 얼굴이 뜬다
+    Sprite[] starArt;             // 목표 칸 — 같은 색의 별 모양 블록
+    Sprite[] blinkArt, winkArt;   // 표정 변화 — 눈 감기 / 윙크
+    int[,] cellColor;             // 칸마다 지금 무슨 색인지 (표정 스프라이트를 고를 때 쓴다)
+    Sprite[] steelArt, brickArt;   // 표정 있는 강철·벽돌 2종씩 — 칸마다 무작위로 하나
+    Sprite[] mushArt;             // 독버섯(숙주) 4종 — 칸마다 무작위로 하나
+    Sprite[] poisonArt;           // 독블록 4종
+    Sprite[] arrowHArt, arrowVArt;  // 가로/세로 화살표 블록 — 팔레트 색마다 한 장
+    bool useArt;
+    float tileDraw = TileScale;   // 아트는 여백을 품고 있어 조금 크게 그린다
+
+    SpriteRenderer[,] faces;      // 광택+표정 오버레이 — 색 타일 위에 공통으로 얹는다
+    Sprite faceSprite;            // 광택 + 표정
+    Sprite glossSprite;           // 광택만 — 목표 칸(별) 은 표정이 없다
+    SpriteRenderer[] ghostGloss;  // 들고 있는 조각 위의 광택+표정
+    SpriteRenderer[][] trayGloss; // 트레이 조각 위의 광택+표정
     SpriteRenderer[,] marks;      // 좌표 목표 — 블록 가장자리에서 바깥으로 번지는 빛
     SpriteRenderer[,] markFills;  // 그 블록 위를 덮는 그라데이션 — 칸 자체가 물들어 보이게
     readonly List<Point> markList = new List<Point>();    // 아직 깨야 하는 칸
@@ -113,19 +126,26 @@ public class BoardView : MonoBehaviour
         if (built) return;
         built = true;
 
+        LoadTileArt();
         currentSkin = Wallet.Skin;
         tile = MakeTileSprite(currentSkin);
+        faceSprite = MakeOverlaySprite(true);
+        glossSprite = MakeOverlaySprite(false);
         markGlow = MakeMarkGlowSprite();
-        markFill = MakeMarkFillSprite();
+        markFill = MakeStarSprite();   // 목표 칸 중앙에 별이 반짝인다 (참고: "가운데 별 = 반짝이 블록")
         ring = MakeRingSprite();
         soft = MakeSoftSprite();
         // 내구도 단계마다 금이 한 줄씩 늘어난다 (온전함 → 다 깨지기 직전)
         obstacle = new Sprite[ObstacleStyle.Stages];
         for (int i = 0; i < obstacle.Length; i++) obstacle[i] = MakeObstacleSprite(i);
-        icons[ItemType.Row] = MakeIcon(ItemType.Row);
-        icons[ItemType.Col] = MakeIcon(ItemType.Col);
+        // 가로·세로 아이템은 참고 아트의 화살표 그림을 그대로 쓴다
+        icons[ItemType.Row] = arrowHArt != null ? arrowHArt[0] : MakeIcon(ItemType.Row);
+        icons[ItemType.Col] = arrowVArt != null ? arrowVArt[0] : MakeIcon(ItemType.Col);
         icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
-        icons[ItemType.Bomb5] = MakeIcon(ItemType.Bomb5);
+        // 폭탄도 참고 아트를 그대로 쓴다 (없으면 절차 생성으로 돌아간다)
+        var bombArt = LoadArt("items/bomb");
+        bomb = bombArt != null ? bombArt : MakeBombSprite();
+        icons[ItemType.Bomb5] = bomb;   // 판 위 폭탄 칸과 손에 든 폭탄이 같은 그림이다
 
         // 보드 레이어 (뒤 → 앞):
         //   ① 흰색 20% 헤일로 — 보드 뒤 배경의 대비를 눌러 경계를 만든다
@@ -139,26 +159,28 @@ public class BoardView : MonoBehaviour
         float border = surface + 2f * (5f * Px);
 
         MakePanel("halo", center, border + 1.6f, border + 1.6f, new Color(1, 1, 1, 0.20f), -8, radius * 1.6f);
-        MakePanel("shadow", center + new Vector3(0, -6f * Px, 0), border, border, BoardNavy, -7, radius);
-        MakePanel("border", center, border, border, BoardNavy, -6, radius);
+        MakePanel("shadow", center + new Vector3(0, -6f * Px, 0), border, border, BoardShadow, -7, radius);
+        MakePanel("border", center, border, border, BoardFrame, -6, radius);
         MakePanel("surface", center, surface, surface, BoardCream, -5, radius - 5f * Px);
         MakePanel("grid", center, inner, inner, EmptyColor, -4, radius - 9f * Px);
 
+        cellColor = new int[Board.W, Board.H];
         tiles = new SpriteRenderer[Board.W, Board.H];
         overlays = new SpriteRenderer[Board.W, Board.H];
+        faces = new SpriteRenderer[Board.W, Board.H];
         marks = new SpriteRenderer[Board.W, Board.H];
         markFills = new SpriteRenderer[Board.W, Board.H];
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
-                // 블록 위를 덮는 그라데이션. 블록 색을 지우지 않고 물들이는 정도로만 얹는다.
+                // 목표 칸 중앙의 별. 칸을 살짝 넘칠 만큼 크게 그려야 "반짝이는 특별한 칸" 이 확 읽힌다.
                 var fg = new GameObject("mf_" + x + "_" + y);
                 fg.transform.SetParent(transform, false);
                 fg.transform.localPosition = new Vector3(x, y, -0.1f);
-                fg.transform.localScale = Vector3.one * TileScale;
+                fg.transform.localScale = Vector3.one * TileScale * 1.35f;
                 var fsr = fg.AddComponent<SpriteRenderer>();
                 fsr.sprite = markFill;
-                fsr.sortingOrder = 1;       // 타일(0) 위, 아이템 아이콘(2) 아래
+                fsr.sortingOrder = 2;       // 표정(1) 위, 아이템 아이콘(3) 아래
                 fsr.enabled = false;
                 markFills[x, y] = fsr;
 
@@ -169,30 +191,44 @@ public class BoardView : MonoBehaviour
                 mg.transform.localScale = Vector3.one * MarkScale;
                 var msr = mg.AddComponent<SpriteRenderer>();
                 msr.sprite = markGlow;
-                msr.sortingOrder = 3;       // 타일(0)·아이템(2) 위, 범위 예고(4) 아래
+                msr.sortingOrder = 4;       // 타일·표정·아이템 위, 범위 예고(5) 아래
                 msr.enabled = false;
                 marks[x, y] = msr;
 
                 var go = new GameObject("t_" + x + "_" + y);
                 go.transform.SetParent(transform, false);
-                go.transform.localPosition = new Vector3(x, y, 0);
-                go.transform.localScale = Vector3.one * TileScale;
+                go.transform.localPosition = new Vector3(x, y, TileZ(y));
+                go.transform.localScale = Vector3.one * tileDraw;
                 var sr = go.AddComponent<SpriteRenderer>();
                 sr.sprite = tile;
                 tiles[x, y] = sr;
+
+                // 표정(눈·입·볼) — 타일의 자식으로 붙인다. 그래야 낙하·스탬프 스쿼시 때
+                // 타일과 같이 움직인다(따로 위치를 갱신할 필요가 없다). 목표 칸이 되면
+                // 별(markFill)이 위에서 덮어써서 참고 UI 처럼 "특별 블록엔 표정이 없다" 가 재현된다.
+                var fcg = new GameObject("face_" + x + "_" + y);
+                fcg.transform.SetParent(go.transform, false);
+                fcg.transform.localPosition = new Vector3(0, 0, -0.05f);
+                fcg.transform.localScale = Vector3.one;
+                var fcsr = fcg.AddComponent<SpriteRenderer>();
+                fcsr.sprite = faceSprite;
+                fcsr.sortingOrder = 1;
+                fcsr.enabled = false;
+                faces[x, y] = fcsr;
 
                 var og = new GameObject("i_" + x + "_" + y);
                 og.transform.SetParent(transform, false);
                 og.transform.localPosition = new Vector3(x, y, -0.5f);
                 og.transform.localScale = Vector3.one * 0.8f;
                 var osr = og.AddComponent<SpriteRenderer>();
-                osr.sortingOrder = 2;
+                osr.sortingOrder = 3;
                 osr.enabled = false;
                 overlays[x, y] = osr;
             }
 
         ghost = new SpriteRenderer[8]; // 최대 조각 5칸 + 여유
         ghostRing = new SpriteRenderer[8];
+        ghostGloss = new SpriteRenderer[8];
         ghostX = new int[8]; ghostY = new int[8]; ghostBase = new Color[8];
         carryShadow = new SpriteRenderer[8];
         for (int i = 0; i < ghost.Length; i++)
@@ -202,7 +238,7 @@ public class BoardView : MonoBehaviour
             rg.transform.localScale = Vector3.one;   // 칸 크기 — 이웃 고스트와 겹치지 않는다
             var rsr = rg.AddComponent<SpriteRenderer>();
             rsr.sprite = ring;
-            rsr.sortingOrder = 5;
+            rsr.sortingOrder = 6;
             rsr.enabled = false;
             ghostRing[i] = rsr;
 
@@ -210,7 +246,7 @@ public class BoardView : MonoBehaviour
             sg.transform.SetParent(transform, false);
             var ssr = sg.AddComponent<SpriteRenderer>();
             ssr.sprite = tile;
-            ssr.sortingOrder = 5;
+            ssr.sortingOrder = 6;
             ssr.enabled = false;
             carryShadow[i] = ssr;
 
@@ -219,13 +255,22 @@ public class BoardView : MonoBehaviour
             go.transform.localScale = Vector3.one;   // 밑 타일보다 크되 칸은 안 넘는다
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = tile;
-            sr.sortingOrder = 6;
+            sr.sortingOrder = 7;
             sr.enabled = false;
             ghost[i] = sr;
+
+            // 들고 있는 조각도 보드 블록과 같은 광택·표정을 얹는다 — 자식이라 같이 움직인다
+            var gg = new GameObject("ghostgloss_" + i);
+            gg.transform.SetParent(go.transform, false);
+            gg.transform.localPosition = new Vector3(0, 0, -0.05f);
+            var gsr = gg.AddComponent<SpriteRenderer>();
+            gsr.sprite = faceSprite;
+            gsr.sortingOrder = 8;
+            gsr.enabled = false;
+            ghostGloss[i] = gsr;
         }
 
-        // 폭발 범위 미리보기 — 고스트(5,6)보다 아래, 타일 위
-        bomb = MakeBombSprite();
+        // 폭발 범위 미리보기 — 고스트(6,7)보다 아래, 타일 위
         steelStages = new Sprite[ObstacleStyle.Stages];
         for (int i = 0; i < steelStages.Length; i++) steelStages[i] = MakeSteelSprite(i);
         var blastSprite = MakePanelSprite(0.3f);
@@ -236,7 +281,7 @@ public class BoardView : MonoBehaviour
             bg.transform.SetParent(transform, false);
             var bsr = bg.AddComponent<SpriteRenderer>();
             bsr.sprite = blastSprite;
-            bsr.sortingOrder = 4;
+            bsr.sortingOrder = 5;
             bsr.enabled = false;
             blast[i] = bsr;
         }
@@ -259,6 +304,19 @@ public class BoardView : MonoBehaviour
         sr.sprite = MakePanelSprite(Mathf.Clamp01(radiusWorld / w));
         sr.color = c;
         sr.sortingOrder = order;
+        sr.enabled = framePanelsOn;
+        framePanels.RemoveAll(x => x == null);   // 판을 다시 지을 때 지워진 것들
+        framePanels.Add(sr);
+    }
+
+    bool framePanelsOn = true;
+    readonly List<SpriteRenderer> framePanels = new List<SpriteRenderer>();
+
+    /// <summary>보드 판(헤일로·그림자·테두리·서피스·바닥)을 그릴지. 플레이 아트에 판이 그려져 있으면 끈다.</summary>
+    public void SetFramePanels(bool on)
+    {
+        framePanelsOn = on;
+        foreach (var sr in framePanels) if (sr != null) sr.enabled = on;
     }
 
     void BuildParticlePool()
@@ -279,7 +337,7 @@ public class BoardView : MonoBehaviour
             go.transform.SetParent(root, false);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = soft;
-            sr.sortingOrder = 8;
+            sr.sortingOrder = 10;
             sr.enabled = false;
             pTr[i] = go.transform;
             pSr[i] = sr;
@@ -288,7 +346,7 @@ public class BoardView : MonoBehaviour
 
     void BuildSparklePool()
     {
-        star = MakeStarSprite();
+        star = MakeSparkSprite();
         kTr = new Transform[MaxSparks];
         kSr = new SpriteRenderer[MaxSparks];
         kVel = new Vector2[MaxSparks];
@@ -308,7 +366,7 @@ public class BoardView : MonoBehaviour
             go.transform.SetParent(root, false);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = star;
-            sr.sortingOrder = 7;      // 블록·표시 위, 파괴 파티클(8) 아래
+            sr.sortingOrder = 9;      // 블록·고스트 위, 파괴 파티클(10) 아래
             sr.enabled = false;
             kTr[i] = go.transform;
             kSr[i] = sr;
@@ -330,7 +388,7 @@ public class BoardView : MonoBehaviour
             go.transform.SetParent(root, false);
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sprite = shock;
-            sr.sortingOrder = 9;          // 파티클(8)보다 위
+            sr.sortingOrder = 11;          // 파티클(10)보다 위
             sr.enabled = false;
             rTr[i] = go.transform;
             rSr[i] = sr;
@@ -378,18 +436,284 @@ public class BoardView : MonoBehaviour
 
     public void SetVisible(bool v) { gameObject.SetActive(v); }
 
+    /// <summary>참고 아트에서 잘라낸 블록 그림을 읽는다. 한 장이라도 없으면
+    /// 절차 생성 스프라이트로 돌아간다 — 아트가 빠져도 게임은 돈다.</summary>
+    void LoadTileArt()
+    {
+        jellyArt = new Sprite[4];
+        faceArt = new Sprite[4][];
+        for (int i = 0; i < jellyArt.Length; i++)
+        {
+            jellyArt[i] = LoadArt("tiles/jelly_" + i);
+            if (jellyArt[i] == null) return;
+
+            // 같은 색이라도 칸마다 표정이 달라야 한다 — 참고 아트가 그렇게 그려져 있다.
+            // jelly_i 가 첫 장이고, jelly_i_1 부터 있는 만큼 이어 붙인다.
+            var faces = new List<Sprite> { jellyArt[i] };
+            for (int k = 1; ; k++)
+            {
+                var extra = LoadArt("tiles/jelly_" + i + "_" + k);
+                if (extra == null) break;
+                faces.Add(extra);
+            }
+            faceArt[i] = faces.ToArray();
+        }
+        starArt = new Sprite[jellyArt.Length];
+        blinkArt = new Sprite[jellyArt.Length];
+        winkArt = new Sprite[jellyArt.Length];
+        for (int i = 0; i < starArt.Length; i++)
+        {
+            starArt[i] = LoadArt("tiles/star_" + i);
+            blinkArt[i] = LoadArt("tiles/blink_" + i);
+            winkArt[i] = LoadArt("tiles/wink_" + i);
+        }
+
+        steelArt = new Sprite[2];
+        brickArt = new Sprite[2];
+        for (int i = 0; i < 2; i++)
+        {
+            steelArt[i] = LoadArt("tiles/steel_" + i);
+            brickArt[i] = LoadArt("tiles/brick_" + i);
+        }
+        mushArt = new Sprite[4];
+        poisonArt = new Sprite[4];
+        for (int i = 0; i < 4; i++)
+        {
+            mushArt[i] = LoadArt("tiles/mush_" + i);
+            poisonArt[i] = LoadArt("tiles/poison_" + i);
+        }
+        if (steelArt[0] == null || brickArt[0] == null) return;
+
+        // 화살표 블록도 칸의 색을 따른다 — 팔레트 색마다 한 장씩 구워 뒀다
+        arrowHArt = LoadArtSet("tiles/arrow_h", jellyArt.Length);
+        arrowVArt = LoadArtSet("tiles/arrow_v", jellyArt.Length);
+
+        useArt = true;
+        tileDraw = 1.10f;      // 아트는 그림 둘레에 여백이 있어 칸을 꽉 채우려면 조금 키운다 — 목업처럼 블록끼리 맞닿게
+        bandageStages = new Sprite[ObstacleStyle.Stages];
+        whiteArt = MakeWhiteTileSprite();
+    }
+
+    /// <summary>색마다 한 장씩인 그림 묶음. 색깔별 파일이 없으면 색 없는 한 장으로 전부 채운다.</summary>
+    static Sprite[] LoadArtSet(string path, int n)
+    {
+        var set = new Sprite[n];
+        bool any = false;
+        for (int i = 0; i < n; i++)
+        {
+            set[i] = LoadArt(path + "_" + i);
+            if (set[i] != null) any = true;
+        }
+        if (any)
+        {
+            for (int i = 0; i < n; i++) if (set[i] == null) set[i] = set[0];
+            return set;
+        }
+        var one = LoadArt(path);
+        if (one == null) return null;
+        for (int i = 0; i < n; i++) set[i] = one;
+        return set;
+    }
+
+    static Sprite LoadArt(string path)
+    {
+        var t = Resources.Load<Texture2D>(path);
+        if (t == null) return null;
+        // 긴 변을 1칸(1 유닛)에 맞춘다. 가로 기준으로 맞추면 세로가 긴 그림이
+        // 칸을 넘겨 위아래로 눌린 것처럼 보인다.
+        return Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f),
+                             Mathf.Max(t.width, t.height));
+    }
+
+    /// <summary>아랫줄이 윗줄을 덮도록 줄마다 깊이를 조금씩 준다.
+    /// 독버섯처럼 칸보다 큰 그림은 위 칸으로 넘치는데, 정렬이 같으면 위 칸 블록이
+    /// 그 위에 그려져 갓이 잘려 보인다. 떨어지는 블록도 도착할 줄의 깊이를 받으므로
+    /// 지나치는 윗줄들 위로 온전히 보인다.</summary>
+    static float TileZ(int y) { return y * 0.02f; }
+
+    /// <summary>떨어지거나 착지 중인 블록의 깊이. 멈춰 있는 모든 칸(0 ~ 0.2)보다 앞이라
+    /// 지나가는 칸에 파묻히지 않는다. 독버섯처럼 칸보다 큰 그림이 떨어질 때
+    /// 아래 칸에 잘려 보이던 문제가 여기서 생겼다. 움직이는 것들끼리는 원래 줄 순서를 지킨다.</summary>
+    static float MovingZ(int y) { return -0.30f + y * 0.002f; }
+
+    /// <summary>칸마다 늘 같은 변형을 고른다. 매번 다시 뽑으면 그릴 때마다 그림이 바뀐다.</summary>
+    static Sprite Variant(Sprite[] set, int x, int y)
+    {
+        if (set == null) return null;
+        int h = (x * 73856093) ^ (y * 19349663);
+        return set[Mathf.Abs(h) % set.Length];
+    }
+
+    /// <summary>색 인덱스에 해당하는 블록 그림. 아트가 없으면 절차 생성 타일.</summary>
+    Sprite TileArtFor(int c)
+    {
+        if (!useArt || c < 0) return tile;
+        return jellyArt[c % jellyArt.Length];
+    }
+
+    /// <summary>이 칸에 그릴 블록 그림. 목표 칸은 같은 색의 별 모양 블록이 된다 —
+    /// 예전처럼 블록 위에 큰 별을 얹으면 칸 밖으로 삐져나온다.</summary>
+    Sprite TileArtFor(int c, bool marked)
+    {
+        if (!useArt || c < 0) return tile;
+        if (marked && starArt != null && starArt[c % starArt.Length] != null)
+            return starArt[c % starArt.Length];
+        return jellyArt[c % jellyArt.Length];
+    }
+
+    /// <summary>판 위의 칸에 그릴 그림. 같은 색이라도 칸마다 표정이 다르다.
+    /// 좌표 해시로 고르므로 다시 그려도 같은 칸은 같은 얼굴이다.</summary>
+    Sprite TileArtFor(int c, bool marked, int x, int y)
+    {
+        if (!useArt || c < 0) return tile;
+        if (marked && starArt != null && starArt[c % starArt.Length] != null)
+            return starArt[c % starArt.Length];
+        var set = faceArt != null ? faceArt[c % faceArt.Length] : null;
+        return set != null && set.Length > 0 ? Variant(set, x, y) : jellyArt[c % jellyArt.Length];
+    }
+
+    Sprite[] bandageStages;
+    Sprite whiteArt;              // 아트 타일과 같은 실루엣의 흰 판 (파괴·타격 플래시용)
+
+    /// <summary>아트 블록과 같은 방석 실루엣의 흰 판.</summary>
+    static Sprite MakeWhiteTileSprite()
+    {
+        const int S = 96;
+        const float Fill = 0.91f;      // 아트에서 블록이 차지하는 비율
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float u = (((x + 0.5f) / S) * 2f - 1f) / Fill;
+                float v = (((y + 0.5f) / S) * 2f - 1f) / Fill;
+                px[y * S + x] = new Color(1, 1, 1, Mathf.Clamp01((1f - JellyDist(u, v)) * S * 0.20f));
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    /// <summary>강철·벽돌 위에 얹는 금. 아트 자체는 온전한 그림 한 장이라
+    /// 손상 단계는 이 금으로 보여준다 (0 단계면 아무것도 안 그린다).</summary>
+    void SetBandage(SpriteRenderer ov, int stage)
+    {
+        if (stage <= 0) { ov.enabled = false; return; }
+        if (bandageStages[stage] == null) bandageStages[stage] = MakeBandageSprite(stage);
+        ov.enabled = true;
+        ov.sprite = bandageStages[stage];
+        ov.color = Color.white;
+        ov.transform.localScale = Vector3.one * tileDraw;
+    }
+
+    /// <summary>손상 단계별 금. 단계가 오를수록 굵고 여러 갈래가 된다.</summary>
+    /// <summary>맞을수록 십자 밴드를 하나씩 더 붙인다. 처음 깨지면 하나, 더 깨지면 둘.
+    /// 금이 가는 것보다 이 게임의 말랑한 톤에 맞다. 젤리 블록과 따로 놀지 않게
+    /// 반투명 유백색 + 위쪽 광택으로 같은 재질처럼 보이게 그린다.</summary>
+    static Sprite MakeBandageSprite(int stage)
+    {
+        const int S = 128;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+
+        // (중심x, 중심y, 각도, 긴 쪽 길이) — 십자의 짧은 쪽은 이 길이의 0.62배
+        float[,] cross = {
+            { 0.52f, 0.56f,  16f, 0.60f },
+            { 0.36f, 0.33f, -28f, 0.50f },
+        };
+        int n = stage <= (ObstacleStyle.Stages - 1) / 2 ? 1 : 2;
+        n = Mathf.Clamp(n, 1, cross.GetLength(0));
+
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float nx = (x + 0.5f) / S, ny = (y + 0.5f) / S;
+                float u = nx * 2f - 1f, v = ny * 2f - 1f;
+                if (JellyDist(u, v) > 0.94f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
+
+                Color acc = new Color(0, 0, 0, 0);
+                for (int k = 0; k < n; k++)
+                {
+                    float cx = cross[k, 0], cy = cross[k, 1];
+                    float rad = cross[k, 2] * Mathf.Deg2Rad, len = cross[k, 3];
+                    float dx = nx - cx, dy = ny - cy;
+                    float lx = dx * Mathf.Cos(rad) + dy * Mathf.Sin(rad);
+                    float ly = -dx * Mathf.Sin(rad) + dy * Mathf.Cos(rad);
+
+                    // 십자 — 긴 띠와 짧은 띠를 겹친다. 둘 중 더 안쪽인 쪽으로 음영을 잡는다
+                    var a1 = Strip(lx, ly, len, StripHalf);
+                    var a2 = Strip(ly, lx, len * 0.62f, StripHalf);
+                    float a = Mathf.Max(a1.x, a2.x);
+                    if (a <= 0f) continue;
+                    float across = a1.x >= a2.x ? ly : lx;      // 띠를 가로지르는 좌표 — 광택·그늘용
+
+                    // 젤리처럼: 위쪽은 흰 광택, 아래쪽은 살짝 그늘, 전체는 반투명
+                    float t = Mathf.Clamp01(across / StripHalf * 0.5f + 0.5f);
+                    Color c = Color.Lerp(BandGloss, BandShade, t);
+                    c.a = a * Mathf.Lerp(0.94f, 0.80f, t);
+                    acc = Over(c, acc);
+                }
+                px[y * S + x] = acc;
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    const float StripHalf = 0.062f;                                   // 띠 두께의 절반
+    static readonly Color BandGloss = new Color(1.00f, 0.99f, 0.96f); // 위쪽 광택
+    static readonly Color BandShade = new Color(0.90f, 0.83f, 0.76f); // 아래쪽 그늘
+
+    /// <summary>끝이 둥근 띠. x 는 커버리지, y 는 안 쓴다 (Vector2 로 묶어 두 번 재지 않게).</summary>
+    static Vector2 Strip(float lx, float ly, float len, float halfW)
+    {
+        float ex = Mathf.Max(Mathf.Abs(lx) - (len * 0.5f - halfW), 0f);
+        float d = Mathf.Sqrt(ex * ex + ly * ly);
+        return new Vector2(Mathf.Clamp01((halfW - d) * 128f * 0.6f), 0f);
+    }
+
+    /// <summary>위에 얹기 — 반창고가 겹칠 때 쓴다.</summary>
+    static Color Over(Color top, Color bottom)
+    {
+        float a = top.a + bottom.a * (1f - top.a);
+        if (a <= 0f) return new Color(0, 0, 0, 0);
+        return new Color((top.r * top.a + bottom.r * bottom.a * (1f - top.a)) / a,
+                         (top.g * top.a + bottom.g * bottom.a * (1f - top.a)) / a,
+                         (top.b * top.a + bottom.b * bottom.a * (1f - top.a)) / a, a);
+    }
+
     /// <summary>칸 하나를 그린다. 아이템 아이콘까지 여기서 함께 다룬다 —
     /// 콘크리트는 아래 색 칸 + 구멍 뚫린 콘크리트 덮개 두 겹이라 두 레이어를 같이 정해야 한다.</summary>
     void PaintTile(int x, int y, int c, int hp, ItemType item, Color[] palette)
     {
         var sr = tiles[x, y];
         var ov = overlays[x, y];
+        var fc = faces[x, y];
+        cellColor[x, y] = c;
+
+        // 심지가 타야 할 폭탄 칸을 갱신한다
+        for (int i = fuseCells.Count - 1; i >= 0; i--)
+            if (fuseCells[i].X == x && fuseCells[i].Y == y) fuseCells.RemoveAt(i);
+        if (item == ItemType.Bomb5) fuseCells.Add(new Point(x, y));
 
         if (c == Board.Steel)
         {
+            fc.enabled = false;
             // 내구도 0 인 강철(오염 근원)은 늘 온전한 모습이다 — 안 부서지니 상태도 없다.
-            // 내구도를 준 강철은 맞을수록 금이 가고 모서리가 부스러진다.
+            // 내구도를 준 강철은 맞을수록 금이 간다.
             int st = hp > 0 ? ObstacleStyle.StageFor(hp, steelMaxHp) : 0;
+
+            if (useArt)
+            {
+                // 오염 판의 못 깨는 칸은 독블록을 만들어내는 숙주 버섯이다
+                bool source = rotStage && hp == 0;
+                var mush = source ? Variant(mushArt, x, y) : null;
+                sr.sprite = mush != null ? mush : Variant(steelArt, x, y);
+                sr.color = Color.white;
+                sr.transform.localScale = Vector3.one * tileDraw;
+                SetBandage(ov, source ? 0 : st);
+                return;
+            }
 
             sr.sprite = tile;
             sr.color = EmptyColor;
@@ -404,9 +728,21 @@ public class BoardView : MonoBehaviour
 
         if (c == Board.Obstacle)
         {
+            fc.enabled = false;
             // 내구도는 스테이지마다 다르다. 상수로 계산하면 손상이 안 보인 채로
             // 한 방에 사라지는 것처럼 보인다 — 이 판의 최대 내구도를 기준으로 환산한다.
             int stage = ObstacleStyle.StageFor(hp, obstacleMaxHp);
+
+            if (useArt)
+            {
+                // 오염 판에서는 벽돌이 곧 독블록이다 (그림에 색이 들어 있어 틴트는 흰색)
+                var poison = rotStage ? Variant(poisonArt, x, y) : null;
+                sr.sprite = poison != null ? poison : Variant(brickArt, x, y);
+                sr.color = Color.white;
+                sr.transform.localScale = Vector3.one * tileDraw;
+                SetBandage(ov, stage);
+                return;
+            }
 
             // 아래층: 마지막 단계에서만 조각 틈으로 색이 비친다. 그 전에는 배경색이라
             // 콘크리트 주위에 유채색 테두리가 남지 않는다.
@@ -424,15 +760,42 @@ public class BoardView : MonoBehaviour
             return;
         }
 
-        sr.sprite = tile;
-        sr.color = c == Board.Empty ? EmptyColor : palette[c];
-        sr.transform.localScale = Vector3.one * TileScale;
+        // 가로·세로 폭탄은 참고 아트의 화살표 블록을 통째로 쓴다 (글리프를 얹지 않는다)
+        Sprite[] arrowSet = null;
+        if (useArt && item == ItemType.Row) arrowSet = arrowHArt;
+        else if (useArt && item == ItemType.Col) arrowSet = arrowVArt;
+        Sprite arrowTile = arrowSet != null && c >= 0 ? arrowSet[c % arrowSet.Length] : null;
+        if (arrowTile != null)
+        {
+            sr.sprite = arrowTile;
+            sr.color = Color.white;
+            sr.transform.localScale = Vector3.one * tileDraw;
+            fc.enabled = false;
+            ov.enabled = false;
+            return;
+        }
+
+        sr.sprite = TileArtFor(c, marks[x, y].enabled, x, y);
+        // 아트에는 색이 이미 들어 있다. 절차 생성 타일일 때만 팔레트 색을 곱한다.
+        sr.color = useArt ? Color.white : (c == Board.Empty ? EmptyColor : palette[c]);
+        if (useArt && c == Board.Empty) sr.color = new Color(1, 1, 1, 0);
+        sr.transform.localScale = Vector3.one * tileDraw;
+
+        // 아트에는 광택·표정이 이미 그려져 있으므로 오버레이를 얹지 않는다.
+        // 절차 생성 타일일 때만 광택을 얹고, 목표 칸(별)에서는 표정을 뺀다.
+        fc.enabled = !useArt && c != Board.Empty;
+        if (fc.enabled)
+        {
+            fc.sprite = marks[x, y].enabled ? glossSprite : faceSprite;
+            fc.color = Color.white;
+        }
 
         ov.enabled = item != ItemType.None;
         if (item != ItemType.None)
         {
             ov.sprite = icons[item];
-            ov.transform.localScale = Vector3.one * 0.8f;   // 아이콘은 작게
+            bool artArrow = useArt && (item == ItemType.Row || item == ItemType.Col);
+            ov.transform.localScale = Vector3.one * (artArrow ? tileDraw : 0.8f);
         }
     }
 
@@ -457,7 +820,7 @@ public class BoardView : MonoBehaviour
                 if (t == Board.Steel) steelList.Add(new Point(x, y));
                 if (rotStage && (t == Board.Steel || t == Board.Obstacle)) rotList.Add(new Point(x, y));
                 PaintTile(x, y, t, hp, b.GetItem(x, y), palette);
-                tiles[x, y].transform.localPosition = new Vector3(x, y, 0);
+                tiles[x, y].transform.localPosition = new Vector3(x, y, TileZ(y));
                 overlays[x, y].transform.localPosition = new Vector3(x, y, -0.5f);
             }
     }
@@ -473,7 +836,8 @@ public class BoardView : MonoBehaviour
             {
                 bool on = m != null && m[x, y];
                 marks[x, y].enabled = on;
-                markFills[x, y].enabled = on;
+                markFills[x, y].enabled = on && !useArt;   // 아트에서는 블록 자체가 별이다
+                if (faces != null) faces[x, y].sprite = on ? glossSprite : faceSprite;
                 if (on) markList.Add(new Point(x, y));
             }
         PulseMarks();
@@ -482,6 +846,41 @@ public class BoardView : MonoBehaviour
     /// <summary>오염 스테이지인가. 이 판에서는 벽돌이 곧 오염이고, 못 깨는 칸은 오염 근원이다 —
     /// 그래서 칸마다 따로 표시할 필요 없이 판 전체를 한 번만 정해 주면 된다.</summary>
     public void SetPollutionStage(bool on) { rotStage = on; }
+
+    /// <summary>그 칸 타일의 Transform (테스트용).</summary>
+    public Transform TileTransformForTest(int x, int y) { return tiles[x, y].transform; }
+
+    /// <summary>그 칸에 지금 그려진 그림 (테스트용).</summary>
+    public Sprite TileSpriteForTest(int x, int y) { return tiles[x, y].sprite; }
+
+    /// <summary>독블록 그림인가 (테스트용).</summary>
+    public bool IsPoisonSprite(Sprite sp) { return Has(poisonArt, sp); }
+
+    /// <summary>독버섯 그림인가 (테스트용).</summary>
+    public bool IsMushSprite(Sprite sp) { return Has(mushArt, sp); }
+
+    /// <summary>벽돌 그림인가 (테스트용).</summary>
+    public bool IsBrickSprite(Sprite sp) { return Has(brickArt, sp); }
+
+    static bool Has(Sprite[] set, Sprite sp)
+    {
+        if (set == null || sp == null) return false;
+        foreach (var t in set) if (t == sp) return true;
+        return false;
+    }
+
+    /// <summary>지금 오염 판 그림으로 그리고 있는가 (테스트용).</summary>
+    public bool PollutionLook { get { return rotStage; } }
+
+    /// <summary>아트 타일을 쓰고 있는가 (테스트용).</summary>
+    public bool UsingArt { get { return useArt; } }
+
+    /// <summary>그 색의 화살표 블록 그림 (테스트용).</summary>
+    public Sprite ArrowArtForTest(ItemType it, int color)
+    {
+        var set = it == ItemType.Row ? arrowHArt : arrowVArt;
+        return set == null || color < 0 ? null : set[color % set.Length];
+    }
 
     /// <summary>목표 칸 하나를 깼다. 지우지 않고 흐리게 남긴다 — 어디를 깼는지 보이게.</summary>
     public void ClearMark(int x, int y)
@@ -493,18 +892,19 @@ public class BoardView : MonoBehaviour
         // 새어나오는 빛은 끈다. 켜 둔 채 색만 바꾸면 칸 전체가 계속 물들어 있어
         // 아직 깨야 하는 칸처럼 보인다.
         marks[x, y].enabled = false;
+        faces[x, y].sprite = faceSprite;   // 별이 빠졌으니 다시 표정이 있는 보통 블록이다
 
         // 흔적은 칸 안쪽에만, 맥동 없이 옅게 남긴다 — 어디를 이미 깼는지는 보여야 한다.
-        markFills[x, y].enabled = true;
+        markFills[x, y].enabled = !useArt;
         markFills[x, y].color = MarkDoneColor;
     }
 
-    /// <summary>남은 목표 칸의 가장자리를 빨·노·초·파 순으로 물들인다.
+    /// <summary>남은 목표 칸의 가장자리가 흰빛으로 숨쉬듯 반짝인다.
+    /// 무지개색으로 도는 대신 흰 반짝이 가루(SpawnSparkle)가 반짝임을 맡는다.
     /// 칸마다 위상을 어긋나게 줘서 칸 하나하나가 따로 읽힌다.</summary>
     void PulseMarks()
     {
         float t = Time.time;
-        int n = MarkCycle.Length;
 
         for (int i = 0; i < markList.Count; i++)
         {
@@ -512,23 +912,17 @@ public class BoardView : MonoBehaviour
             // 가로·세로로 다른 보폭이라 이웃 칸끼리 색이 겹치지 않는다
             float phase = Frac(x * 0.29f + y * 0.47f);
 
-            // 색 사이를 이어서 건너간다 — 뚝뚝 끊기면 반짝임이 아니라 점멸로 보인다
-            float u = (Frac(t * 0.42f + phase)) * n;
-            int a = (int)u % n;
-            var c = Color.Lerp(MarkCycle[a], MarkCycle[(a + 1) % n], Frac(u));
-
             float blink = 0.5f + 0.5f * Mathf.Sin((t + phase * 1.7f) * 4f);
             blink = blink * blink * (3f - 2f * blink);   // 양 끝에 머무는 시간을 늘린다
 
-            // 블록 밖으로 새어나오는 빛. 밝은 쪽에서 확 번지고 어두운 쪽에서는 거의 사라진다.
-            c.a = 0.10f + 0.42f * blink;
+            // 흰 빛이 세면 블록이 하얗게 묻힌다 — 아주 옅게만 두고 반짝임은 별가루가 맡는다
+            var c = Color.Lerp(MarkGold, Color.white, blink * 0.35f);
+            c.a = 0.05f + 0.13f * blink;
             marks[x, y].color = c;
 
-            // 블록 속은 밝아지기만 하지 않고 어두워지기도 한다 —
-            // 한쪽으로만 움직이면 '조금 밝은 칸' 으로 보여서 눈에 안 띈다.
-            // 색은 얹지 않는다. 색까지 칠하면 무슨 색 블록인지 못 읽는다.
-            var lit = Color.Lerp(MarkDim, Color.white, blink);
-            lit.a = 0.42f;
+            // 별은 제 색(노랑)을 그대로 두고 밝기만 숨쉰다 — 틴트로 색을 덮으면 별색이 죽는다.
+            var lit = Color.Lerp(new Color(0.90f, 0.88f, 0.82f), Color.white, blink);
+            lit.a = 0.88f + 0.12f * blink;
             markFills[x, y].color = lit;
         }
     }
@@ -590,7 +984,8 @@ public class BoardView : MonoBehaviour
         sparkTimer -= dt;
         if (sparkTimer > 0f) return;
         // 하한은 한 프레임(60fps)이다. 이보다 짧게 잡아 봐야 한 프레임에 한 번밖에 못 튄다.
-        sparkTimer = Mathf.Max(0.016f, 0.05f / spots);
+        // 무지개색 테두리를 뺀 대신 흰 가루를 더 자주 띄운다.
+        sparkTimer = Mathf.Max(0.016f, 0.020f / spots);
 
         // 한 자리에서 여러 개가 같이 튀어야 '가루' 로 보인다. 하나씩이면 점이 하나 뜨는 것뿐이다.
         int pick = Random.Range(0, spots);
@@ -599,7 +994,7 @@ public class BoardView : MonoBehaviour
         var at = onSteel ? steelList[pick - markList.Count] : markList[pick];
 
         // 강철은 목표 칸만큼 요란하면 안 된다 — 깨야 할 칸이 묻힌다
-        int n = onSteel ? Random.Range(1, 3) : Random.Range(5, 9);
+        int n = onSteel ? Random.Range(1, 3) : Random.Range(13, 20);
         for (int i = 0; i < n; i++) SpawnSparkle(at, onSteel);
     }
 
@@ -657,24 +1052,29 @@ public class BoardView : MonoBehaviour
         if (idx < 0) return;
 
         float ang = Random.value * Mathf.PI * 2f;
-        kVel[idx] = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * Random.Range(0.9f, 2.4f);
+        // 별똥별처럼 튀어나가되 너무 멀리 가면 판이 산만해진다 — 예전 범위의 절반으로 잡았다
+        kVel[idx] = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * Random.Range(0.85f, 1.9f);
         kLife[idx] = 0f;
         kMax[idx] = Random.Range(0.9f, 1.6f);       // 오래 날아야 칸 밖까지 퍼진다
         kSpin[idx] = Random.Range(-160f, 160f);
         kRot[idx] = Random.value * 360f;
         kPhase[idx] = Random.value * 10f;           // 흔들림·깜빡임을 저마다 다른 박자로
         // 큰 별 몇에 작은 가루 여럿 — 크기가 고르면 가루가 아니라 도형이 흩어지는 것처럼 보인다
-        kSize[idx] = Random.value < 0.25f ? Random.Range(0.30f, 0.46f) : Random.Range(0.12f, 0.24f);
+        kSize[idx] = Random.value < 0.30f ? Random.Range(0.34f, 0.52f) : Random.Range(0.14f, 0.26f);
 
         if (steel) kSize[idx] *= 0.7f;
         kSmoke[idx] = false;
         kSr[idx].sprite = star;
+        // 하얗게 — 금빛은 살짝 섞는 정도로만 남긴다 (무지개색 대신 흰 가루가 반짝임을 맡는다)
         var c = steel ? Color.Lerp(Color.white, SteelSpark, Random.value)
-                      : Color.Lerp(MarkWhite, MarkGold, Random.value);
+                      : Color.Lerp(MarkWhite, MarkGold, Random.value * 0.5f);
         c.a = 0f;                                   // 첫 프레임부터 커지며 나타난다
         kSr[idx].color = c;
-        kTr[idx].localPosition = new Vector3(at.X + Random.Range(-0.28f, 0.28f),
-                                             at.Y + Random.Range(-0.28f, 0.28f), -1.3f);
+        // 칸 한가운데보다 가장자리 쪽에서 더 잘 튀게 — 테두리에서도 반짝임이 보이도록.
+        float edgeAng = Random.value * Mathf.PI * 2f;
+        float edgeR = steel ? Random.Range(0.15f, 0.30f) : Random.Range(0.32f, 0.50f);
+        kTr[idx].localPosition = new Vector3(at.X + Mathf.Cos(edgeAng) * edgeR,
+                                             at.Y + Mathf.Sin(edgeAng) * edgeR, -1.3f);
         kTr[idx].localScale = Vector3.zero;
         kTr[idx].localRotation = Quaternion.Euler(0, 0, kRot[idx]);
         kSr[idx].enabled = true;
@@ -738,8 +1138,8 @@ public class BoardView : MonoBehaviour
                 float a = 0.42f * amps[i];                 // 최대 42% 눌림 — 이전 30% 보다 깊게
                 float sx = Mathf.Lerp(1f + a * 0.7f, 1f, e);
                 float sy = Mathf.Lerp(1f - a, 1f, e);
-                sr.transform.localScale = new Vector3(TileScale * sx, TileScale * sy, 1f);
-                sr.transform.localPosition = new Vector3(pts[i].X, pts[i].Y - (1f - e) * a * 0.40f, 0);
+                sr.transform.localScale = new Vector3(tileDraw * sx, tileDraw * sy, 1f);
+                sr.transform.localPosition = new Vector3(pts[i].X, pts[i].Y - (1f - e) * a * 0.40f, MovingZ(pts[i].Y));
                 // 첫 1~2프레임만 흰색으로 때리고 바로 원색으로 떨어뜨린다
                 sr.color = flash ? Color.white : baseCols[i];
             }
@@ -749,8 +1149,8 @@ public class BoardView : MonoBehaviour
         {
             var sr = tiles[pts[i].X, pts[i].Y];
             sr.color = baseCols[i];
-            sr.transform.localScale = Vector3.one * TileScale;
-            sr.transform.localPosition = new Vector3(pts[i].X, pts[i].Y, 0);
+            sr.transform.localScale = Vector3.one * tileDraw;
+            sr.transform.localPosition = new Vector3(pts[i].X, pts[i].Y, TileZ(pts[i].Y));
         }
     }
 
@@ -811,7 +1211,7 @@ public class BoardView : MonoBehaviour
     ///   ② 내려찍기 — 가속해서 꽂힌다 (여기서 onImpact)
     ///   ③ 복원 — 눌린 상태로 잠깐 버티다 튕겨 돌아온다
     /// 예비 동작이 없으면 그냥 '나타났다'로 보이고 타격감이 안 산다.</summary>
-    public IEnumerator StampCells(List<Point> cells, Color c, float total, System.Action onImpact)
+    public IEnumerator StampCells(List<Point> cells, Color c, int colorIndex, float total, System.Action onImpact)
     {
         // 전체 시간을 네 박자로 나눈다 (기본 0.34초 기준). 테스트는 total 을 줄여 빨리 돌린다.
         float LiftSec = total * 0.25f, SlamSec = total * 0.16f,
@@ -822,9 +1222,23 @@ public class BoardView : MonoBehaviour
         foreach (var p in cells)
         {
             var sr = tiles[p.X, p.Y];
-            sr.sprite = tile;
-            sr.color = c;
-            sr.sortingOrder = 4;              // 들어올린 동안 이웃 타일 위에 뜬다
+            sr.sprite = useArt
+                ? (winkArt != null && winkArt[colorIndex % winkArt.Length] != null
+                   ? winkArt[colorIndex % winkArt.Length] : TileArtFor(colorIndex))
+                : tile;
+            sr.color = useArt ? Color.white : c;
+            sr.sortingOrder = 5;              // 들어올린 동안 이웃 타일 위에 뜬다
+
+            // 절차 생성 타일에서는 광택·표정도 몸통과 같이 올린다. 안 올리면 몸통(5)이
+            // 자기 오버레이(1)를 덮어 내려놓는 동안 납작한 색 덩어리로 뭉개져 보인다.
+            var fc = faces[p.X, p.Y];
+            fc.enabled = !useArt;
+            if (fc.enabled)
+            {
+                fc.sprite = marks[p.X, p.Y].enabled ? glossSprite : faceSprite;
+                fc.color = Color.white;
+                fc.sortingOrder = 6;
+            }
         }
 
         // ① 들어올림 — 빠르게 떠올랐다가 정점에서 살짝 머문다
@@ -852,7 +1266,12 @@ public class BoardView : MonoBehaviour
         }
 
         // 임팩트 — 흰 플래시 + 먼지 + 링, 그리고 바깥에서 셰이크/사운드
-        foreach (var p in cells) tiles[p.X, p.Y].color = Color.white;
+        foreach (var p in cells)
+        {
+            var sr = tiles[p.X, p.Y];
+            if (useArt) sr.sprite = whiteArt;   // 아트는 흰색을 곱해도 그대로라 실루엣으로 바꿔 번쩍인다
+            sr.color = Color.white;
+        }
         SpawnStampImpact(cells, c);
         if (onImpact != null) onImpact();
 
@@ -864,7 +1283,12 @@ public class BoardView : MonoBehaviour
             foreach (var p in cells) Put(p, SquashX, SquashY, -0.06f);
             yield return null;
         }
-        foreach (var p in cells) tiles[p.X, p.Y].color = c;
+        foreach (var p in cells)
+        {
+            var sr = tiles[p.X, p.Y];
+            if (useArt) sr.sprite = TileArtFor(colorIndex);
+            sr.color = useArt ? Color.white : c;
+        }
 
         // ④ 튕겨 복원
         t = 0;
@@ -882,16 +1306,17 @@ public class BoardView : MonoBehaviour
         {
             var sr = tiles[p.X, p.Y];
             sr.sortingOrder = 0;
-            sr.transform.localScale = Vector3.one * TileScale;
-            sr.transform.localPosition = new Vector3(p.X, p.Y, 0);
+            faces[p.X, p.Y].sortingOrder = 1;
+            sr.transform.localScale = Vector3.one * tileDraw;
+            sr.transform.localPosition = new Vector3(p.X, p.Y, TileZ(p.Y));
         }
     }
 
     void Put(Point p, float sx, float sy, float dy)
     {
         var tr = tiles[p.X, p.Y].transform;
-        tr.localScale = new Vector3(TileScale * sx, TileScale * sy, 1f);
-        tr.localPosition = new Vector3(p.X, p.Y + dy, 0);
+        tr.localScale = new Vector3(tileDraw * sx, tileDraw * sy, 1f);
+        tr.localPosition = new Vector3(p.X, p.Y + dy, MovingZ(p.Y));   // 들어올린 동안도 앞으로
     }
 
     /// <summary>내려찍은 자리의 먼지와 충격파. 조각의 아래쪽 테두리에서만 터뜨린다.</summary>
@@ -917,8 +1342,10 @@ public class BoardView : MonoBehaviour
     {
         foreach (var p in pts)
         {
-            tiles[p.X, p.Y].color = c;
-            tiles[p.X, p.Y].transform.localScale = Vector3.one * 1.10f;
+            var sr = tiles[p.X, p.Y];
+            if (useArt) sr.sprite = whiteArt;   // 아트 위에는 색을 곱해도 안 보인다 — 실루엣으로 번쩍인다
+            sr.color = c;
+            sr.transform.localScale = Vector3.one * 1.10f;
         }
     }
 
@@ -961,10 +1388,174 @@ public class BoardView : MonoBehaviour
         liveParts++;
     }
 
+    // ---------- 살아있는 느낌: 눈 깜박임 + 잔잔한 흔들림 ----------
+    //
+    // 판이 멈춰 있을 때만 움직인다. 낙하·스탬프 연출은 같은 transform 을 쓰므로
+    // 그때 같이 건드리면 서로 싸운다.
+
+    bool idleOn;
+    float blinkTimer, shiverTimer;
+    readonly List<Point> blinking = new List<Point>();
+    readonly List<float> blinkLeft = new List<float>();
+    int shiverX = -1, shiverY = -1;
+    float shiverLeft;
+
+    /// <summary>판이 놀고 있는가. 연출 중에는 꺼서 자세를 건드리지 않는다.</summary>
+    public void SetIdle(bool on)
+    {
+        if (idleOn == on) return;
+        idleOn = on;
+        if (!on) ClearIdlePose();
+    }
+
+    void ClearIdlePose()
+    {
+        if (tiles == null) return;
+        for (int i = blinking.Count - 1; i >= 0; i--) StopBlink(i);
+        if (shiverX >= 0) { tiles[shiverX, shiverY].transform.localRotation = Quaternion.identity; shiverX = -1; }
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                var tr = tiles[x, y].transform;
+                tr.localScale = Vector3.one * tileDraw;
+                tr.localRotation = Quaternion.identity;
+            }
+    }
+
+    void StopBlink(int i)
+    {
+        var p = blinking[i];
+        int c = cellColor[p.X, p.Y];
+        if (c >= 0) tiles[p.X, p.Y].sprite = TileArtFor(c, marks[p.X, p.Y].enabled, p.X, p.Y);
+        blinking.RemoveAt(i); blinkLeft.RemoveAt(i);
+    }
+
+    /// <summary>이 칸이 표정을 지을 수 있는 보통 색 블록인가 (별·벽돌·강철은 제외).</summary>
+    bool CanEmote(int x, int y)
+    {
+        int c = cellColor[x, y];
+        return useArt && c >= 0 && blinkArt != null && blinkArt[c % blinkArt.Length] != null
+               && !marks[x, y].enabled;
+    }
+
+    // ---- 폭탄 심지 ----
+    //
+    // 판에 놓인 폭탄 칸을 기억해 두고 심지 끝에서 계속 불똥이 튀게 한다.
+    // 가만히 있는 폭탄은 그냥 그림이지만, 타고 있으면 곧 터진다는 게 읽힌다.
+
+    readonly List<Point> fuseCells = new List<Point>();
+    float fuseTimer;
+
+    void UpdateFuse(float dt)
+    {
+        if (fuseCells.Count == 0) return;
+        fuseTimer -= dt;
+        if (fuseTimer > 0f) return;
+        fuseTimer = 0.045f;
+        SpawnFuseSpark(fuseCells[Random.Range(0, fuseCells.Count)]);
+    }
+
+    void SpawnFuseSpark(Point at)
+    {
+        int idx = -1;
+        for (int i = 0; i < MaxSparks; i++)
+            if (!kSr[i].enabled) { idx = i; break; }
+        if (idx < 0) return;
+
+        kVel[idx] = new Vector2(Random.Range(-0.5f, 0.5f), Random.Range(0.6f, 1.4f));
+        kLife[idx] = 0f;
+        kMax[idx] = Random.Range(0.16f, 0.32f);     // 짧게 지지직
+        kSpin[idx] = Random.Range(-320f, 320f);
+        kRot[idx] = Random.value * 360f;
+        kPhase[idx] = Random.value * 10f;
+        kSize[idx] = Random.Range(0.09f, 0.17f);
+        kSmoke[idx] = false;
+        kSr[idx].sprite = star;
+        var c = Color.Lerp(new Color(1f, 0.92f, 0.55f), new Color(1f, 0.52f, 0.18f), Random.value);
+        c.a = 0f;
+        kSr[idx].color = c;
+        // 심지는 그림의 오른쪽 위에 있다
+        kTr[idx].localPosition = new Vector3(at.X + 0.22f + Random.Range(-0.03f, 0.03f),
+                                             at.Y + 0.40f + Random.Range(-0.03f, 0.03f), -1.4f);
+        kTr[idx].localScale = Vector3.zero;
+        kTr[idx].localRotation = Quaternion.Euler(0, 0, kRot[idx]);
+        kSr[idx].enabled = true;
+        liveSparks++;
+    }
+
+    void UpdateIdle(float dt)
+    {
+        if (!idleOn || tiles == null) return;
+
+        // 숨쉬듯 아주 조금 커졌다 작아진다 — 칸마다 박자를 어긋나게 준다
+        float t = Time.time;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                float phase = (x * 0.7f + y * 1.3f);
+                float s = 1f + 0.016f * Mathf.Sin(t * 1.7f + phase);
+                tiles[x, y].transform.localScale = Vector3.one * tileDraw * s;
+            }
+
+        // 눈 깜박임 — 가끔 아무 블록이나 하나
+        for (int i = blinking.Count - 1; i >= 0; i--)
+        {
+            blinkLeft[i] -= dt;
+            if (blinkLeft[i] <= 0f) StopBlink(i);
+        }
+        blinkTimer -= dt;
+        if (blinkTimer <= 0f)
+        {
+            blinkTimer = Random.Range(0.35f, 0.9f);
+            int x = Random.Range(0, Board.W), y = Random.Range(0, Board.H);
+            if (CanEmote(x, y) && blinking.Count < 6)
+            {
+                // 눈 감기와 윙크를 번갈아 — 한 가지만 쓰면 표정이 바뀐 줄 모른다
+                int c = cellColor[x, y];
+                var set = (Random.value < 0.5f && winkArt != null && winkArt[c % winkArt.Length] != null)
+                          ? winkArt : blinkArt;
+                tiles[x, y].sprite = set[c % set.Length];
+                blinking.Add(new Point(x, y));
+                blinkLeft.Add(Random.Range(0.35f, 0.65f));   // 짧으면 눈에 안 띈다
+            }
+        }
+
+        // 부르르 떨기 — 가끔 한 칸이 좌우로 살짝 흔들린다
+        if (shiverX >= 0)
+        {
+            shiverLeft -= dt;
+            if (shiverLeft <= 0f)
+            {
+                tiles[shiverX, shiverY].transform.localRotation = Quaternion.identity;
+                shiverX = -1;
+            }
+            else
+            {
+                float k = shiverLeft / ShiverTime;
+                float ang = Mathf.Sin(shiverLeft * 46f) * 7f * k;   // 점점 잦아든다
+                tiles[shiverX, shiverY].transform.localRotation = Quaternion.Euler(0, 0, ang);
+            }
+        }
+        else
+        {
+            shiverTimer -= dt;
+            if (shiverTimer <= 0f)
+            {
+                shiverTimer = Random.Range(1.2f, 3.0f);
+                int x = Random.Range(0, Board.W), y = Random.Range(0, Board.H);
+                if (cellColor[x, y] >= 0) { shiverX = x; shiverY = y; shiverLeft = ShiverTime; }
+            }
+        }
+    }
+
+    const float ShiverTime = 0.45f;
+
     void Update()
     {
         PulseGhost();
         PulseMarks();
+        UpdateIdle(Time.deltaTime);
+        UpdateFuse(Time.deltaTime);
         float dtr = Time.deltaTime;
         UpdateSparkles(dtr);
         UpdateSmoke(dtr);
@@ -1062,8 +1653,11 @@ public class BoardView : MonoBehaviour
         float a = Mathf.Clamp01(1f - (wy - top));
 
         var sr = tiles[x, y];
-        sr.transform.localPosition = new Vector3(x, wy, 0);
+        bool moving = Mathf.Abs(off) > 0.001f;
+        sr.transform.localPosition = new Vector3(x, wy, moving ? MovingZ(y) : TileZ(y));
         sr.color = new Color(baseCol.r, baseCol.g, baseCol.b, baseCol.a * a);
+        // 광택·표정은 자식이라 위치는 따라오지만 알파는 따로 맞춰야 판 밖에서 얼굴만 떠 있지 않는다
+        if (faces[x, y].enabled) faces[x, y].color = new Color(1f, 1f, 1f, a);
 
         var ov = overlays[x, y];
         ov.transform.localPosition = new Vector3(x, wy, -0.5f);
@@ -1095,6 +1689,7 @@ public class BoardView : MonoBehaviour
             if (i >= p.Cells.Count)
             {
                 ghost[i].enabled = false;
+                ghostGloss[i].enabled = false;
                 ghostRing[i].enabled = false;
                 carryShadow[i].enabled = false;
                 continue;
@@ -1112,18 +1707,26 @@ public class BoardView : MonoBehaviour
             float py = fy + p.Cells[i].Y - cy;
 
             carryShadow[i].enabled = true;
+            carryShadow[i].sprite = TileArtFor(p.Color);
             carryShadow[i].transform.localPosition = new Vector3(px + ShadowOffX, py + ShadowOffY, -1.5f);
             carryShadow[i].transform.localScale = Vector3.one * CarryScale * 0.96f;
             carryShadow[i].color = ShadowColor;
 
             ghost[i].enabled = true;
-            ghost[i].sprite = tile;
+            // 손에 든 블록은 윙크한다 — 지금 쓰는 조각이라는 표시도 된다
+            ghost[i].sprite = useArt && winkArt != null && winkArt[p.Color % winkArt.Length] != null
+                            ? winkArt[p.Color % winkArt.Length] : TileArtFor(p.Color);
             ghost[i].transform.localPosition = new Vector3(px, py + CarryLift, -2f);
             ghost[i].transform.localScale = Vector3.one * CarryScale;
+            // 아트에는 색이 들어 있으므로 흰색으로 두고, 못 놓는 자리만 붉게 죽인다
             ghostBase[i] = can
-                ? new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f)
-                : new Color(0.55f, 0.30f, 0.30f, 0.85f);
+                ? (useArt ? Color.white : new Color(pieceColor.r, pieceColor.g, pieceColor.b, 1f))
+                : (useArt ? new Color(1f, 0.45f, 0.45f, 0.9f) : new Color(0.55f, 0.30f, 0.30f, 0.85f));
             ghost[i].color = ghostBase[i];
+
+            // 절차 생성 타일일 때만 광택·표정을 따로 얹는다 (아트에는 이미 그려져 있다)
+            ghostGloss[i].enabled = !useArt;
+            ghostGloss[i].color = new Color(1f, 1f, 1f, ghostBase[i].a);
         }
     }
 
@@ -1141,6 +1744,20 @@ public class BoardView : MonoBehaviour
 
     SpriteRenderer[] trayPad;                // 슬롯 바닥
     SpriteRenderer[][] trayCells;            // 슬롯마다 조각 칸
+    Vector2[] trayAt;                        // 아트 자리로 옮긴 슬롯 중심 (null 이면 기본 자리)
+    Vector2[] trayBox;                       // 그 자리에서 조각이 들어가야 하는 상자 (칸 단위)
+
+    /// <summary>트레이를 플레이 아트의 자리에 맞춘다. 조각은 상자 안에 들어가게 줄여 그린다.
+    /// 자리가 바뀌었으면 true — 호출한 쪽이 다시 그려야 한다.</summary>
+    public bool SetTrayLayout(Vector2 cur, Vector2 curBox, Vector2 next, Vector2 nextBox)
+    {
+        if (trayAt != null && (trayAt[0] - cur).sqrMagnitude < 1e-6f && (trayAt[1] - next).sqrMagnitude < 1e-6f
+            && (trayBox[0] - curBox).sqrMagnitude < 1e-6f && (trayBox[1] - nextBox).sqrMagnitude < 1e-6f) return false;
+        trayAt = new[] { cur, next };
+        trayBox = new[] { curBox, nextBox };
+        if (trayPad != null) foreach (var p in trayPad) if (p != null) p.enabled = false;   // 받침은 아트에 있다
+        return true;
+    }
 
     /// <summary>슬롯 i 의 중심 월드 좌표.</summary>
     public static Vector2 TraySlotCenter(int i)
@@ -1153,6 +1770,7 @@ public class BoardView : MonoBehaviour
     {
         trayPad = new SpriteRenderer[TraySlots];
         trayCells = new SpriteRenderer[TraySlots][];
+        trayGloss = new SpriteRenderer[TraySlots][];
 
         for (int i = 0; i < TraySlots; i++)
         {
@@ -1166,9 +1784,11 @@ public class BoardView : MonoBehaviour
             psr.sprite = MakePanelSprite(0.22f);
             psr.color = TrayPadColor;
             psr.sortingOrder = -3;
+            psr.enabled = trayAt == null;
             trayPad[i] = psr;
 
             trayCells[i] = new SpriteRenderer[5];   // 조각은 최대 5칸
+            trayGloss[i] = new SpriteRenderer[5];
             for (int k = 0; k < trayCells[i].Length; k++)
             {
                 var go = new GameObject("tray_" + i + "_" + k);
@@ -1178,6 +1798,15 @@ public class BoardView : MonoBehaviour
                 sr.sortingOrder = 3;
                 sr.enabled = false;
                 trayCells[i][k] = sr;
+
+                var tg = new GameObject("traygloss_" + i + "_" + k);
+                tg.transform.SetParent(go.transform, false);
+                tg.transform.localPosition = new Vector3(0, 0, -0.05f);
+                var tsr = tg.AddComponent<SpriteRenderer>();
+                tsr.sprite = faceSprite;
+                tsr.sortingOrder = 4;
+                tsr.enabled = false;
+                trayGloss[i][k] = tsr;
             }
         }
     }
@@ -1194,32 +1823,49 @@ public class BoardView : MonoBehaviour
             : TrayPadColor;
 
         var cells = trayCells[i];
+        var gloss = trayGloss[i];
         bool isNext = i != CurrentSlot;
         if (piece == null)
         {
             foreach (var sr in cells) sr.enabled = false;
+            foreach (var sr in gloss) sr.enabled = false;
             return;
         }
 
-        var center = TraySlotCenter(i);
+        var center = trayAt != null ? trayAt[i] : TraySlotCenter(i);
         float cx, cy;
         PieceCenter(piece, out cx, out cy);
         // 지금 블록은 조금 크게, 다음 블록은 작고 흐리게 — 무엇을 쓰는 중인지 갈린다
-        float lift = selected ? 0.18f : 0f;
+        float lift = selected && trayAt == null ? 0.18f : 0f;
         float scale = isNext ? TrayCell * 0.78f : TrayCell * (selected ? 1.12f : 1.0f);
+        if (trayAt != null)
+        {
+            // 아트 자리에서는 조각 전체가 상자 안에 들어가야 한다 — 조각 크기로 나눠 맞춘다
+            int minX = int.MaxValue, maxX = int.MinValue, minY = int.MaxValue, maxY = int.MinValue;
+            foreach (var c in piece.Cells)
+            {
+                if (c.X < minX) minX = c.X; if (c.X > maxX) maxX = c.X;
+                if (c.Y < minY) minY = c.Y; if (c.Y > maxY) maxY = c.Y;
+            }
+            float bw = maxX - minX + 1, bh = maxY - minY + 1;
+            scale = Mathf.Min(trayBox[i].x / bw, trayBox[i].y / bh, scale);
+        }
 
         for (int k = 0; k < cells.Length; k++)
         {
-            if (k >= piece.Cells.Count) { cells[k].enabled = false; continue; }
+            if (k >= piece.Cells.Count) { cells[k].enabled = false; gloss[k].enabled = false; continue; }
             var cell = piece.Cells[k];
             cells[k].enabled = true;
-            cells[k].sprite = tile;
+            cells[k].sprite = piece.Color >= 0 ? TileArtFor(piece.Color) : tile;
             cells[k].transform.localPosition = new Vector3(
                 center.x + (cell.X - cx) * scale,
                 center.y + (cell.Y - cy) * scale + lift, 0.5f);
             cells[k].transform.localScale = Vector3.one * scale * 0.94f;
             float alpha = dimmed ? 0.35f : (isNext ? 0.55f : 1f);
-            cells[k].color = new Color(color.r, color.g, color.b, alpha);
+            cells[k].color = useArt ? new Color(1f, 1f, 1f, alpha)
+                                    : new Color(color.r, color.g, color.b, alpha);
+            gloss[k].enabled = !useArt;
+            gloss[k].color = new Color(1f, 1f, 1f, alpha);
         }
     }
 
@@ -1263,6 +1909,7 @@ public class BoardView : MonoBehaviour
         ghostRing[0].transform.localPosition = new Vector3(ax, ay, -1.05f);
         ghostRing[0].color = ghostRingColor;
         for (int i = 1; i < ghost.Length; i++) { ghost[i].enabled = false; ghostRing[i].enabled = false; }
+        foreach (var g in ghostGloss) g.enabled = false;   // 폭탄 아이콘 위에 광택·표정을 얹지 않는다
 
         ShowRange(can ? range : null, BombRed);
     }
@@ -1303,6 +1950,104 @@ public class BoardView : MonoBehaviour
         for (int i = blastCount; i < blast.Length; i++) blast[i].enabled = false;
     }
 
+    // ---- 해머·무지개 조준 ----
+    //
+    // 조각을 들고 있는 게 아니라 이미 놓인 칸을 고르는 상태다. 어떤 칸이 사라질지
+    // 범위 표시(blast)로 보여주고, 해머는 내리치는 시늉을 같이 띄운다.
+
+    SpriteRenderer aimSr;         // 손에 든 아이템 — 해머 또는 무지개 구슬
+    Sprite hammerHeld, rainbowHeld;
+    float hammerSwing;
+
+    static readonly Color AimHammer = new Color(1f, 0.86f, 0.55f);
+    static readonly Color AimRainbow = new Color(0.95f, 0.72f, 1f);
+
+    /// <summary>조준 중인 칸을 표시한다. ok 가 false 면 못 고르는 칸이라 아무것도 안 뜬다.
+    /// 어떤 칸이 사라질지(blast)와 무엇을 들고 있는지(그림)를 같이 보여준다.</summary>
+    public void ShowAim(bool hammer, int tx, int ty, bool ok, List<Point> cells)
+    {
+        if (!ok) { HideAim(); return; }
+        ShowRange(cells, hammer ? AimHammer : AimRainbow);
+
+        if (aimSr == null)
+        {
+            var go = new GameObject("aimitem");
+            go.transform.SetParent(transform, false);
+            aimSr = go.AddComponent<SpriteRenderer>();
+            aimSr.sortingOrder = 9;
+            hammerHeld = LoadArt("items/hammer");
+            rainbowHeld = LoadArt("items/rainbow");
+        }
+        var art = hammer ? hammerHeld : rainbowHeld;
+        if (art == null) { aimSr.enabled = false; return; }
+
+        aimSr.enabled = true;
+        aimSr.sprite = art;
+        aimSr.color = Color.white;
+
+        if (hammer)
+        {
+            // 망치가 왔다갔다 내리친다 — 지금 어떤 칸을 때릴지 눈으로 붙잡아 준다
+            hammerSwing += Time.deltaTime * 7f;
+            float k = Mathf.Abs(Mathf.Sin(hammerSwing));
+            aimSr.transform.localPosition = new Vector3(tx + 0.42f, ty + 0.62f - 0.22f * k, -1.6f);
+            aimSr.transform.localRotation = Quaternion.Euler(0, 0, Mathf.Lerp(38f, -14f, k));
+            aimSr.transform.localScale = Vector3.one * 0.95f;
+        }
+        else
+        {
+            // 무지개 구슬은 고른 칸 위에서 살짝 떠서 흔들린다
+            hammerSwing += Time.deltaTime * 3.2f;
+            float k = Mathf.Sin(hammerSwing);
+            aimSr.transform.localPosition = new Vector3(tx, ty + 0.52f + 0.06f * k, -1.6f);
+            aimSr.transform.localRotation = Quaternion.Euler(0, 0, k * 9f);
+            aimSr.transform.localScale = Vector3.one * (0.92f + 0.05f * Mathf.Abs(k));
+        }
+    }
+
+    public void HideAim()
+    {
+        blastCount = 0;
+        if (blast != null) foreach (var b in blast) if (b != null) b.enabled = false;
+        if (aimSr != null) aimSr.enabled = false;
+    }
+
+    /// <summary>무지개 — 지워지는 칸마다 무지갯빛 가루를 뿌린다.</summary>
+    public void RainbowBurst(List<Point> cells)
+    {
+        if (cells == null) return;
+        foreach (var p in cells)
+            for (int i = 0; i < 10; i++) SpawnRainbowSpark(p);
+    }
+
+    void SpawnRainbowSpark(Point at)
+    {
+        int idx = -1;
+        for (int i = 0; i < MaxSparks; i++)
+            if (!kSr[i].enabled) { idx = i; break; }
+        if (idx < 0) return;
+
+        float ang = Random.value * Mathf.PI * 2f;
+        kVel[idx] = new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * Random.Range(1.1f, 2.4f);
+        kLife[idx] = 0f;
+        kMax[idx] = Random.Range(0.6f, 1.1f);
+        kSpin[idx] = Random.Range(-220f, 220f);
+        kRot[idx] = Random.value * 360f;
+        kPhase[idx] = Random.value * 10f;
+        kSize[idx] = Random.Range(0.16f, 0.36f);
+        kSmoke[idx] = false;
+        kSr[idx].sprite = star;
+        var c = Palette.HslToRgb(Random.value, 0.85, 0.62);   // 가루마다 다른 무지개색
+        c.a = 0f;
+        kSr[idx].color = c;
+        float r = Random.Range(0.05f, 0.34f);
+        kTr[idx].localPosition = new Vector3(at.X + Mathf.Cos(ang) * r, at.Y + Mathf.Sin(ang) * r, -1.3f);
+        kTr[idx].localScale = Vector3.zero;
+        kTr[idx].localRotation = Quaternion.Euler(0, 0, kRot[idx]);
+        kSr[idx].enabled = true;
+        liveSparks++;
+    }
+
     public void HideGhost()
     {
         if (ghost == null) return;
@@ -1310,6 +2055,7 @@ public class BoardView : MonoBehaviour
         blastCount = 0;
         if (blast != null) foreach (var b in blast) if (b != null) b.enabled = false;
         foreach (var g in ghost) if (g != null) { g.enabled = false; g.transform.localScale = Vector3.one; }
+        if (ghostGloss != null) foreach (var g in ghostGloss) if (g != null) g.enabled = false;
         foreach (var g in ghostRing) if (g != null) g.enabled = false;
         if (carryShadow != null) foreach (var g in carryShadow) if (g != null) g.enabled = false;
     }
@@ -1371,6 +2117,88 @@ public class BoardView : MonoBehaviour
 
                 float edge = r - dist;
                 g *= Mathf.Lerp(1f, RimDark, Mathf.Clamp01((RimPx - edge) / 1.3f));
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 크리스탈 글로우: 보석과 같은 컷이지만 전체적으로 더 밝고, 한쪽 면에서 별빛처럼
+    // 반짝이는 작은 하이라이트가 하나 더 얹힌다 — 참고 이미지의 "화사하고 반짝이는" 느낌.
+    static Sprite MakeCrystalSprite()
+    {
+        const int S = 32; const float r = 5f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        float c = (S - 1) * 0.5f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(r - dist + 0.5f);
+
+                float u = (fx - c) / c, v = (fy - c) / c;
+                float g;
+                if (Mathf.Abs(u) < Mathf.Abs(v))
+                    g = v > 0 ? 1.0f : 0.80f;
+                else
+                    g = u < 0 ? 0.96f : 0.88f;
+
+                float table = Mathf.Clamp01(1f - (Mathf.Abs(u) + Mathf.Abs(v)) / 0.72f);
+                g = Mathf.Lerp(g, 1f, 0.62f * table);
+
+                float cut = Mathf.Clamp01(1f - Mathf.Abs(Mathf.Abs(u) - Mathf.Abs(v)) * 9f);
+                g *= Mathf.Lerp(1f, 0.92f, cut);
+
+                // 별빛 하이라이트 — 왼쪽 위 면 한 자리에서 반짝인다 (아스트로이드 별 모양)
+                float sxn = (fx - S * 0.30f) / (S * 0.16f), syn = (fy - S * 0.72f) / (S * 0.16f);
+                float sv = Mathf.Sqrt(Mathf.Abs(sxn)) + Mathf.Sqrt(Mathf.Abs(syn));
+                float sparkle = Mathf.Clamp01((1f - sv) * 2.4f);
+                g = Mathf.Lerp(g, 1f, sparkle);
+
+                float edge = r - dist;
+                g *= Mathf.Lerp(1f, RimDark, Mathf.Clamp01((RimPx - edge) / 1.3f));
+                px[y * S + x] = new Color(g, g, g, a);
+            }
+        tex.SetPixels(px); tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    // 주얼 클래식: 같은 컷에 명암 대비를 깊게 주고 테두리(베젤)를 더 진하게 둘러
+    // 고급스럽고 세련된 느낌을 낸다 — 화사한 크리스탈과 대비되는 차분한 쪽.
+    static Sprite MakeJewelSprite()
+    {
+        const int S = 32; const float r = 5f;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        float c = (S - 1) * 0.5f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
+                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
+                float dist = Mathf.Sqrt(dx * dx + dy * dy);
+                float a = Mathf.Clamp01(r - dist + 0.5f);
+
+                float u = (fx - c) / c, v = (fy - c) / c;
+                float g;
+                if (Mathf.Abs(u) < Mathf.Abs(v))
+                    g = v > 0 ? 1.0f : 0.45f;         // 위 면은 밝게, 아래 면은 훨씬 깊게
+                else
+                    g = u < 0 ? 0.82f : 0.56f;
+
+                float table = Mathf.Clamp01(1f - (Mathf.Abs(u) + Mathf.Abs(v)) / 0.60f);
+                g = Mathf.Lerp(g, 1f, 0.30f * table);   // 중앙 하이라이트는 작고 또렷하게
+
+                float cut = Mathf.Clamp01(1f - Mathf.Abs(Mathf.Abs(u) - Mathf.Abs(v)) * 11f);
+                g *= Mathf.Lerp(1f, 0.68f, cut);        // 컷 선을 더 진하게 그어 면을 또렷이 가른다
+
+                float edge = r - dist;
+                g *= Mathf.Lerp(1f, RimDark * 0.7f, Mathf.Clamp01((RimPx - edge) / 1.1f));  // 베젤을 더 진하게
                 px[y * S + x] = new Color(g, g, g, a);
             }
         tex.SetPixels(px); tex.Apply();
@@ -1512,10 +2340,77 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
+    // example.html .star 의 clip-path 좌표 그대로 (CSS 기준: 위가 0, 아래가 1).
+    static readonly float[] StarPoly = {
+        0.50f, 0.00f,  0.61f, 0.36f,  1.00f, 0.38f,  0.69f, 0.60f,  0.80f, 1.00f,
+        0.50f, 0.76f,  0.20f, 1.00f,  0.31f, 0.60f,  0.00f, 0.38f,  0.39f, 0.36f
+    };
+
+    /// <summary>다각형 안인가 (even-odd). 좌표는 0~1, CSS 처럼 위가 0.</summary>
+    static bool InPoly(float[] poly, float x, float y)
+    {
+        bool inside = false;
+        int n = poly.Length / 2;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            float xi = poly[i * 2], yi = poly[i * 2 + 1];
+            float xj = poly[j * 2], yj = poly[j * 2 + 1];
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+    }
+
+    /// <summary>목표 칸의 별 — example.html .star 를 그대로 옮겼다.
+    /// 노란 별(#fff4a3) 몸통 + 왼쪽 위 흰 점(::after) + 아래쪽 옅은 금빛 그림자.</summary>
+    static Sprite MakeStarSprite()
+    {
+        const int S = 64, SS = 3;          // SS x SS 슈퍼샘플링으로 뾰족한 끝을 매끄럽게
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[S * S];
+
+        var body = Palette.Hex(0xFFF4A3);
+        var shade = Palette.Hex(0xF0D060);          // 아래쪽에 살짝 지는 그늘 — 납작해 보이지 않게
+        var glow = new Color(0.82f, 0.59f, 0.16f, 0.30f);   // drop-shadow(0 2px 3px)
+
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float cov = 0f, covShadow = 0f;
+                for (int sy = 0; sy < SS; sy++)
+                    for (int sx = 0; sx < SS; sx++)
+                    {
+                        float nx = (x + (sx + 0.5f) / SS) / S;
+                        float ny = 1f - (y + (sy + 0.5f) / SS) / S;   // CSS 는 위가 0
+                        if (InPoly(StarPoly, nx, ny)) cov += 1f;
+                        if (InPoly(StarPoly, nx, ny - 0.045f)) covShadow += 1f;   // 2px 아래로
+                    }
+                cov /= SS * SS; covShadow /= SS * SS;
+
+                float fx = (x + 0.5f) / S, fy = 1f - (y + 0.5f) / S;
+                // 아래로 갈수록 살짝 진해진다
+                Color c = Color.Lerp(shade, body, Mathf.Clamp01(fy * 0.6f + 0.45f));
+
+                // ::after — 왼쪽 위 흰 점 (left 18%, top 14%, 25% 크기)
+                float hd = Mathf.Sqrt(Mathf.Pow(fx - 0.305f, 2) + Mathf.Pow(fy - 0.735f, 2)) / 0.115f;
+                c = Color.Lerp(c, Color.white, Mathf.Clamp01((1f - hd) * 3f));
+
+                c.a = cov;
+                if (cov < 1f)   // 별 바깥으로 새어나오는 금빛 그림자
+                {
+                    float g = Mathf.Clamp01(covShadow - cov) * glow.a;
+                    if (g > 0f) c = Color.Lerp(new Color(glow.r, glow.g, glow.b, g), c, cov);
+                }
+                px[y * S + x] = c;
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
     /// <summary>네 갈래 별빛 가루. 가운데 심지가 밝고 네 방향으로 뾰족하게 뻗는다.
     /// 별 모양은 아스트로이드(√|x| + √|y| ≤ 1) 라 갈래 사이가 오목하게 파인다 —
     /// 그래야 동그란 먼지가 아니라 '반짝임' 으로 읽힌다.</summary>
-    static Sprite MakeStarSprite()
+    static Sprite MakeSparkSprite()
     {
         const int S = 48;
         var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
@@ -1552,6 +2447,8 @@ public class BoardView : MonoBehaviour
         {
             case TileSkin.Gem: return MakeGemSprite();
             case TileSkin.Crayon: return MakeCrayonSprite();
+            case TileSkin.Crystal: return MakeCrystalSprite();
+            case TileSkin.Jewel: return MakeJewelSprite();
             default: return MakeGlossySprite();
         }
     }
@@ -1568,41 +2465,56 @@ public class BoardView : MonoBehaviour
         foreach (var g in ghost) g.sprite = tile;
     }
 
+    // ---- 젤리 블록 공통 형태 ----
+    //
+    // 참고 이미지의 블록은 모서리를 둥글린 사각형이 아니라 '눌린 방석(superellipse)' 이다.
+    // 가운데가 볼록하고 가장자리로 갈수록 급히 떨어지는 그 형태라야 말랑해 보인다.
+
+    const float JellyN = 3.4f;      // 클수록 사각형, 작을수록 원
+
+    /// <summary>방석 형태의 중심거리. 1 이 경계다.</summary>
+    static float JellyDist(float u, float v)
+    {
+        return Mathf.Pow(Mathf.Pow(Mathf.Abs(u), JellyN) + Mathf.Pow(Mathf.Abs(v), JellyN), 1f / JellyN);
+    }
+
+    /// <summary>젤리 몸통. 팔레트 색이 곱해지므로 여기서는 '얼마나 밝은가' 만 정한다 —
+    /// 가운데가 볼록한 반구 조명 + 가장자리로 갈수록 진해지는 테두리로 말랑한 덩어리를 만든다.
+    /// 흰 광택은 색에 안 묻도록 MakeOverlaySprite 가 따로 얹는다.</summary>
     static Sprite MakeGlossySprite()
     {
-        const int S = 32; const float r = 11f;   // 한 변의 34% — 레퍼런스와 같은 둥글기
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        const int S = 96;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         var px = new Color[S * S];
+
+        // 왼쪽 위에서 들어오는 빛
+        Vector3 L = new Vector3(-0.42f, 0.58f, 0.70f).normalized;
+
         for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
-                float fx = x + 0.5f, fy = y + 0.5f;
-                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
-                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
-                float dist = Mathf.Sqrt(dx * dx + dy * dy);
-                float a = Mathf.Clamp01(r - dist + 0.5f); // 모서리 안티에일리어싱
-                // 바탕: 아래가 어둡고 위가 밝다. 광택이 도드라지도록 여유를 남겨 둔다.
-                float g = Mathf.Lerp(0.84f, 0.97f, fy / (S - 1));
+                float u = ((x + 0.5f) / S) * 2f - 1f;
+                float v = ((y + 0.5f) / S) * 2f - 1f;
+                float d = JellyDist(u, v);
 
-                // 광택 ① 왼쪽 위에서 비스듬히 들어오는 넓은 띠
-                float u = (fx + (S - fy)) / (2f * S);              // 0 = 좌상단
-                float sheen = Mathf.Clamp01(1f - Mathf.Abs(u - 0.28f) / 0.17f);
-                g = Mathf.Lerp(g, 1f, 0.60f * sheen * sheen);
+                float a = Mathf.Clamp01((1f - d) * S * 0.22f);   // 경계 안티에일리어싱
+                if (a <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
 
-                // 광택 ② 좌상단의 작은 반사점 — 유약 바른 느낌
-                float sdx = fx - S * 0.30f, sdy = fy - S * 0.74f;
-                float spec = Mathf.Clamp01(1f - Mathf.Sqrt(sdx * sdx + sdy * sdy) / (S * 0.125f));
-                g = Mathf.Lerp(g, 1f, 0.95f * spec);
+                // 반구 높이 — 가운데가 볼록하고 가장자리에서 0
+                float h = Mathf.Sqrt(Mathf.Max(0f, 1f - d * d));
+                var n = new Vector3(u * 0.85f, v * 0.85f, h + 0.35f).normalized;
+                float diff = Mathf.Clamp01(Vector3.Dot(n, L));
 
-                // 아래쪽 반사광 — 바닥에서 살짝 되비친다
-                float bounce = Mathf.Clamp01(1f - fy / (S * 0.22f));
-                g = Mathf.Lerp(g, 0.92f, 0.45f * bounce);
+                float g = 0.60f + 0.52f * diff;
 
-                // 테두리: 경계 쪽 명도만 낮춘다. 틴트가 곱해지므로 자동으로
-                // '그 블록 색의 조금 진한 톤' 이 된다 — 색을 따로 계산할 필요가 없다.
-                float edge = r - dist;                                  // 0 = 경계, 안쪽일수록 큼
-                float rim = Mathf.Clamp01((RimPx - edge) / 1.3f);
-                g *= Mathf.Lerp(1f, RimDark, rim);
+                // 가장자리는 색이 진해진다 (젤리 안쪽이 두꺼워 보이는 부분)
+                float edge = Mathf.Clamp01((d - 0.78f) / 0.22f);
+                g *= Mathf.Lerp(1f, 0.74f, edge * edge);
+
+                // 아래쪽으로 빛이 통과한 듯 살짝 되비친다 — 완전히 어두워지면 젤리가 아니라 돌이 된다
+                float below = Mathf.Clamp01((-v - 0.15f) / 0.85f);
+                g = Mathf.Lerp(g, g + 0.10f, below * (1f - edge));
+
                 px[y * S + x] = new Color(g, g, g, a);
             }
         tex.SetPixels(px);
@@ -1610,43 +2522,141 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 둥근 사각 테두리 (고스트 위치 표시)
-    /// <summary>폭탄 아이콘 — 검은 구체 + 하이라이트 + 심지 + 불꽃.</summary>
-    static Sprite MakeBombSprite()
+    /// <summary>블록 위에 얹는 진짜 색 레이어. 팔레트 색에 곱해지지 않으므로 흰색은 흰색으로 나온다.
+    /// 참고 이미지의 큰 흰 광택 + 작은 반사점 + 표정(눈·볼·입)을 담는다.
+    /// withFace 가 false 면 광택만 — 목표 칸(별)에는 표정을 안 그린다.</summary>
+    static Sprite MakeOverlaySprite(bool withFace)
     {
-        const int S = 32;
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        const int S = 96;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         var px = new Color[S * S];
 
-        var body = new Color(0.14f, 0.15f, 0.20f);
-        var edge = new Color(0.06f, 0.06f, 0.10f);
-        var fuse = new Color(0.72f, 0.60f, 0.38f);
-        var spark = new Color(1f, 0.78f, 0.25f);
+        var eyeCol = Palette.Hex(0x2B3252);
+        var mouthCol = Palette.Hex(0x39405F);
+        var cheekCol = new Color(1f, 0.55f, 0.66f, 0.55f);
 
-        float cx = 15.5f, cy = 13.5f, r = 10.5f;   // 구체는 살짝 아래로 — 위에 심지 자리
+        // 눈·볼·입 자리 (0~1, 위가 0)
+        const float eyeCx = 0.325f, eyeCy = 0.545f, eyeRx = 0.050f, eyeRy = 0.070f;
+        const float cheekCx = 0.205f, cheekCy = 0.655f, cheekRx = 0.072f, cheekRy = 0.042f;
+        const float mouthHalf = 0.085f, mouthBase = 0.605f, mouthAmp = 0.055f, mouthThick = 0.020f;
+
+        // 큰 광택: 왼쪽 위에 비스듬히 누운 타원 (rotate -22°)
+        const float gcx = 0.335f, gcy = 0.255f, grx = 0.225f, gry = 0.115f;
+        float cs = Mathf.Cos(-22f * Mathf.Deg2Rad), sn = Mathf.Sin(-22f * Mathf.Deg2Rad);
+
         for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
-                float dx = x - cx, dy = y - cy;
+                float nx = (x + 0.5f) / S;
+                float ny = 1f - (y + 0.5f) / S;          // 위가 0 인 좌표
+                float u = nx * 2f - 1f, v = (1f - ny) * 2f - 1f;
+                float mask = Mathf.Clamp01((1f - JellyDist(u, -v)) * S * 0.22f);
+                if (mask <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
+
+                float white = 0f;
+
+                // 큰 흰 광택 — 가운데는 꽉 찬 흰색, 경계만 살짝 부드럽게
+                float ox = nx - gcx, oy = ny - gcy;
+                float rx = (ox * cs - oy * sn) / grx, ry = (ox * sn + oy * cs) / gry;
+                float gd = Mathf.Sqrt(rx * rx + ry * ry);
+                white = Mathf.Max(white, Mathf.Clamp01((1f - gd) * 3.2f) * 0.92f);
+
+                // 위쪽 가장자리를 따라 도는 옅은 빛
+                float topRim = Mathf.Clamp01((ny - 0.72f) / 0.28f);
+                white = Mathf.Max(white, topRim * topRim * 0.22f * Mathf.Clamp01(1f - gd * 0.4f));
+
+                // 오른쪽 아래 작은 반사점
+                float pdx = nx - 0.775f, pdy = ny - 0.735f;
+                float pd = Mathf.Sqrt(pdx * pdx + pdy * pdy) / 0.075f;
+                white = Mathf.Max(white, Mathf.Clamp01((1f - pd) * 3f) * 0.42f);
+
+                Color c = new Color(1f, 1f, 1f, white);
+
+                if (withFace)
+                {
+                    // 볼 — 눈보다 바깥, 살짝 아래
+                    float k1 = Mathf.Pow((nx - cheekCx) / cheekRx, 2) + Mathf.Pow((ny - cheekCy) / cheekRy, 2);
+                    float k2 = Mathf.Pow((nx - (1f - cheekCx)) / cheekRx, 2) + Mathf.Pow((ny - cheekCy) / cheekRy, 2);
+                    float cheek = Mathf.Clamp01((1f - Mathf.Sqrt(Mathf.Min(k1, k2))) * 4f);
+                    if (cheek > 0f) c = Blend(c, new Color(cheekCol.r, cheekCol.g, cheekCol.b, cheekCol.a * cheek));
+
+                    // 눈
+                    float e1 = Mathf.Pow((nx - eyeCx) / eyeRx, 2) + Mathf.Pow((ny - eyeCy) / eyeRy, 2);
+                    float e2 = Mathf.Pow((nx - (1f - eyeCx)) / eyeRx, 2) + Mathf.Pow((ny - eyeCy) / eyeRy, 2);
+                    float eye = Mathf.Clamp01((1f - Mathf.Sqrt(Mathf.Min(e1, e2))) * 6f);
+                    if (eye > 0f) c = Blend(c, new Color(eyeCol.r, eyeCol.g, eyeCol.b, eye));
+
+                    // 입 — 가운데가 처지고 양끝이 올라가는 짧은 곡선
+                    float mdx = nx - 0.5f;
+                    if (Mathf.Abs(mdx) <= mouthHalf)
+                    {
+                        float t = mdx / mouthHalf;
+                        float curve = mouthBase - mouthAmp * t * t;
+                        float m = Mathf.Clamp01((mouthThick - Mathf.Abs(ny - curve)) * S * 0.10f);
+                        if (m > 0f) c = Blend(c, new Color(mouthCol.r, mouthCol.g, mouthCol.b, m));
+                    }
+                }
+
+                c.a *= mask;
+                px[y * S + x] = c;
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
+    }
+
+    /// <summary>위에 얹기 (알파 합성).</summary>
+    static Color Blend(Color under, Color over)
+    {
+        float a = over.a + under.a * (1f - over.a);
+        if (a <= 0.0001f) return new Color(0, 0, 0, 0);
+        return new Color((over.r * over.a + under.r * under.a * (1f - over.a)) / a,
+                         (over.g * over.a + under.g * under.a * (1f - over.a)) / a,
+                         (over.b * over.a + under.b * under.a * (1f - over.a)) / a, a);
+    }
+
+    /// <summary>상점 미리보기처럼 보드 밖에서 블록을 그릴 때 쓰는 광택+표정 오버레이.</summary>
+    public static Sprite MakeTileOverlaySprite() { return MakeOverlaySprite(true); }
+
+    // 둥근 사각 테두리 (고스트 위치 표시)
+    /// <summary>폭탄 아이콘 — example.html 의 .bomb-icon: 보라 구슬(radial-gradient) + 뚜껑 + 불꽃.
+    /// 보드 위 폭탄 조각 고스트와 HUD 폭탄 버튼이 같이 쓴다.</summary>
+    public static Sprite MakeBombSprite()
+    {
+        const int S = 48;
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var px = new Color[S * S];
+        var core = Palette.Hex(0xB58CFF);
+        var mid = Palette.Hex(0x6733BF);
+        var deep = Palette.Hex(0x381B80);
+        var ring = Palette.Hex(0x43247D);
+        var cap = Palette.Hex(0x5E4535);
+        var spark = Palette.Hex(0xFFD34F);
+
+        float cx = S * 0.5f, cy = S * 0.46f, r = S * 0.40f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float fx = x + 0.5f, fy = y + 0.5f;
+                float dx = fx - cx, dy = fy - cy;
                 float d = Mathf.Sqrt(dx * dx + dy * dy);
                 Color c = new Color(0, 0, 0, 0);
-
                 if (d <= r)
                 {
-                    // 왼쪽 위에서 빛이 온다
-                    float lit = Mathf.Clamp01(1f - (dx * -0.5f + dy * 0.5f + 6f) / 16f);
-                    c = Color.Lerp(edge, body, 0.45f + 0.55f * lit);
-                    float hd = Mathf.Sqrt((x - 11.5f) * (x - 11.5f) + (y - 17.5f) * (y - 17.5f));
-                    if (hd < 3.4f) c = Color.Lerp(c, new Color(0.72f, 0.76f, 0.86f), 0.62f * (1f - hd / 3.4f));
-                    if (d > r - 1.4f) c = Color.Lerp(c, edge, (d - (r - 1.4f)) / 1.4f);
-                    c.a = 1f;
+                    // radial-gradient(circle at 32% 25%, core 9%, mid 35%, deep 100%)
+                    float hdx = fx - (cx - r * 0.36f), hdy = fy - (cy + r * 0.50f);
+                    float t = Mathf.Clamp01(Mathf.Sqrt(hdx * hdx + hdy * hdy) / (r * 1.6f));
+                    c = t < 0.35f ? Color.Lerp(core, mid, Mathf.Clamp01((t - 0.09f) / 0.26f))
+                                  : Color.Lerp(mid, deep, (t - 0.35f) / 0.65f);
+                    if (d > r - 2.2f) c = Color.Lerp(c, ring, (d - (r - 2.2f)) / 2.2f);   // border 3px
+                    c.a = Mathf.Clamp01(r - d + 0.5f);
                 }
-                // 심지: 구체 위에서 오른쪽으로 휘어 오른다
-                float fx = 17.5f + 2.6f * Mathf.Sin((y - 23f) * 0.55f);
-                if (y >= 22 && y <= 27 && Mathf.Abs(x - fx) <= 1.3f) c = fuse;
-                // 불꽃
-                float sd = Mathf.Sqrt((x - 20.5f) * (x - 20.5f) + (y - 28.5f) * (y - 28.5f));
-                if (sd <= 3.2f) c = Color.Lerp(spark, new Color(1f, 0.95f, 0.75f), 1f - sd / 3.2f);
+                // ::before 뚜껑 — 오른쪽 위에 걸친 짧은 갈색 호
+                float capDy = fy - (cy + r * 1.05f);
+                if (capDy > -3f && capDy < 4f && Mathf.Abs(fx - (cx + r * 0.62f)) < 6f) c = cap;
+                // ::after 불꽃 — 노란 점 + 글로우
+                float sd = Mathf.Sqrt(Mathf.Pow(fx - (cx + r * 0.78f), 2) + Mathf.Pow(fy - (cy + r * 1.35f), 2));
+                if (sd <= r * 0.22f) c = Color.Lerp(spark, Color.white, Mathf.Clamp01(1f - sd / (r * 0.22f)) * 0.5f);
 
                 px[y * S + x] = c;
             }
@@ -1676,196 +2686,175 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 장애물 블록(콘크리트). 색·형태 상수는 ObstacleStyle 에 모아 두었다.
-    // 스프라이트에 실제 색을 구워 넣고 SpriteRenderer 는 흰색으로 둔다 — 틴트가 섞이면
-    // 지정한 무채색이 그대로 나오지 않는다.
-    //
-    // stage 0 = 온전 / 1 = 갈라져 조각이 벌어짐 (틈으로 아래 색이 비친다)
-    /// <summary>벽돌 블록. 흰 줄눈이 그리는 격자가 '쌓아올린 것 = 부술 수 있다' 를 알린다.
-    /// stage 는 0(온전) ~ ObstacleStyle.Stages-1(곧 부서짐). 한 대 맞을 때마다 반드시 달라진다.</summary>
+    /// <summary>포근한 벽돌 타일. 젤리 블록과 같은 방석 실루엣에 둥근 벽돌 두 켜를 얹어
+    /// '깰 수 있는 덩어리' 로 읽히게 한다. stage 는 0(온전) ~ Stages-1(곧 부서짐).</summary>
     static Sprite MakeObstacleSprite(int stage)
     {
-        const int S = 48;
-        float r = S * ObstacleStyle.RoundFrac;
-        float line = S * ObstacleStyle.LineFrac;
-        float mortar = S * ObstacleStyle.MortarFrac;
+        const int S = 96;
         float dmg = ObstacleStyle.Stages <= 1 ? 0f : stage / (float)(ObstacleStyle.Stages - 1);
-        Color body = ObstacleStyle.BodyFor(stage);
 
-        // 벽돌 한 장 — 가로 3장, 세로 4켜. 잘아야 '쌓아올린 벽' 으로 읽힌다
-        float bw = S / 3f, bh = S / 4f;
+        var deep = ObstacleStyle.Shadow;      // 벽돌 사이 줄눈 (진한 갈색)
+        var face = ObstacleStyle.Brick;       // 벽돌 몸통
+        var lit = ObstacleStyle.Light;        // 벽돌 윗면
+        var pale = ObstacleStyle.BrickPale;   // 깨질수록 흰기가 돈다
 
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         var px = new Color[S * S];
+
+        // 가로 2장 x 세로 3켜, 켜마다 반 장씩 어긋난다
+        const int Rows = 3;
+        const float BrickW = 0.5f, Round = 0.16f, Gap = 0.055f;
 
         for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
-                float fx = x + 0.5f, fy = y + 0.5f;
+                float nx = (x + 0.5f) / S, ny = (y + 0.5f) / S;
+                float u = nx * 2f - 1f, v = ny * 2f - 1f;
+                float d = JellyDist(u, v);
+                float a = Mathf.Clamp01((1f - d) * S * 0.22f);
+                if (a <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
 
-                // 거의 직각인 실루엣 — 둥근 색 타일과 형태부터 다르다
-                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
-                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
-                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+                // 줄눈 색을 깔고 그 위에 벽돌을 얹는다
+                Color c = deep;
 
-                // 켜마다 반 장씩 어긋나게 쌓는다
-                int row = Mathf.Clamp((int)(fy / bh), 0, 3);
-                float shift = (row % 2) * bw * 0.5f;
-                float ux = fx + shift;
-                int col = (int)(ux / bw);
+                int row = Mathf.Clamp((int)(ny * Rows), 0, Rows - 1);
+                float inRow = ny * Rows - row;                        // 0(아래) ~ 1(위)
+                float shift = (row % 2) * BrickW * 0.5f;
+                float bx = Frac((nx + shift) / BrickW);               // 벽돌 안 가로 위치
 
-                // 벽돌마다 흰기를 다르게 섞는다 — 부분적으로 하얀 벽돌이 섞인 벽
-                float h = Frac(Mathf.Sin(row * 37.13f + col * 91.7f) * 43758.5453f);
-                Color c = Color.Lerp(body, ObstacleStyle.BrickPale, h * 0.55f);
+                // 벽돌 한 장을 둥근 사각으로 — 가장자리 Gap 만큼은 줄눈이 보인다
+                float ex = Mathf.Min(bx, 1f - bx) * BrickW;           // 좌우 여백(전체 폭 기준)
+                float ey = Mathf.Min(inRow, 1f - inRow) / Rows;
+                float inset = Mathf.Min(ex, ey) - Gap * 0.5f;
+                float corner = Mathf.Clamp01(inset / Round);
+                float brick = Mathf.Clamp01(corner * S * 0.10f);
 
-                // 벽돌 한 장 안의 세로 명암 — 위가 밝고 아래가 어둡다. 두께가 생긴다
-                float inRow = (fy - row * bh) / bh;
-                c = Color.Lerp(Color.Lerp(c, ObstacleStyle.Light, 0.22f),
-                               Color.Lerp(c, ObstacleStyle.Shadow, 0.26f), inRow);
-
-                // 면의 잔결
-                float n = Frac(Mathf.Sin(x * 12.9898f + y * 78.233f) * 43758.5453f);
-                c = Color.Lerp(c, n > 0.5f ? ObstacleStyle.Light : ObstacleStyle.Shadow,
-                               0.13f * Mathf.Abs(n - 0.5f) * 2f);
-
-                // 줄눈 — 가로 켜 사이, 세로 이음매
-                float dRow = Mathf.Abs(fy - Mathf.Round(fy / bh) * bh);
-                float dCol = Mathf.Abs(ux - col * bw);
-                dCol = Mathf.Min(dCol, Mathf.Abs(ux - (col + 1) * bw));
-                if (dRow < mortar || dCol < mortar)
+                if (brick > 0f)
                 {
-                    c = Color.Lerp(ObstacleStyle.Mortar, c, 0.14f);
-                    // 줄눈 바로 아래는 그늘 — 벽돌이 앞으로 튀어나와 보인다
-                    if (dRow < mortar && fy < Mathf.Round(fy / bh) * bh)
-                        c = Color.Lerp(c, ObstacleStyle.Shadow, 0.30f);
+                    // 위가 밝고 아래가 어둡다 — 한 장씩 두께가 보인다
+                    Color body = Color.Lerp(face, pale, dmg * 0.45f);
+                    Color bc = Color.Lerp(Color.Lerp(body, ObstacleStyle.Shadow, 0.30f),
+                                          Color.Lerp(body, lit, 0.55f), inRow);
+                    // 윗면 하이라이트
+                    if (inRow > 0.72f) bc = Color.Lerp(bc, lit, (inRow - 0.72f) / 0.28f * 0.55f);
+                    c = Color.Lerp(c, bc, brick);
                 }
 
-                // 베벨: 위/좌는 밝게, 아래/우는 어둡게 — 덩어리의 두께
-                float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
-                if (edge > line && edge < line + S * ObstacleStyle.BevelFrac)
-                    c = Color.Lerp(c, (fy > S * 0.5f || fx < S * 0.5f)
-                                      ? ObstacleStyle.Light : ObstacleStyle.Shadow, 0.50f);
+                // 전체 둥근 덩어리 음영 — 가장자리로 갈수록 어둡게
+                float edge = Mathf.Clamp01((d - 0.72f) / 0.28f);
+                c = Color.Lerp(c, Color.Lerp(c, ObstacleStyle.Outline, 0.55f), edge * edge);
+                // 왼쪽 위에서 오는 빛
+                c = Color.Lerp(c, Color.Lerp(c, Color.white, 0.30f),
+                               Mathf.Clamp01((-u * 0.5f + v * 0.5f)) * 0.5f * (1f - edge));
 
-                // 굵은 외곽선 — 색 타일에는 없는 신호
-                if (edge <= line) c = ObstacleStyle.Outline;
-
-                // 균열: 손상이 깊어질수록 굵어지고 갈래가 늘고 끝내 조각이 벌어진다
-                if (stage > 0)
+                // 손상: 금이 갈라진다
+                if (dmg > 0f)
                 {
-                    float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
-                    float d = Mathf.Abs(fx - (S * 0.44f + w1));
-
-                    if (dmg > 0.3f)
+                    float crack = Mathf.Abs((nx - 0.5f) * 0.9f + (ny - 0.5f) * 0.6f
+                                            + Mathf.Sin(ny * 9f) * 0.05f);
+                    if (crack < 0.020f * dmg) c = Color.Lerp(c, ObstacleStyle.Outline, 0.85f);
+                    if (dmg > 0.55f)
                     {
-                        float w2 = Mathf.Sin(fx * 0.28f + 1.5f) * S * 0.075f;
-                        d = Mathf.Min(d, Mathf.Abs(fy - (S * 0.60f + w2)));
+                        float crack2 = Mathf.Abs((nx - 0.45f) * 0.7f - (ny - 0.55f) * 0.9f
+                                                 + Mathf.Sin(nx * 11f) * 0.04f);
+                        if (crack2 < 0.018f * dmg) c = Color.Lerp(c, ObstacleStyle.Outline, 0.8f);
                     }
-                    if (dmg > 0.7f)
-                    {
-                        float w3 = Mathf.Sin(fy * 0.41f + 2.6f) * S * 0.06f;
-                        d = Mathf.Min(d, Mathf.Abs(fx - (S * 0.74f + w3)));
-                    }
-
-                    float crack = line * (0.28f + 0.62f * dmg);
-                    float gap = S * 0.030f * Mathf.Max(0f, dmg - 0.75f) * 4f;
-                    if (gap > 0f && d < gap) a = 0f;
-                    else if (d < crack) c = Color.Lerp(c, ObstacleStyle.Outline, 0.60f + 0.40f * dmg);
-                }
-                else
-                {
-                    // 온전해도 실금 하나 — 완전히 매끈하면 플라스틱처럼 보인다
-                    float w1 = Mathf.Sin(fy * 0.32f) * S * 0.085f;
-                    if (Mathf.Abs(fx - (S * 0.44f + w1)) < line * 0.22f)
-                        c = Color.Lerp(c, ObstacleStyle.Outline, 0.26f);
                 }
 
                 c.a = a;
                 px[y * S + x] = c;
             }
-
-        tex.SetPixels(px); tex.Apply();
+        tex.SetPixels(px);
+        tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
     static float Frac(float v) { return v - Mathf.Floor(v); }
 
-    /// <summary>강철. 벽돌(점토색)과 헷갈리지 않게 차가운 금속과 리벳으로 그린다.
-    /// stage 는 손상 단계(0 = 온전 … Stages-1 = 곧 부서짐)다. 맞을수록
-    /// 금이 갈라지고 모서리가 부스러져 작은 알갱이로 떨어져 나간다.</summary>
+    /// <summary>반짝이는 금속 타일. 젤리 블록과 같은 방석 실루엣에 차가운 강판 + 네 모서리 리벳 +
+    /// 대각 사선 + 비스듬한 광택을 얹는다. stage 가 오를수록 금이 가고 빛을 잃는다.</summary>
     static Sprite MakeSteelSprite(int stage)
     {
-        const int S = 48;
-        float r = S * ObstacleStyle.RoundFrac;
-        float line = S * ObstacleStyle.LineFrac;
-
-        // 0 → 1 로 갈수록 심하게 망가진다
+        const int S = 96;
         float dmg = ObstacleStyle.Stages <= 1 ? 0f : stage / (float)(ObstacleStyle.Stages - 1);
 
-        var body    = new Color(0.36f, 0.40f, 0.47f);
-        var light   = new Color(0.55f, 0.60f, 0.68f);
-        var shadow  = new Color(0.22f, 0.25f, 0.31f);
-        var outline = new Color(0.10f, 0.11f, 0.16f);
-        var rivet   = new Color(0.70f, 0.75f, 0.82f);
+        var frame = Palette.Hex(0x2B3348);   // 바깥 테두리
+        var plateHi = Palette.Hex(0xD6DFEC);  // 강판 윗쪽
+        var plateLo = Palette.Hex(0x7C8AA6);  // 강판 아래쪽
+        var groove = Palette.Hex(0x5A6880);   // 파인 사선
+        var rivet = Palette.Hex(0xEAF0F8);   // 리벳
+        var crackC = Palette.Hex(0x1E2434);
 
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         var px = new Color[S * S];
 
         for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
-                float fx = x + 0.5f, fy = y + 0.5f;
+                float nx = (x + 0.5f) / S, ny = (y + 0.5f) / S;
+                float u = nx * 2f - 1f, v = ny * 2f - 1f;
+                float d = JellyDist(u, v);
+                float a = Mathf.Clamp01((1f - d) * S * 0.22f);
+                if (a <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
 
-                float dx = Mathf.Max(r - fx, fx - (S - r), 0f);
-                float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
-                float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
+                Color c = frame;
 
-                // 위에서 아래로 떨어지는 금속 그라데이션 + 대각선 결
-                float g = 1f - fy / S;
-                Color c = Color.Lerp(light, shadow, g);
-                float grain = Mathf.Sin((fx + fy) * 0.55f) * 0.5f + 0.5f;
-                c = Color.Lerp(c, body, grain * 0.40f);
+                // 안쪽 강판 (테두리 안으로 들어온 부분)
+                float plate = Mathf.Clamp01((0.80f - d) * S * 0.10f);
+                if (plate > 0f)
+                {
+                    Color steel = Color.Lerp(plateLo, plateHi, Mathf.Clamp01(ny * 0.85f + 0.15f));
+                    steel = Color.Lerp(steel, Color.Lerp(steel, groove, 0.5f), dmg * 0.45f);   // 깨질수록 탁해진다
 
-                // 사방 리벳 — 딱 봐도 박아놓은 판
-                for (int ry = 0; ry < 2; ry++)
-                    for (int rx = 0; rx < 2; rx++)
+                    // 대각선 두 줄 — 강판을 가로지르는 얕은 홈
+                    float dg = Mathf.Min(Mathf.Abs(u - v), Mathf.Abs(u + v)) * 0.7071f;
+                    if (dg < 0.055f) steel = Color.Lerp(steel, groove, 0.55f * (1f - dg / 0.055f));
+                    // 홈 바로 위쪽은 빛을 받아 반짝인다
+                    if (dg >= 0.045f && dg < 0.085f) steel = Color.Lerp(steel, Color.white, 0.25f);
+
+                    c = Color.Lerp(c, steel, plate);
+                }
+
+                // 비스듬히 지나가는 넓은 광택 띠
+                float sheen = 1f - Mathf.Abs((nx + (1f - ny)) * 0.5f - 0.34f) / 0.14f;
+                if (sheen > 0f) c = Color.Lerp(c, Color.white, Mathf.Clamp01(sheen) * 0.35f * plate * (1f - dmg * 0.6f));
+
+                // 네 모서리 리벳
+                for (int i = 0; i < 4; i++)
+                {
+                    float rx = (i % 2 == 0) ? 0.235f : 0.765f;
+                    float ry = (i < 2) ? 0.235f : 0.765f;
+                    float rd = Mathf.Sqrt((nx - rx) * (nx - rx) + (ny - ry) * (ny - ry)) / 0.062f;
+                    if (rd > 1.4f) continue;
+                    if (rd < 1f)
                     {
-                        float cx = rx == 0 ? S * 0.24f : S * 0.76f;
-                        float cy = ry == 0 ? S * 0.24f : S * 0.76f;
-                        float rd = Mathf.Sqrt((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
-                        if (rd < S * 0.06f) c = Color.Lerp(rivet, c, rd / (S * 0.06f));
+                        Color rc = Color.Lerp(rivet, Color.Lerp(rivet, groove, 0.75f), Mathf.Clamp01(rd));
+                        c = Color.Lerp(c, rc, Mathf.Clamp01((1f - rd) * 4f));
                     }
+                    else c = Color.Lerp(c, groove, Mathf.Clamp01((1.4f - rd) * 3f) * 0.5f);   // 리벳 그림자
+                }
 
-                float edge = Mathf.Min(Mathf.Min(fx, fy), Mathf.Min(S - fx, S - fy));
-                if (edge > line && edge < line + S * 0.12f)
-                    c = Color.Lerp(c, (fy > S * 0.5f) ? light : shadow, 0.45f);
-                if (edge <= line) c = outline;
-
+                // 손상: 금이 간다
                 if (dmg > 0f)
                 {
-                    // ① 균열 — 대각으로 갈라진 금이 단계마다 한 줄씩 굵고 길어진다
-                    float crack = Mathf.Abs(Frac((fx * 0.9f - fy * 1.35f) / S + 0.18f) - 0.5f) * S;
-                    float wobble = Mathf.Sin(fy * 0.7f) * 1.3f;      // 자로 그은 듯한 직선을 피한다
-                    if (crack + wobble < 1.1f + dmg * 2.2f) c = Color.Lerp(c, outline, 0.85f);
-                    if (dmg > 0.45f)
+                    float crack = Mathf.Abs((nx - 0.5f) * 0.85f + (ny - 0.5f) * 0.55f + Mathf.Sin(ny * 12f) * 0.045f);
+                    if (crack < 0.018f * dmg) c = Color.Lerp(c, crackC, 0.9f);
+                    if (dmg > 0.5f)
                     {
-                        float crack2 = Mathf.Abs(Frac((fx * 1.25f + fy * 0.8f) / S + 0.62f) - 0.5f) * S;
-                        if (crack2 + Mathf.Cos(fx * 0.6f) < dmg * 1.9f) c = Color.Lerp(c, outline, 0.75f);
+                        float crack2 = Mathf.Abs((nx - 0.55f) * 0.6f - (ny - 0.45f) * 0.9f + Mathf.Sin(nx * 10f) * 0.05f);
+                        if (crack2 < 0.016f * dmg) c = Color.Lerp(c, crackC, 0.85f);
                     }
-
-                    // ② 부스러짐 — 가장자리부터 알갱이로 떨어져 나가 구멍이 뚫린다
-                    float bite = Frac(Mathf.Sin(fx * 12.9898f + fy * 78.233f) * 43758.55f);
-                    float rim = Mathf.Clamp01(1f - edge / (S * 0.30f));   // 가장자리일수록 1
-                    if (bite < dmg * 0.55f * rim * rim) a = 0f;
-
-                    // ③ 남은 몸통도 빛이 죽는다 — 밝기만으로도 상태가 읽히게
-                    c = Color.Lerp(c, shadow, dmg * 0.30f);
                 }
+
+                // 가장자리는 어둡게 — 두께가 생긴다
+                float edge = Mathf.Clamp01((d - 0.74f) / 0.26f);
+                c = Color.Lerp(c, Color.Lerp(c, crackC, 0.6f), edge * edge);
 
                 c.a = a;
                 px[y * S + x] = c;
             }
-
-        tex.SetPixels(px); tex.Apply();
+        tex.SetPixels(px);
+        tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
@@ -1907,35 +2896,90 @@ public class BoardView : MonoBehaviour
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
     }
 
-    // 아이템 아이콘: 반투명 어두운 원판 + 흰 글리프 (타일 색과 무관하게 대비 확보)
+    /// <summary>점에서 선분까지의 거리. 둥근 끝(캡슐) 글리프를 그리는 데 쓴다.</summary>
+    static float SegDist(float px, float py, float ax, float ay, float bx, float by)
+    {
+        float vx = bx - ax, vy = by - ay;
+        float wx = px - ax, wy = py - ay;
+        float t = Mathf.Clamp01((wx * vx + wy * vy) / (vx * vx + vy * vy));
+        float dx = wx - vx * t, dy = wy - vy * t;
+        return Mathf.Sqrt(dx * dx + dy * dy);
+    }
+
+    /// <summary>아이템 글리프 안인가. 좌표는 -1~1, 전부 끝이 둥근 굵은 획이다.</summary>
+    static bool InGlyph(ItemType t, float nx, float ny)
+    {
+        const float Bar = 0.17f, Tip = 0.14f;
+        switch (t)
+        {
+            case ItemType.Row:      // ←→ 가로 화살표
+                return SegDist(nx, ny, -0.40f, 0f, 0.40f, 0f) <= Bar
+                    || SegDist(nx, ny, 0.82f, 0f, 0.48f, 0.33f) <= Tip
+                    || SegDist(nx, ny, 0.82f, 0f, 0.48f, -0.33f) <= Tip
+                    || SegDist(nx, ny, -0.82f, 0f, -0.48f, 0.33f) <= Tip
+                    || SegDist(nx, ny, -0.82f, 0f, -0.48f, -0.33f) <= Tip;
+            case ItemType.Col:      // ↑↓ 세로 화살표 (가로를 90도 돌린 것)
+                return InGlyph(ItemType.Row, ny, nx);
+            case ItemType.Diag:     // ✕ 대각선 두 획
+                return SegDist(nx, ny, -0.58f, -0.58f, 0.58f, 0.58f) <= Bar
+                    || SegDist(nx, ny, -0.58f, 0.58f, 0.58f, -0.58f) <= Bar;
+        }
+        return false;
+    }
+
+    // 아이템 아이콘: 어두운 원판 없이, 흰 획 + 짙은 외곽선만으로 대비를 만든다 (캐주얼 스티커 느낌).
     static Sprite MakeIcon(ItemType t)
     {
-        const int S = 24;
-        var tex = new Texture2D(S, S);
-        tex.filterMode = FilterMode.Bilinear;
-        var px = new Color[S * S];
-        float c = (S - 1) / 2f;
+        const int S = 48, SS = 3;
+        const float OutR = 3.0f;                    // 외곽선 두께(px)
+        var ink = new Color(0.08f, 0.09f, 0.17f);
+
+        var mask = new float[S * S];
         for (int y = 0; y < S; y++)
             for (int x = 0; x < S; x++)
             {
-                float dx = x - c, dy = y - c;
-                float dist = Mathf.Sqrt(dx * dx + dy * dy);
-                Color col = Color.clear;
-                if (dist <= 11f) col = new Color(0, 0, 0, 0.5f);
-
-                bool glyph = false;
-                switch (t)
-                {
-                    case ItemType.Row: glyph = Mathf.Abs(dy) <= 2f && Mathf.Abs(dx) <= 8.5f; break;
-                    case ItemType.Col: glyph = Mathf.Abs(dx) <= 2f && Mathf.Abs(dy) <= 8.5f; break;
-                    case ItemType.Diag:
-                        glyph = (Mathf.Abs(dx - dy) <= 2f || Mathf.Abs(dx + dy) <= 2f) && dist <= 9f;
-                        break;
-                    case ItemType.Bomb5: glyph = dist <= 6f; break;
-                }
-                if (glyph) col = Color.white;
-                px[y * S + x] = col;
+                float cov = 0f;
+                for (int sy = 0; sy < SS; sy++)
+                    for (int sx = 0; sx < SS; sx++)
+                    {
+                        float nx = (x + (sx + 0.5f) / SS) / S * 2f - 1f;
+                        float ny = (y + (sy + 0.5f) / SS) / S * 2f - 1f;
+                        if (InGlyph(t, nx, ny)) cov += 1f;
+                    }
+                mask[y * S + x] = cov / (SS * SS);
             }
+
+        var px = new Color[S * S];
+        int rad = Mathf.CeilToInt(OutR);
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float m = mask[y * S + x];
+
+                // 획을 OutR 만큼 부풀린 것에서 획 자신을 뺀 고리 = 외곽선
+                float dil = 0f;
+                for (int oy = -rad; oy <= rad && dil < 1f; oy++)
+                    for (int ox = -rad; ox <= rad; ox++)
+                    {
+                        if (ox * ox + oy * oy > OutR * OutR) continue;
+                        int gx = x + ox, gy = y + oy;
+                        if (gx < 0 || gy < 0 || gx >= S || gy >= S) continue;
+                        float v = mask[gy * S + gx];
+                        if (v > dil) { dil = v; if (dil >= 1f) break; }
+                    }
+                float outline = Mathf.Clamp01(dil - m) * 0.55f;
+
+                // 흰 획을 외곽선 위에 얹는다 (일반 알파 합성)
+                float a = m + outline * (1f - m);
+                Color c = a <= 0.001f
+                    ? new Color(0, 0, 0, 0)
+                    : new Color((1f * m + ink.r * outline * (1f - m)) / a,
+                                (1f * m + ink.g * outline * (1f - m)) / a,
+                                (1f * m + ink.b * outline * (1f - m)) / a, a);
+                px[y * S + x] = c;
+            }
+
+        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
         tex.SetPixels(px);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);

@@ -137,7 +137,7 @@ namespace ColorMatcher.Core
 
     public class Board
     {
-        public const int W = 14, H = 14, Empty = -1;
+        public const int W = 11, H = 11, Empty = -1;
 
         // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
         public const int Obstacle = -2;      // 벽돌: 매칭에 안 끼고, 옆 칸이 터질 때만 금이 간다

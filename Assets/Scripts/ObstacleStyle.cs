@@ -2,29 +2,22 @@
 // 색을 코드 여기저기에 흩지 않기 위해 분리했다. ScriptableObject 대신 상수인 이유는
 // 이 프로젝트가 외부 에셋(.asset 포함) 의존 0 을 유지하기 때문이다.
 //
-// 원칙: 팔레트 블록과 헷갈리면 안 된다. 흰 줄눈이 그리는 '쌓아올린 격자' 가 그 역할을 한다.
-// 색 타일에는 격자가 없다. 채도를 낮춘 점토색 + 굵은 외곽선 + 흰 줄눈 세 가지가 겹쳐야
-// 밝은 판 위에서 바로 읽힌다.
+// 원칙: 팔레트 블록과 헷갈리면 안 된다. 젤리 블록과 실루엣은 같되,
+// 둥근 벽돌 두 켜와 진한 줄눈이 '쌓아올린 것 = 부술 수 있다' 를 알린다.
 
 using UnityEngine;
 
 public static class ObstacleStyle
 {
     // ---- 색 ----
-    public static readonly Color Brick     = Palette.Hex(0x9C6455);   // 점토 (온전) — 진하게
-    public static readonly Color BrickPale = Palette.Hex(0xC8A99B);   // 흰기가 섞인 벽돌
-    public static readonly Color Mortar    = Palette.Hex(0xEFE7DA);   // 줄눈
-    public static readonly Color Light     = Palette.Hex(0xBE8570);   // 빛 받는 면
-    public static readonly Color Shadow    = Palette.Hex(0x5E3A2E);   // 그늘 — 깊게
-    public static readonly Color Outline   = Palette.Hex(0x241A16);   // 외곽선·균열
+    public static readonly Color Brick     = Palette.Hex(0xC97845);   // 벽돌 몸통 — 따뜻한 테라코타
+    public static readonly Color BrickPale = Palette.Hex(0xE3A878);   // 깨질수록 도는 흰기
+    public static readonly Color Light     = Palette.Hex(0xF0B583);   // 벽돌 윗면
+    public static readonly Color Shadow    = Palette.Hex(0x7A4526);   // 줄눈·그늘
+    public static readonly Color Outline   = Palette.Hex(0x532E1A);   // 가장자리·균열
 
     // ---- 형태 (스프라이트 한 변에 대한 비율) ----
-    public const float Scale      = 0.92f;   // 셀 대비 크기. 색 타일보다 꽉 차야 무겁게 보인다
-    public const float RoundFrac  = 0.045f;  // 색 타일(34%)보다 훨씬 각지게 — 거의 직각
-    public const float LineFrac   = 0.095f;  // 외곽선 굵기 — 두꺼울수록 단단해 보인다
-    public const float SplitFrac  = 0.085f;  // 마지막 단계에서 조각이 벌어진 틈
-    public const float MortarFrac = 0.026f;  // 줄눈 굵기
-    public const float BevelFrac  = 0.16f;   // 위/아래 두께감
+    public const float Scale = 0.98f;   // 셀 대비 크기. 색 타일보다 꽉 차야 무겁게 보인다
 
     /// <summary>손상 단계 수. 내구도가 몇이든 이 개수 안으로 눌러서 보여준다.</summary>
     public const int Stages = 5;

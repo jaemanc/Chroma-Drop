@@ -70,7 +70,6 @@ public class GameManager : MonoBehaviour
     GameUI ui;
     Sfx sfx;
     Camera cam;
-    SpriteRenderer bg;                      // 카메라를 덮는 배경 이미지
 
     int score, movesLeft, totalMoves;
     int movesUsed;              // 이 판에서 지난 수. 벽돌·오염이 이 값을 보고 움직인다
@@ -81,6 +80,8 @@ public class GameManager : MonoBehaviour
     int marksTotal, marksLeft;
     bool cleared;               // 목표를 채웠는가
     bool busy, taRunning, touchActive;
+    bool aiming;                // 해머·무지개가 쓸 칸을 고르는 중인가
+    ShopItem aimItem;
     float pieceDeadline, pieceTimeTotal, taDeadline;
     int lastW, lastH, curSeed;
     int pendingScore, pendingSeed, earnedCoins;
@@ -112,14 +113,15 @@ public class GameManager : MonoBehaviour
             go.AddComponent<AudioListener>();
         }
         cam.orthographic = true;
+        cam.transparencySortMode = TransparencySortMode.Orthographic;   // 같은 정렬 순서면 z(줄 깊이)로 겹침을 정한다
         cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = Palette.Hex(0xCDE3EE);   // 배경 스프라이트 밖 여백 (그림 하늘색)
+        cam.backgroundColor = Palette.Hex(0x8FD0F8);   // 아트 밖 여백 (아트의 하늘색)
 
         Leaderboard.Create();
-        BuildBackground();
         view = new GameObject("BoardView").AddComponent<BoardView>();
         sfx = gameObject.AddComponent<Sfx>();
         ui = GameUI.Create(this);
+        view.SetFramePanels(!ui.HasPlayArt);   // 보드 판은 플레이 아트에 그려져 있다
 
         stageLevel = Progress.Selected;   // 지난번에 고른 스테이지에서 이어간다
         FitCamera();
@@ -127,70 +129,41 @@ public class GameManager : MonoBehaviour
     }
 
 
-    /// <summary>플레이 화면 배경. 보드 프레임(-2)보다 뒤에 오도록 -20 에 둔다.</summary>
-    void BuildBackground()
-    {
-        var tex = Resources.Load<Texture2D>("jungle_bg");
-        if (tex == null) return;
-
-        var go = new GameObject("Background");
-        go.transform.SetParent(transform, false);
-        bg = go.AddComponent<SpriteRenderer>();
-        bg.sprite = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
-        bg.color = Color.white;      // 채도·명도는 파일에 구워져 있다 (Tools/tune-image.py)
-        bg.sortingOrder = -20;
-    }
-
-    /// <summary>스테이지마다 배경 색을 조금씩 옮긴다. 같은 그림이라도 판이 바뀐 게 느껴지고,
-    /// 한 바퀴 도는 데 스테이지 아홉 개가 걸려서 이웃한 판끼리는 확실히 다른 색이 된다.
-    /// 원본 그림을 살려야 하므로 흰색에서 아주 조금만 벗어난다.</summary>
-    static Color StageTint(int level)
-    {
-        float hue = Frac((level - 1) * 0.111f + 0.08f);
-        return Color.Lerp(Color.white, Color.HSVToRGB(hue, 0.55f, 1f), 0.22f);
-    }
-
-    static float Frac(float v) { return v - Mathf.Floor(v); }
-
-    /// <summary>보드 바깥에 붙는 HUD(타이머·아이템 줄)를 제자리에 맞춘다.
-    /// 패널이 꺼져 있으면 사각형 크기가 0 이라 한 번만 계산해선 안 된다 — 매 프레임 맞춘다.</summary>
+    /// <summary>보드·트레이를 플레이 아트의 자리에 정확히 맞춘다.
+    /// 아트는 화면 비율에 따라 크기가 달라지므로 UI 가 잰 화면 사각형으로 카메라를 정한다 —
+    /// 칸 하나가 슬롯 폭의 1/W 픽셀이 되도록 카메라 크기를, 격자 중심이 슬롯 중심에 오도록
+    /// 카메라 위치를 잡는다. 패널이 꺼져 있으면 사각형이 0 이라 매 프레임 다시 잰다.</summary>
     void LayoutHud()
     {
         if (ui == null || cam == null) return;
+        Rect slot;
+        if (!ui.BoardSlotRect(out slot)) return;
 
-        // 보드 판은 칸 범위(0 ~ H-1)보다 여백·테두리만큼 넓다
-        const float PanelEdge = 0.85f;
-        float boardTop = (Board.H - 1) + PanelEdge;
+        float cellPx = slot.width / Board.W;
+        if (cellPx <= 0.01f) return;
+        float half = cam.pixelHeight / cellPx * 0.5f;
+        Vector2 gridC = new Vector2((Board.W - 1) / 2f, (Board.H - 1) / 2f);
+        Vector2 screenC = new Vector2(cam.pixelWidth * 0.5f, cam.pixelHeight * 0.5f);
+        Vector2 off = (screenC - slot.center) / cellPx;      // 화면 중심이 격자 중심에서 몇 칸 떨어졌나
+        var want = new Vector3(gridC.x + off.x, gridC.y + off.y, -10);
 
-        // 타이머가 들어갈 자리까지 포함해 보드가 상단 HUD 아래로 내려가야 한다.
-        // 화면 비율에 따라 필요한 양이 달라지므로 실제 HUD 위치를 재서 정한다.
-        float hudBottom = ui.HudBottomScreenY();
-        if (hudBottom > 0f)
+        if (Mathf.Abs(cam.orthographicSize - half) > 1e-4f) cam.orthographicSize = half;
+        if ((camBase - want).sqrMagnitude > 1e-8f)
         {
-            float hudWorldY = cam.ScreenToWorldPoint(new Vector3(0, hudBottom, 10)).y;
-            float wanted = hudWorldY - TimerRoom;      // 타이머 줄이 들어갈 여유
-            if (boardTop > wanted && shakeCo == null)
-            {
-                camBase.y += boardTop - wanted;        // 카메라를 올리면 보드가 내려간다
-                cam.transform.position = camBase;
-            }
+            camBase = want;
+            if (shakeCo == null) cam.transform.position = camBase;
         }
 
-        ui.FollowWorld(cam, (Board.W - 1) / 2f, boardTop, -PanelEdge);
-    }
-
-    /// <summary>보드 위쪽에 타이머 줄이 들어갈 만큼의 여유 (칸 단위).</summary>
-    const float TimerRoom = 1.8f;
-
-    void FitBackground()
-    {
-        if (bg == null || cam == null) return;
-        float h = cam.orthographicSize * 2f;
-        float w = h * cam.aspect;
-        var sz = bg.sprite.bounds.size;
-        float k = Mathf.Max(w / sz.x, h / sz.y);      // contain 이 아니라 cover
-        bg.transform.localScale = Vector3.one * k;
-        bg.transform.position = new Vector3(cam.transform.position.x, cam.transform.position.y, 10);
+        // 트레이: 지금 조각은 왼쪽 큰 칸, 다음 조각은 오른쪽 작은 칸
+        Rect tray;
+        if (ui.TraySlotRect(out tray))
+        {
+            Vector2 cur = cam.ScreenToWorldPoint(new Vector3(tray.xMin + tray.width * 0.42f, tray.center.y, 10));
+            Vector2 nxt = cam.ScreenToWorldPoint(new Vector3(tray.xMin + tray.width * 0.85f, tray.center.y, 10));
+            var curBox = new Vector2(tray.width * 0.62f, tray.height * 0.84f) / cellPx;
+            var nxtBox = new Vector2(tray.width * 0.26f, tray.height * 0.44f) / cellPx;
+            if (view.SetTrayLayout(cur, curBox, nxt, nxtBox)) RefreshTray();
+        }
     }
 
     // ---------- 화면 전환 ----------
@@ -260,8 +233,6 @@ public class GameManager : MonoBehaviour
         BuildMarks(s);
         if (stage.HasPollution) SpawnPollutionSource(new System.Random(s + 5));
 
-        if (bg != null) bg.color = taRunning ? Color.white : StageTint(stageLevel);
-
         view.Build();
         // 오염 판의 벽돌은 전부 독벽돌이다 — 손상 단계도 그 내구도로 환산해야 맞다
         view.SetObstacleMaxHp(stage.HasPollution ? stage.PollutionHp : stage.ObstacleHp);
@@ -272,6 +243,7 @@ public class GameManager : MonoBehaviour
         view.SetVisible(true);
         view.Refresh(board, palette);
         ui.ShowGame();
+        LayoutHud();        // 패널이 켜진 직후 자리를 맞춘다 — 첫 프레임부터 제자리에 그린다
         RefreshTray();
 
         Phase = GamePhase.Playing;
@@ -333,7 +305,9 @@ public class GameManager : MonoBehaviour
         board.ApplyGravity();
         board.Refill();
         view.Refresh(board, palette);
-        view.SetPollutionStage(false);      // 근원이 사라졌으니 남은 벽돌은 그냥 벽돌이다
+        // ⚠ 여기서 오염 표시를 끄면 안 된다. 근원이 무너지면 더 번지지 않지만
+        //    남아 있는 것들은 여전히 독블록이다 — 그림만 평범한 벽돌로 바꾸면
+        //    같은 칸이 갑자기 다른 블록처럼 보인다.
 
         score += stage.PollutionSourceHits * TargetBonus;
         ui.ShowChainPopup(0, stage.PollutionSourceHits * TargetBonus);
@@ -359,15 +333,36 @@ public class GameManager : MonoBehaviour
     /// 근원 옆 여덟 칸만 보면 그 여덟이 차는 순간 더는 안 번진다 — 덩어리 전체의 가장자리를 본다.</summary>
     bool SpreadPollution()
     {
+        int want = Mathf.Max(1, stage.PollutionPerSpread);
+        bool any = false;
+        for (int i = 0; i < want; i++)
+        {
+            // 한 칸 채울 때마다 다시 고른다 — 안 그러면 방금 찬 칸 때문에
+            // 바깥으로 나가야 할 차례인데도 안쪽 후보를 계속 쓴다
+            var open = PollutionFrontier();
+            if (open.Count == 0) break;
+            var at = open[pieceRng.Next(open.Count)];
+            board.SetObstacle(at.X, at.Y, stage.PollutionHp);
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>다음에 오염될 후보 칸.
+    /// 숙주 버섯 바로 옆 8칸이 먼저고, 그 8칸이 다 차야 이미 번진 독블록 바깥으로 나간다.
+    /// 둘을 한 통에 담고 무작위로 뽑으면 옆이 비었는데 멀리 가서 생긴다.</summary>
+    /// <summary>지금 오염될 수 있는 칸. 숙주(독버섯) 바로 옆 8칸만이다 —
+    /// 새로 생긴 독블록은 다시 번지지 않으므로 오염은 숙주 둘레를 넘지 않는다.
+    /// 플레이어가 그 8칸을 깨면 다시 오염 대상이 되므로 숙주는 계속 압박을 준다.</summary>
+    List<Point> PollutionFrontier()
+    {
         var open = new List<Point>();
         var seen = new HashSet<int>();
 
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
-                // 근원(못 깨는 강철)과 이미 번진 오염(벽돌)이 다 씨앗이 된다
-                bool source = board.IsSteel(x, y) && board.GetSteelHp(x, y) == 0;
-                if (!source && !board.IsObstacle(x, y)) continue;
+                if (!board.IsSteel(x, y) || board.GetSteelHp(x, y) != 0) continue;   // 숙주만
 
                 for (int dx = -1; dx <= 1; dx++)
                     for (int dy = -1; dy <= 1; dy++)
@@ -379,16 +374,7 @@ public class GameManager : MonoBehaviour
                         if (seen.Add(nx * Board.H + ny)) open.Add(new Point(nx, ny));
                     }
             }
-        if (open.Count == 0) return false;
-
-        int want = Mathf.Max(1, stage.PollutionPerSpread);
-        for (int i = 0; i < want && open.Count > 0; i++)
-        {
-            int k = pieceRng.Next(open.Count);
-            board.SetObstacle(open[k].X, open[k].Y, stage.PollutionHp);
-            open.RemoveAt(k);
-        }
-        return true;
+        return open;
     }
 
     /// <summary>목표를 다 채웠는가. 블록 수와 표시된 칸을 둘 다 건 스테이지는 둘 다 채워야 한다.</summary>
@@ -503,6 +489,7 @@ public class GameManager : MonoBehaviour
 
         ui.UpdateHud(this);
         LayoutHud();
+        view.SetIdle(!busy);               // 연출 중에는 블록이 스스로 움직이지 않는다
         if (busy) { view.HideGhost(); return; }
         HandleInput();
     }
@@ -535,6 +522,12 @@ public class GameManager : MonoBehaviour
         }
 
         Vector3 w = cam.ScreenToWorldPoint(new Vector3(sp.x, sp.y, 10));
+
+        if (aiming)
+        {
+            AimInput(w, up);
+            return;
+        }
 
         // 누르는 순간 바로 지금 블록을 집는다. 트레이를 먼저 고를 필요가 없다.
         if (down)
@@ -589,6 +582,27 @@ public class GameManager : MonoBehaviour
         // 안 막으면 버튼을 누를 때마다 보유량이 계속 깎인다.
         if (it == ShopItem.BombPiece && pendingBomb) return false;
 
+        // 해머·무지개는 '어느 칸에 쓸지' 를 먼저 고른다. 같은 버튼을 다시 누르면 취소한다.
+        if (it == ShopItem.Hammer || it == ShopItem.Rainbow)
+        {
+            if (aiming && aimItem == it) { CancelAim(); return true; }
+            aiming = true;
+            aimItem = it;
+            dragging = false;
+            view.HideGhost();
+            sfx.PlayItem();
+            return true;
+        }
+
+        if (it == ShopItem.Shuffle)
+        {
+            CancelAim();
+            ShuffleBoard();
+            Wallet.Use(it);
+            sfx.PlayItem();
+            return true;
+        }
+
         switch (it)
         {
             case ShopItem.BombPiece:
@@ -605,6 +619,194 @@ public class GameManager : MonoBehaviour
         // 돈을 주고 바꾼 조각이다. 남은 시간이 얼마든 조준할 시간을 새로 준다.
         StartPieceTimer();
         return true;
+    }
+
+    /// <summary>조준 취소.</summary>
+    void CancelAim()
+    {
+        if (!aiming) return;
+        aiming = false;
+        view.HideAim();
+        view.HideGhost();
+    }
+
+    /// <summary>해머·무지개를 쓸 칸을 고르는 중의 입력. 탭을 떼는 순간 발동한다.</summary>
+    void AimInput(Vector3 w, bool up)
+    {
+        // 손가락이 조각을 가리지 않게 띄우는 보정은 여기선 쓰지 않는다 — 정확히 찍은 칸을 쓴다
+        int tx = Mathf.RoundToInt(w.x), ty = Mathf.RoundToInt(w.y);
+        bool ok = board.InBounds(tx, ty) && board.GetTile(tx, ty) >= 0;   // 색 블록만 고를 수 있다
+
+        var cells = new List<Point>();
+        if (ok)
+        {
+            if (aimItem == ShopItem.Rainbow)
+            {
+                int c = board.GetTile(tx, ty);
+                for (int x = 0; x < Board.W; x++)
+                    for (int y = 0; y < Board.H; y++)
+                        if (board.GetTile(x, y) == c) cells.Add(new Point(x, y));
+            }
+            else cells.Add(new Point(tx, ty));
+        }
+
+        view.ShowAim(aimItem == ShopItem.Hammer, tx, ty, ok, cells);
+        if (!up || !ok) return;
+
+        aiming = false;
+        view.HideAim();
+        Wallet.Use(aimItem);
+        StartCoroutine(aimItem == ShopItem.Rainbow ? UseRainbow(cells) : UseHammer(cells));
+    }
+
+    /// <summary>해머 — 고른 칸 하나를 바로 부순다. 수는 쓰지 않는다.</summary>
+    IEnumerator UseHammer(List<Point> cells)
+    {
+        sfx.PlayItem();
+        yield return BreakCells(cells, false);
+    }
+
+    /// <summary>무지개 — 고른 색을 판에서 전부 지운다. 무지개 가루가 튄다.</summary>
+    IEnumerator UseRainbow(List<Point> cells)
+    {
+        sfx.PlayItem();
+        view.RainbowBurst(cells);
+        yield return BreakCells(cells, true);
+    }
+
+    /// <summary>지금 판을 그대로 복사한다 (낙하 연출의 '전' 상태).</summary>
+    int[,] Snapshot()
+    {
+        var v = new int[Board.W, Board.H];
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++) v[x, y] = board.GetTile(x, y);
+        return v;
+    }
+
+    /// <summary>부수기 전 판(before)과 부순 칸(removed)을 알면 어느 블록이 얼마나
+    /// 내려앉았는지 계산할 수 있다. 살아남은 블록은 순서를 지키며 내려오므로
+    /// 아래에서부터 1:1 로 짝지으면 된다.
+    ///
+    /// ⚠ 지금 판만 두 번 비교하면 안 된다 — 채워 넣기(Refill)까지 끝난 뒤라
+    /// 칸 수가 같아져 "아무도 안 떨어졌다"고 나온다.</summary>
+    IEnumerator FallFromSnapshot(int[,] before, List<Point> removed)
+    {
+        var cells = new List<Point>();
+        var drops = new List<float>();
+        var newCells = new List<Point>();
+
+        var gone = new HashSet<int>();
+        if (removed != null) foreach (var p in removed) gone.Add(p.X * 1000 + p.Y);
+
+        for (int x = 0; x < Board.W; x++)
+        {
+            var was = new List<int>();
+            var now = new List<int>();
+            for (int y = 0; y < Board.H; y++)
+            {
+                if (before[x, y] != Board.Empty && !gone.Contains(x * 1000 + y)) was.Add(y);
+                if (board.GetTile(x, y) != Board.Empty) now.Add(y);
+            }
+            for (int i = 0; i < now.Count; i++)
+            {
+                int ny = now[i];
+                float drop = i < was.Count ? was[i] - ny : (Board.H + (i - was.Count)) - ny;
+                if (drop <= 0.001f) continue;
+                cells.Add(new Point(x, ny));
+                drops.Add(drop);
+                if (i >= was.Count) newCells.Add(new Point(x, ny));
+            }
+        }
+        if (cells.Count == 0) yield break;
+
+        yield return view.FallIn(cells, drops, fallTime, 0.02f);
+        float impact = Mathf.Clamp01(view.LastMaxDrop / 6f);
+        if (impact > 0.1f) Shake(Mathf.Lerp(0.158f, 0.238f, impact), 0.15f, true);
+        yield return view.LandCells(newCells, landTime);
+    }
+
+    /// <summary>고른 칸들을 부순다 (해머·무지개 공용). 부순 뒤 생긴 매칭은 평소 연쇄로 이어진다.</summary>
+    IEnumerator BreakCells(List<Point> cells, bool bigHit)
+    {
+        if (cells == null || cells.Count == 0) yield break;
+        busy = true;
+        view.HideGhost();
+
+        var colors = new List<Color>(cells.Count);
+        foreach (var p in cells)
+        {
+            int ci = board.GetTile(p.X, p.Y);
+            colors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
+        }
+
+        var before = Snapshot();
+        view.FlashCells(cells, DirectFlash);
+        view.Burst(cells, colors, bigHit ? 1.9f : 1.2f, DirectFlash);
+        sfx.PlayDestroy(1);
+        Shake(bigHit ? 0.42f : 0.24f, 0.18f, true);
+        yield return new WaitForSeconds(destroyFlash);
+
+        int broke = 0;
+        foreach (var p in cells)
+        {
+            if (board.GetTile(p.X, p.Y) == Board.Empty) continue;
+            board.SetTile(p.X, p.Y, Board.Empty);
+            broke++;
+        }
+        score += broke * Board.BaseTileScore;
+        broken += broke;
+        ClearMarks(cells);
+
+        board.ApplyGravity();
+        board.Refill();
+        view.Refresh(board, palette);
+        yield return FallFromSnapshot(before, cells);
+
+        // 무너진 뒤 새로 생긴 매칭은 스탬프와 똑같이 연쇄로 처리한다
+        var v2 = Snapshot();
+        var after = board.Resolve();
+        if (after.Destroyed.Count > 0)
+        {
+            yield return DestroyWaves(after, v2);
+            score += after.ScoreGained;
+            broken += after.TilesDestroyed;
+            ClearMarks(after.Destroyed);
+            if (after.MaxChain >= 2) ui.ShowChainPopup(after.MaxChain, after.ScoreGained);
+            view.Refresh(board, palette);
+        }
+
+        busy = false;
+        if (!taRunning && GoalMet) { cleared = true; EndGame(); }
+    }
+
+    /// <summary>셔플 — 색 블록의 자리만 섞는다. 벽돌·강철·별 표시는 그대로 둔다.
+    /// 섞은 결과가 바로 매칭이 되면 공짜 점수가 되므로 다시 섞는다.</summary>
+    void ShuffleBoard()
+    {
+        var spots = new List<Point>();
+        var cols = new List<int>();
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+            {
+                int t = board.GetTile(x, y);
+                if (t < 0) continue;                 // 벽돌·강철은 자리를 지킨다
+                spots.Add(new Point(x, y));
+                cols.Add(t);
+            }
+        if (spots.Count < 2) return;
+
+        for (int guard = 0; guard < 40; guard++)
+        {
+            for (int i = cols.Count - 1; i > 0; i--)
+            {
+                int j = pieceRng.Next(i + 1);
+                int tmp = cols[i]; cols[i] = cols[j]; cols[j] = tmp;
+            }
+            for (int i = 0; i < spots.Count; i++) board.SetTile(spots[i].X, spots[i].Y, cols[i]);
+            if (board.FindSquares().Count == 0) break;
+        }
+        view.Refresh(board, palette);
+        Shake(0.2f, 0.2f);
     }
 
     /// <summary>프로그램/테스트용 스탬프 진입점. 성공 시 코루틴 시작.</summary>
@@ -674,7 +876,7 @@ public class GameManager : MonoBehaviour
         if (!taRunning) movesLeft--;
 
         // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
-        yield return view.StampCells(stamped, palette[current.Color], stampTime, () =>
+        yield return view.StampCells(stamped, palette[current.Color], current.Color, stampTime, () =>
         {
             sfx.PlayStamp();
             Shake(0.22f, 0.14f, true);
@@ -929,7 +1131,6 @@ public class GameManager : MonoBehaviour
         if (shakeCo == null) cam.transform.position = camBase;
 
         LayoutHud();
-        FitBackground();
     }
 
     /// <summary>카메라 흔들림 (타격감). 파괴 규모/연쇄에 비례해 호출.</summary>

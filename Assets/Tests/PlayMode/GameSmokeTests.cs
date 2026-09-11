@@ -20,6 +20,10 @@ public class GameSmokeTests
     {
         var go = new GameObject("GM_under_test");
         var g = go.AddComponent<GameManager>();
+        // Awake() 가 Progress.Selected(PlayerPrefs, 테스트 밖 상태)로 stageLevel 을 정하므로
+        // 여기서 1로 고정한다 — 안 그러면 실제로 플레이해서 진행도가 바뀐 적 있는 기기에서
+        // 이 테스트들이 엉뚱한 스테이지로 시작해 흔들린다.
+        g.stageLevel = 1;
         // 테스트 가속: 연출 대기 최소화
         g.stampTime = g.destroyFlash = g.fallTime = 0.02f;
         g.chainStep = g.chainFall = g.landTime = 0.01f;
@@ -103,7 +107,7 @@ public class GameSmokeTests
         gm = NewGm();
         yield return null;   // 홈 화면 구성
 
-        var start = GameObject.Find("start");
+        var start = GameObject.Find("play");   // 메인 아트의 PLAY 버튼
         Assert.IsNotNull(start, "시작 버튼을 찾지 못했다");
         var rt = (RectTransform)start.transform;
         var before = rt.anchoredPosition;
@@ -150,7 +154,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 313);
+        gm.StartGame(GameManager.Difficulty, true, 313);
         yield return null;
 
         // 시간이 거의 다 흐른 상태를 만든다
@@ -171,7 +175,7 @@ public class GameSmokeTests
         gm = NewGm();
         gm.stageLevel = StageTable.Count;   // 제한시간이 가장 짧은 스테이지
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 767);
+        gm.StartGame(GameManager.Difficulty, true, 767);
         yield return null;
 
         Wallet.Add(ShopItem.BombPiece, 1);
@@ -190,7 +194,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 8080);
+        gm.StartGame(GameManager.Difficulty, true, 8080);
         yield return null;
 
         Wallet.Add(ShopItem.BombPiece, 1);
@@ -266,7 +270,9 @@ public class GameSmokeTests
         yield return null;
         Assert.IsTrue(gm.TimeAttackMode);
         Assert.Greater(gm.TimeLeftSec, 55f);
-        Assert.IsTrue(gm.TryStamp(5, 5));
+        // 좌표를 고정하지 않는다 — 판이 작아지면 강철 배치 때문에 특정 좌표가
+        // 우연히 막힐 수 있다. 놓을 수 있는 아무 자리에나 놓아도 이 테스트의 취지는 같다.
+        Assert.IsTrue(StampAnywhere(gm), "놓을 자리를 찾지 못했다");
         float t0 = Time.realtimeSinceStartup;
         while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
         Assert.AreEqual(GamePhase.Playing, gm.Phase, "타임어택은 수 소진으로 끝나지 않음");
@@ -304,7 +310,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 909);
+        gm.StartGame(GameManager.Difficulty, true, 909);
         yield return null;
 
         var now = gm.TraySlot(0);
@@ -331,7 +337,7 @@ public class GameSmokeTests
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 515);
+        gm.StartGame(GameManager.Difficulty, true, 515);
         yield return null;
 
         while (Wallet.Count(ShopItem.BombPiece) > 0) Wallet.Use(ShopItem.BombPiece);
@@ -384,7 +390,7 @@ public class GameSmokeTests
         var seen = new System.Collections.Generic.Dictionary<string, System.Collections.Generic.HashSet<string>>();
         for (int seed = 1; seed <= 40; seed++)
         {
-            gm.StartGame(GameManager.Difficulty, false, seed);
+            gm.StartGame(GameManager.Difficulty, true, seed);
             yield return null;
 
             for (int slot = 0; slot < BoardView.TraySlots; slot++)
@@ -410,44 +416,395 @@ public class GameSmokeTests
         return string.Join(" ", cells.ToArray());
     }
 
-    // 타이머와 아이템 줄은 보드 판 바깥에 있어야 한다.
-    // 프로토 좌표로 고정하면 화면 비율이 달라질 때 판 위로 올라탄다 —
-    // 그래서 월드 좌표를 따라가게 해 뒀고, 그게 실제로 지켜지는지 화면 좌표로 확인한다.
-    [UnityTest]
-    public IEnumerator 타이머와_아이템_줄이_보드를_덮지_않는다()
+    // ---------- 플레이 화면 UI (목업 chroma_drop_play 기준) ----------
+    //
+    // 화면은 아트 한 장이고 보드·트레이는 월드에 그린다. 둘이 어긋나면 "판이 밀렸다" 가 되므로
+    // 아트 자리(슬롯)와 실제 그려진 것의 화면 좌표를 픽셀 단위로 맞춰 본다.
+
+    /// <summary>게임을 시작하고 레이아웃이 자리잡을 때까지 기다린다.</summary>
+    IEnumerator StartAndSettle(bool ta, int seed)
     {
         gm = NewGm();
         yield return null;
-        gm.StartGame(GameManager.Difficulty, false, 777);
-        yield return null;
-        yield return null;
+        gm.StartGame(GameManager.Difficulty, ta, seed);
+        for (int i = 0; i < 4; i++) yield return null;
+    }
 
+    [UnityTest]
+    public IEnumerator 보드가_아트의_보드_자리에_정확히_들어간다()
+    {
+        yield return StartAndSettle(true, 777);
         var cam = Camera.main;
-        Assert.IsNotNull(cam);
         var ui = Object.FindObjectOfType<GameUI>();
+        Rect slot;
+        Assert.IsTrue(ui.BoardSlotRect(out slot), "보드 자리를 못 쟀다");
 
-        // 보드 판의 위·아래 끝 (칸 범위보다 여백·테두리만큼 넓다)
-        const float PanelEdge = 0.85f;
-        float boardTopY = cam.WorldToScreenPoint(new Vector3(0, (Board.H - 1) + PanelEdge, 0)).y;
-        float boardBottomY = cam.WorldToScreenPoint(new Vector3(0, -PanelEdge, 0)).y;
-        float trayTopY = cam.WorldToScreenPoint(
-            new Vector3(0, BoardView.TrayY + BoardView.TrayRadius, 0)).y;
+        // 격자 바깥 모서리(칸 반쪽 여백 포함)가 슬롯 모서리와 맞아야 한다
+        Vector2 bl = cam.WorldToScreenPoint(new Vector3(-0.5f, -0.5f, 0));
+        Vector2 tr = cam.WorldToScreenPoint(new Vector3(Board.W - 0.5f, Board.H - 0.5f, 0));
+        const float Tol = 1.5f;
+        Assert.AreEqual(slot.xMin, bl.x, Tol, "보드 왼쪽이 자리와 어긋난다");
+        Assert.AreEqual(slot.yMin, bl.y, Tol, "보드 아래쪽이 자리와 어긋난다");
+        Assert.AreEqual(slot.xMax, tr.x, Tol, "보드 오른쪽이 자리와 어긋난다");
+        Assert.AreEqual(slot.yMax, tr.y, Tol, "보드 위쪽이 자리와 어긋난다");
 
-        var timer = FindRect(ui.gameObject, "timerrow");
-        var items = FindRect(ui.gameObject, "itemrow");
-        Assert.IsNotNull(timer, "타이머 줄이 없다");
-        Assert.IsNotNull(items, "아이템 줄이 없다");
+        // 칸은 정사각이어야 한다 (찌그러지면 블록이 눌려 보인다)
+        float cw = (tr.x - bl.x) / Board.W, ch = (tr.y - bl.y) / Board.H;
+        Assert.AreEqual(cw, ch, 0.5f, "칸이 정사각이 아니다");
+        Assert.Greater(cw, 8f, "칸이 너무 작다");
+    }
 
-        Assert.GreaterOrEqual(Bottom(timer), boardTopY, "타이머가 보드를 덮는다");
+    [UnityTest]
+    public IEnumerator 트레이_조각이_트레이_자리_안에_그려진다()
+    {
+        yield return StartAndSettle(true, 4321);
+        var cam = Camera.main;
+        var ui = Object.FindObjectOfType<GameUI>();
+        Rect tray;
+        Assert.IsTrue(ui.TraySlotRect(out tray), "트레이 자리를 못 쟀다");
 
-        // 점수·남은 수 카드가 타이머 바와 겹치면 안 된다
-        var scoreCard = FindRect(ui.gameObject, "statscore");
-        var movesCard = FindRect(ui.gameObject, "statmoves");
-        Assert.IsNotNull(scoreCard); Assert.IsNotNull(movesCard);
-        Assert.GreaterOrEqual(Bottom(scoreCard), Top(timer), "점수 카드가 타이머와 겹친다");
-        Assert.GreaterOrEqual(Bottom(movesCard), Top(timer), "남은 수 카드가 타이머와 겹친다");
-        Assert.LessOrEqual(Top(items), boardBottomY, "아이템 줄이 보드를 덮는다");
-        Assert.GreaterOrEqual(Bottom(items), trayTopY, "아이템 줄이 트레이를 덮는다");
+        int drawn = 0;
+        foreach (var sr in Object.FindObjectsOfType<SpriteRenderer>())
+        {
+            if (!sr.enabled || !sr.name.StartsWith("tray_")) continue;
+            drawn++;
+            var b = sr.bounds;
+            Vector2 lo = cam.WorldToScreenPoint(b.min), hi = cam.WorldToScreenPoint(b.max);
+            const float Tol = 3f;
+            Assert.GreaterOrEqual(lo.x, tray.xMin - Tol, sr.name + " 이 트레이 왼쪽으로 삐져나간다");
+            Assert.GreaterOrEqual(lo.y, tray.yMin - Tol, sr.name + " 이 트레이 아래로 삐져나간다");
+            Assert.LessOrEqual(hi.x, tray.xMax + Tol, sr.name + " 이 트레이 오른쪽으로 삐져나간다");
+            Assert.LessOrEqual(hi.y, tray.yMax + Tol, sr.name + " 이 트레이 위로 삐져나간다");
+        }
+        Assert.Greater(drawn, 0, "트레이에 그려진 조각 칸이 없다");
+    }
+
+    [UnityTest]
+    public IEnumerator HUD_요소가_화면_안에_있고_보드와_겹치지_않는다()
+    {
+        yield return StartAndSettle(true, 99);
+        var ui = Object.FindObjectOfType<GameUI>();
+        var screen = new Rect(0, 0, Screen.width, Screen.height);
+        var board = FindRect(ui.gameObject, "boardslot");
+        Assert.IsNotNull(board);
+        var boardR = ScreenRect(board);
+
+        string[] names = { "pause", "scoreval", "timeval", "timerbar", "item0", "item1", "item2", "item3", "goalsub", "trayslot" };
+        var rects = new System.Collections.Generic.List<Rect>();
+        foreach (var n in names)
+        {
+            var rt = FindRect(ui.gameObject, n);
+            Assert.IsNotNull(rt, n + " 이 없다");
+            var r = ScreenRect(rt);
+            Assert.IsTrue(r.width > 1f && r.height > 1f, n + " 의 크기가 0 이다");
+            Assert.IsTrue(Inside(r, screen), n + " 이 화면 밖으로 나갔다: " + r);
+            Assert.IsFalse(r.Overlaps(boardR), n + " 이 보드를 덮는다");
+            rects.Add(r);
+        }
+        // 아이템 버튼 넷은 서로 겹치지 않는다
+        for (int a = 4; a < 8; a++)
+            for (int b = a + 1; b < 8; b++)
+                Assert.IsFalse(rects[a].Overlaps(rects[b]), names[a] + " 과 " + names[b] + " 가 겹친다");
+    }
+
+    [UnityTest]
+    public IEnumerator 카드와_아이템_글자가_실제_값을_보여준다()
+    {
+        yield return StartAndSettle(true, 11);
+        var ui = Object.FindObjectOfType<GameUI>();
+        var score = FindRect(ui.gameObject, "scoreval").GetComponentInChildren<UnityEngine.UI.Text>();
+        var time = FindRect(ui.gameObject, "timeval").GetComponentInChildren<UnityEngine.UI.Text>();
+        Assert.AreEqual(gm.Score.ToString("N0"), score.text);
+        StringAssert.IsMatch(@"^\d+:\d\d$", time.text, "타임어택 남은 시간이 m:ss 꼴이 아니다");
+
+        for (int i = 0; i < Shop.Items.Length; i++)
+        {
+            var cnt = FindRect(ui.gameObject, "itemcnt" + i).GetComponentInChildren<UnityEngine.UI.Text>();
+            Assert.AreEqual(Wallet.Count(Shop.Items[i].Item).ToString(), cnt.text, "아이템 " + i + " 개수가 다르다");
+        }
+
+        // 타임어택은 아트에 박힌 제목·라벨을 쓴다 — 덮개가 켜져 있으면 안 된다
+        Assert.IsFalse(FindRect(ui.gameObject, "eyebrowpatch").gameObject.activeSelf, "타임어택인데 제목 덮개가 켜졌다");
+        Assert.IsFalse(FindRect(ui.gameObject, "timelabel").gameObject.activeSelf, "타임어택인데 라벨 덮개가 켜졌다");
+    }
+
+    // 아트는 카메라 캔버스, 슬롯은 오버레이 캔버스에 있다. 둘이 어긋나면 글자·버튼이 그림과 안 맞는다.
+    [UnityTest]
+    public IEnumerator 아트와_슬롯_캔버스가_같은_자리에_맞춰진다()
+    {
+        yield return StartAndSettle(true, 5);
+        var cam = Camera.main;
+        var ui = Object.FindObjectOfType<GameUI>();
+        var root = FindRect(ui.gameObject, "playroot");
+        Assert.IsNotNull(root);
+        var slotR = ScreenRect(root);
+
+        var artGo = GameObject.Find("PlayArtCanvas");
+        Assert.IsNotNull(artGo, "플레이 아트 캔버스가 없다");
+        var art = FindRect(artGo, "art");
+        Assert.IsNotNull(art);
+        art.GetWorldCorners(corners);
+        Vector2 lo = cam.WorldToScreenPoint(corners[0]), hi = cam.WorldToScreenPoint(corners[2]);
+        const float Tol = 1.5f;
+        Assert.AreEqual(slotR.xMin, lo.x, Tol, "아트 왼쪽이 슬롯과 어긋난다");
+        Assert.AreEqual(slotR.yMin, lo.y, Tol, "아트 아래쪽이 슬롯과 어긋난다");
+        Assert.AreEqual(slotR.xMax, hi.x, Tol, "아트 오른쪽이 슬롯과 어긋난다");
+        Assert.AreEqual(slotR.yMax, hi.y, Tol, "아트 위쪽이 슬롯과 어긋난다");
+        // 아트는 잘리지 않고 통째로 화면 안에 있어야 한다 (contain)
+        Assert.IsTrue(Inside(slotR, new Rect(0, 0, Screen.width, Screen.height)), "아트가 화면 밖으로 잘린다");
+    }
+
+    static Rect ScreenRect(RectTransform rt)
+    {
+        rt.GetWorldCorners(corners);
+        return Rect.MinMaxRect(corners[0].x, corners[0].y, corners[2].x, corners[2].y);
+    }
+    static bool Inside(Rect r, Rect outer)
+    {
+        return r.xMin >= outer.xMin - 0.5f && r.yMin >= outer.yMin - 0.5f
+            && r.xMax <= outer.xMax + 0.5f && r.yMax <= outer.yMax + 0.5f;
+    }
+
+    // 회귀: 오염 근원을 무너뜨려도 남은 독블록은 계속 번진다(PollutionFrontier 의 far 후보).
+    // 그림만 평범한 벽돌로 바뀌면 화면이 규칙과 어긋난다.
+    [UnityTest]
+    public IEnumerator 근원이_무너져도_독블록은_독블록으로_보인다()
+    {
+        int lv = 0;
+        for (int i = 1; i <= StageTable.Count; i++)
+            if (StageTable.Get(i).HasPollution && StageTable.Get(i).PollutionSourceHits > 0) { lv = i; break; }
+        if (lv == 0) Assert.Ignore("근원을 부술 수 있는 오염 스테이지가 없다");
+
+        gm = NewGm();
+        yield return null;
+        gm.stageLevel = lv;
+        gm.StartGame(GameManager.Difficulty, true, 31337);
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        Assert.IsTrue(view.PollutionLook, "오염 판인데 오염 표시가 꺼져 있다");
+
+        // 근원을 직접 없애 BreakPollutionSource 와 같은 상황을 만든다
+        var b = gm.BoardRef;
+        for (int x = 0; x < Board.W; x++)
+            for (int y = 0; y < Board.H; y++)
+                if (b.IsSteel(x, y) && b.GetSteelHp(x, y) == 0) b.SetTile(x, y, Board.Empty);
+        yield return null;
+        Assert.IsTrue(view.PollutionLook, "근원이 사라지자 독블록이 평범한 벽돌로 바뀌었다");
+    }
+
+    // 회귀: 독버섯처럼 칸보다 큰 그림이 떨어질 때, 지나가는 칸이나 아래 칸에
+    // 파묻혀 잘려 보이면 안 된다. 움직이는 블록은 멈춰 있는 모든 칸보다 앞에 그려져야 한다.
+    [UnityTest]
+    public IEnumerator 떨어지는_블록이_다른_칸에_파묻히지_않는다()
+    {
+        int lv = FindPollutionLevel();
+        if (lv == 0) Assert.Ignore("오염 스테이지가 없다");
+
+        gm = NewGm();
+        gm.fallTime = 0.5f;          // 낙하 도중을 관찰해야 하므로 느리게
+        yield return null;
+        gm.stageLevel = lv;
+        gm.StartGame(GameManager.Difficulty, true, 1212);
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        var b = gm.BoardRef;
+
+        bool sawMoving = false;
+        for (int turn = 0; turn < 12 && !sawMoving; turn++)
+        {
+            if (!StampAnywhere(gm)) break;
+            float t0 = Time.realtimeSinceStartup;
+            while (gm.Busy && Time.realtimeSinceStartup - t0 < 10)
+            {
+                // 제자리에서 벗어난(=떨어지는 중인) 칸을 찾는다
+                for (int x = 0; x < Board.W; x++)
+                    for (int y = 0; y < Board.H; y++)
+                    {
+                        var tr = view.TileTransformForTest(x, y);
+                        if (Mathf.Abs(tr.localPosition.y - y) < 0.05f) continue;
+                        sawMoving = true;
+                        // 멈춰 있는 칸들보다 카메라에 가까워야(z 가 작아야) 한다
+                        for (int sx = 0; sx < Board.W; sx++)
+                            for (int sy = 0; sy < Board.H; sy++)
+                            {
+                                var st = view.TileTransformForTest(sx, sy);
+                                if (Mathf.Abs(st.localPosition.y - sy) >= 0.05f) continue;
+                                Assert.Less(tr.localPosition.z, st.localPosition.z,
+                                    "(" + x + "," + y + ") 가 떨어지는 중인데 (" + sx + "," + sy + ") 뒤에 그려진다");
+                            }
+                    }
+                yield return null;
+            }
+        }
+        Assert.IsTrue(sawMoving, "떨어지는 블록을 한 번도 못 봤다 — 판정이 무의미하다");
+    }
+
+    // 오염은 숙주 둘레 8칸을 넘지 않는다. 새로 생긴 독블록이 다시 번지면
+    // 판 전체가 잠기므로, 오래 둬도 숙주 옆에만 있어야 한다.
+    [UnityTest]
+    public IEnumerator 오염은_숙주_둘레_8칸을_넘지_않는다()
+    {
+        int lv = FindPollutionLevel();
+        if (lv == 0) Assert.Ignore("오염 스테이지가 없다");
+
+        gm = NewGm();
+        yield return null;
+        gm.stageLevel = lv;
+        gm.StartGame(GameManager.Difficulty, true, 246);
+        yield return null;
+
+        var b = gm.BoardRef;
+        int spread = 0;
+        for (int turn = 0; turn < 30 && gm.Phase == GamePhase.Playing; turn++)
+        {
+            if (!StampAnywhere(gm)) break;
+            float t0 = Time.realtimeSinceStartup;
+            while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
+            yield return null;
+
+            // 숙주 자리를 매번 다시 찾는다 (중력으로 움직인다)
+            var hosts = new System.Collections.Generic.List<Point>();
+            for (int x = 0; x < Board.W; x++)
+                for (int y = 0; y < Board.H; y++)
+                    if (b.IsSteel(x, y) && b.GetSteelHp(x, y) == 0) hosts.Add(new Point(x, y));
+
+            for (int x = 0; x < Board.W; x++)
+                for (int y = 0; y < Board.H; y++)
+                {
+                    if (!b.IsObstacle(x, y)) continue;
+                    spread++;
+                    bool nextToHost = false;
+                    foreach (var h in hosts)
+                        if (Mathf.Max(Mathf.Abs(x - h.X), Mathf.Abs(y - h.Y)) <= 1) { nextToHost = true; break; }
+                    Assert.IsTrue(nextToHost,
+                        turn + "수째 (" + x + "," + y + ") 오염이 숙주 둘레를 넘어 번졌다");
+                }
+        }
+        Assert.Greater(spread, 0, "오염이 한 번도 안 번졌다 — 판정이 무의미하다");
+    }
+
+    /// <summary>오염이 실제로 도는 첫 스테이지 (pollutionEvery > 0).</summary>
+    static int FindPollutionLevel()
+    {
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+            if (StageTable.Get(lv).HasPollution) return lv;
+        return 0;
+    }
+
+    // 회귀: 오염 판에서 독버섯·독블록이 도중에 평범한 벽돌 그림으로 바뀌면 안 된다.
+    [UnityTest]
+    public IEnumerator 오염_판에서_독블록이_벽돌로_안_바뀐다()
+    {
+        int lv = FindPollutionLevel();
+        if (lv == 0) Assert.Ignore("오염 스테이지가 없다");
+
+        gm = NewGm();
+        yield return null;
+        gm.stageLevel = lv;
+        gm.StartGame(GameManager.Difficulty, true, 2468);
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        if (!view.UsingArt) Assert.Ignore("아트 타일이 없다");
+        var b = gm.BoardRef;
+
+        int checkedCells = 0;
+        for (int turn = 0; turn < 25 && gm.Phase == GamePhase.Playing; turn++)
+        {
+            if (!StampAnywhere(gm)) break;
+            float t0 = Time.realtimeSinceStartup;
+            while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
+            yield return null;
+
+            for (int x = 0; x < Board.W; x++)
+                for (int y = 0; y < Board.H; y++)
+                {
+                    var sp = view.TileSpriteForTest(x, y);
+                    if (b.IsObstacle(x, y))
+                    {
+                        Assert.IsFalse(view.IsBrickSprite(sp),
+                            "오염 판 " + turn + "수째 (" + x + "," + y + ") 독블록이 벽돌로 그려졌다");
+                        Assert.IsTrue(view.IsPoisonSprite(sp),
+                            "오염 판 " + turn + "수째 (" + x + "," + y + ") 독블록 그림이 아니다");
+                        checkedCells++;
+                    }
+                    else if (b.IsSteel(x, y) && b.GetSteelHp(x, y) == 0)
+                    {
+                        Assert.IsTrue(view.IsMushSprite(sp),
+                            "오염 판 " + turn + "수째 (" + x + "," + y + ") 근원이 독버섯으로 안 그려졌다");
+                        checkedCells++;
+                    }
+                }
+        }
+        Assert.Greater(checkedCells, 0, "오염 칸을 한 번도 못 봤다 — 판정이 무의미하다");
+    }
+
+    // 오염 스테이지 전부에서 같은 규칙이 지켜지는지 (한 판만 보면 놓친다)
+    [UnityTest]
+    public IEnumerator 모든_오염_스테이지에서_독블록_그림이_맞다()
+    {
+        gm = NewGm();
+        yield return null;
+
+        int stagesChecked = 0;
+        for (int lv = 1; lv <= StageTable.Count; lv++)
+        {
+            if (!StageTable.Get(lv).HasPollution) continue;
+            stagesChecked++;
+            gm.stageLevel = lv;
+            gm.StartGame(GameManager.Difficulty, true, 5000 + lv);
+            yield return null;
+
+            // 홈 화면에서는 BoardView 가 꺼져 있어 FindObjectOfType 에 안 잡힌다 — 판을 연 뒤에 찾는다
+            var view = Object.FindObjectOfType<BoardView>();
+            Assert.IsNotNull(view, "BoardView 를 못 찾았다");
+            if (!view.UsingArt) Assert.Ignore("아트 타일이 없다");
+            var b = gm.BoardRef;
+            for (int turn = 0; turn < 3 && gm.Phase == GamePhase.Playing; turn++)
+            {
+                if (!StampAnywhere(gm)) break;
+                float t0 = Time.realtimeSinceStartup;
+                while (gm.Busy && Time.realtimeSinceStartup - t0 < 10) yield return null;
+                yield return null;
+
+                for (int x = 0; x < Board.W; x++)
+                    for (int y = 0; y < Board.H; y++)
+                    {
+                        var sp = view.TileSpriteForTest(x, y);
+                        if (b.IsObstacle(x, y))
+                            Assert.IsFalse(view.IsBrickSprite(sp),
+                                lv + "판 " + turn + "수째 (" + x + "," + y + ") 독블록이 벽돌로 그려졌다");
+                        else if (b.IsSteel(x, y) && b.GetSteelHp(x, y) == 0)
+                            Assert.IsTrue(view.IsMushSprite(sp),
+                                lv + "판 " + turn + "수째 (" + x + "," + y + ") 근원이 독버섯이 아니다");
+                    }
+            }
+        }
+        Assert.Greater(stagesChecked, 0, "오염 스테이지가 하나도 없다");
+    }
+
+    // 가로·세로 폭탄 블록은 그 칸의 색을 따라야 한다 (한 색으로 굳어 있으면 안 된다)
+    [UnityTest]
+    public IEnumerator 화살표_블록이_칸_색을_따른다()
+    {
+        gm = NewGm();
+        yield return null;
+        gm.StartGame(GameManager.Difficulty, true, 909);
+        yield return null;
+
+        var view = Object.FindObjectOfType<BoardView>();
+        if (!view.UsingArt) Assert.Ignore("아트 타일이 없다");
+
+        var seen = new System.Collections.Generic.HashSet<Sprite>();
+        for (int c = 0; c < Rules.ColorCount; c++)
+        {
+            var sp = view.ArrowArtForTest(ItemType.Row, c);
+            Assert.IsNotNull(sp, "색 " + c + " 의 가로 화살표 그림이 없다");
+            seen.Add(sp);
+        }
+        Assert.AreEqual(Rules.ColorCount, seen.Count, "화살표 블록이 색마다 다르지 않다");
     }
 
     /// <summary>벌칙 벽돌 규칙이 켜진 첫 스테이지.</summary>
@@ -772,10 +1129,15 @@ public class GameSmokeTests
         // 남은 칸은 밝아졌다 어두워지며 계속 뛴다
         var glow = view.transform.Find("m_" + mx + "_" + my).GetComponent<SpriteRenderer>();
         var fill = view.transform.Find("mf_" + mx + "_" + my).GetComponent<SpriteRenderer>();
+        // 밝기가 사인파라 극점에서는 몇 프레임 동안 거의 안 변한다 — 넉넉히 지켜본다
         var first = glow.color;
-        yield return null;
-        yield return null;
-        Assert.AreNotEqual(first, glow.color, "목표 칸이 반짝이지 않는다");
+        bool changed = false;
+        for (int i = 0; i < 40 && !changed; i++)
+        {
+            yield return null;
+            changed = glow.color != first;
+        }
+        Assert.IsTrue(changed, "목표 칸이 반짝이지 않는다");
 
         // 깨고 나면 빛이 꺼져야 한다. 켜 둔 채 색만 바꾸면 아직 깨야 할 칸처럼 계속 물들어 보인다.
         view.ClearMark(mx, my);
@@ -861,7 +1223,7 @@ public class GameSmokeTests
             yield return null;
 
             var eyebrow = FindRect(ui.gameObject, "eyebrow").GetComponent<UnityEngine.UI.Text>();
-            var sub = FindRect(ui.gameObject, "goalsub").GetComponent<UnityEngine.UI.Text>();
+            var sub = FindRect(ui.gameObject, "goalsub").GetComponentInChildren<UnityEngine.UI.Text>();
             Assert.IsNotEmpty(eyebrow.text, lv + " 단계에 목표 문구가 없다");
             Assert.IsTrue(eyebrow.fontStyle == FontStyle.Bold || eyebrow.fontStyle == FontStyle.BoldAndItalic,
                           "미션 문구가 볼드가 아니다");
@@ -874,19 +1236,15 @@ public class GameSmokeTests
                         : s.SteelCount > 0 ? "STEEL"
                         : "BLOCKS";
             StringAssert.Contains(want, eyebrow.text, lv + "판(" + s.Kind + ") 문구가 종류와 안 맞는다");
-            Assert.LessOrEqual(eyebrow.preferredWidth, eyebrow.rectTransform.rect.width,
-                               lv + " 단계 목표 문구가 칸을 넘친다: " + eyebrow.text);
-            Assert.LessOrEqual(sub.preferredWidth, sub.rectTransform.rect.width,
-                               lv + " 단계 진행도 줄이 칸을 넘친다: " + sub.text);
+            Assert.IsNotEmpty(sub.text, lv + " 단계 팻말에 진행도가 없다");
+            // 글자는 칸에 맞춰 줄어든다 — 칸 자체가 제자리에 있는지만 본다
+            Assert.IsTrue(FindRect(ui.gameObject, "eyebrowpatch").gameObject.activeSelf, "스테이지인데 제목 자리에 목표 문구가 없다");
 
-            // 두 줄 다 홈 버튼 오른쪽, 스탯 카드 위에 있어야 한다
-            var home = FindRect(ui.gameObject, "home");
-            var score = FindRect(ui.gameObject, "statscore");
-            foreach (var line in new[] { eyebrow.rectTransform, sub.rectTransform })
-            {
-                Assert.GreaterOrEqual(Left(line), Right(home), lv + " 단계 문구가 홈 버튼과 겹친다");
-                Assert.GreaterOrEqual(Bottom(line), Top(score), lv + " 단계 문구가 스탯 카드와 겹친다");
-            }
+            // 제목 자리는 일시정지 버튼 오른쪽, 점수 카드 위에 있어야 한다
+            var pause = FindRect(ui.gameObject, "pause");
+            var score = FindRect(ui.gameObject, "scoreval");
+            Assert.GreaterOrEqual(Left(eyebrow.rectTransform), Right(pause), lv + " 단계 문구가 일시정지 버튼과 겹친다");
+            Assert.GreaterOrEqual(Bottom(eyebrow.rectTransform), Top(score), lv + " 단계 문구가 점수 카드와 겹친다");
         }
     }
 

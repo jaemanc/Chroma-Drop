@@ -24,8 +24,23 @@ public static class Shop
     {
         new ShopEntry {
             Item = ShopItem.BombPiece, Name = "BOMB", Price = 120,
-            Desc = "Swap your piece for a 2x2 block that plants a bomb.",
-            Tint = Palette.Hex(0xE4795A),
+            Desc = "Swap your piece for a block that blows up 5x5.",
+            Tint = Palette.Hex(0xFF9A7C),   // example.html .bomb-button 그라데이션의 중간톤
+        },
+        new ShopEntry {
+            Item = ShopItem.Hammer, Name = "HAMMER", Price = 80,
+            Desc = "Smash any one block you tap.",
+            Tint = Palette.Hex(0x7FB4FF),
+        },
+        new ShopEntry {
+            Item = ShopItem.Rainbow, Name = "RAINBOW", Price = 180,
+            Desc = "Clear every block of the color you tap.",
+            Tint = Palette.Hex(0xC98BEA),
+        },
+        new ShopEntry {
+            Item = ShopItem.Shuffle, Name = "SHUFFLE", Price = 60,
+            Desc = "Shuffle the board without using a move.",
+            Tint = Palette.Hex(0x62D2A8),
         },
     };
 
@@ -39,9 +54,11 @@ public static class Shop
 
     public static readonly SkinEntry[] Skins =
     {
-        new SkinEntry { Skin = TileSkin.Glossy, Name = "GLOSSY", Price = 0 },
-        new SkinEntry { Skin = TileSkin.Gem,    Name = "GEM",    Price = 300 },
-        new SkinEntry { Skin = TileSkin.Crayon, Name = "CRAYON", Price = 300 },
+        new SkinEntry { Skin = TileSkin.Glossy,  Name = "GLOSSY",  Price = 0 },
+        new SkinEntry { Skin = TileSkin.Gem,     Name = "GEM",     Price = 300 },
+        new SkinEntry { Skin = TileSkin.Crayon,  Name = "CRAYON",  Price = 300 },
+        new SkinEntry { Skin = TileSkin.Crystal, Name = "CRYSTAL", Price = 300 },
+        new SkinEntry { Skin = TileSkin.Jewel,   Name = "JEWEL",   Price = 300 },
     };
 
     public static ShopEntry Get(ShopItem it)

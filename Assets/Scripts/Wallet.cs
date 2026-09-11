@@ -4,10 +4,10 @@
 
 using UnityEngine;
 
-public enum ShopItem { BombPiece }
+public enum ShopItem { BombPiece, Hammer, Rainbow, Shuffle }
 
 /// <summary>타일 겉모습. 규칙에는 영향이 없다.</summary>
-public enum TileSkin { Glossy, Gem, Crayon }
+public enum TileSkin { Glossy, Gem, Crayon, Crystal, Jewel }
 
 public static class Wallet
 {

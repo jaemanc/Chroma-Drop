@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>POP TARGET BLOCKS!</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            margin: 0;
+            width: 100%;
+            min-height: 100%;
+        }
+
+        body {
+            font-family:
+                    "Arial Rounded MT Bold",
+                    "Trebuchet MS",
+                    "Noto Sans KR",
+                    Arial,
+                    sans-serif;
+
+            background: #8edff5;
+            display: flex;
+            justify-content: center;
+        }
+
+        /* =========================================================
+           전체 게임 화면
+        ========================================================= */
+
+        .game {
+            position: relative;
+            width: 1084px;
+            min-height: 1632px;
+            overflow: hidden;
+
+            background:
+                    linear-gradient(
+                            to bottom,
+                            #66d1f1 0%,
+                            #8ee0f1 23%,
+                            #bdeedc 50%,
+                            #9bdc88 100%
+                    );
+
+            color: #202741;
+        }
+
+
+        /* =========================================================
+           하늘
+        ========================================================= */
+
+        .sun {
+            position: absolute;
+            top: 22px;
+            right: 70px;
+
+            width: 145px;
+            height: 145px;
+
+            border-radius: 50%;
+
+            background: #ffdc59;
+
+            box-shadow:
+                    0 0 0 12px rgba(255, 235, 126, .25);
+        }
+
+        .sun::before,
+        .sun::after {
+            content: "";
+            position: absolute;
+            inset: -22px;
+
+            border-radius: 50%;
+        }
+
+        .sun::before {
+            background:
+                    linear-gradient(45deg, transparent 46%, #ffd95b 47% 53%, transparent 54%),
+                    linear-gradient(-45deg, transparent 46%, #ffd95b 47% 53%, transparent 54%);
+        }
+
+        .sun-face {
+            position: absolute;
+            inset: 0;
+        }
+
+        .sun-eye {
+            position: absolute;
+            top: 51px;
+
+            width: 10px;
+            height: 14px;
+
+            background: #9a664a;
+            border-radius: 50%;
+        }
+
+        .sun-eye.left {
+            left: 47px;
+        }
+
+        .sun-eye.right {
+            right: 47px;
+        }
+
+        .sun-mouth {
+            position: absolute;
+            width: 33px;
+            height: 18px;
+
+            left: 50%;
+            top: 73px;
+
+            transform: translateX(-50%);
+
+            border-bottom: 6px solid #a86350;
+            border-radius: 0 0 30px 30px;
+        }
+
+
+        /* =========================================================
+           구름
+        ========================================================= */
+
+        .cloud {
+            position: absolute;
+            background: rgba(255,255,255,.91);
+            border-radius: 100px;
+        }
+
+        .cloud::before,
+        .cloud::after {
+            content: "";
+            position: absolute;
+
+            background: inherit;
+            border-radius: 50%;
+        }
+
+        .cloud-1 {
+            left: -45px;
+            top: 50px;
+            width: 420px;
+            height: 120px;
+        }
+
+        .cloud-1::before {
+            width: 180px;
+            height: 180px;
+            left: 70px;
+            bottom: 15px;
+        }
+
+        .cloud-1::after {
+            width: 160px;
+            height: 160px;
+            left: 205px;
+            bottom: 20px;
+        }
+
+        .cloud-2 {
+            left: 270px;
+            top: 80px;
+            width: 580px;
+            height: 190px;
+        }
+
+        .cloud-2::before {
+            width: 270px;
+            height: 270px;
+            left: 100px;
+            bottom: 30px;
+        }
+
+        .cloud-2::after {
+            width: 210px;
+            height: 210px;
+            left: 335px;
+            bottom: 30px;
+        }
+
+        .cloud-3 {
+            left: 690px;
+            top: 180px;
+            width: 330px;
+            height: 100px;
+        }
+
+        .cloud-3::before {
+            width: 150px;
+            height: 150px;
+            left: 50px;
+            bottom: 15px;
+        }
+
+        .cloud-3::after {
+            width: 125px;
+            height: 125px;
+            left: 175px;
+            bottom: 10px;
+        }
+
+
+        /* =========================================================
+           나무 / 숲
+        ========================================================= */
+
+        .tree {
+            position: absolute;
+            bottom: 120px;
+
+            width: 180px;
+            height: 420px;
+        }
+
+        .tree-left {
+            left: -50px;
+        }
+
+        .tree-right {
+            right: -45px;
+        }
+
+        .tree-trunk {
+            position: absolute;
+            bottom: 0;
+            left: 76px;
+
+            width: 30px;
+            height: 260px;
+
+            background: #9a6c4e;
+            border-radius: 18px;
+        }
+
+        .tree-leaf {
+            position: absolute;
+
+            width: 160px;
+            height: 180px;
+
+            border-radius: 55%;
+
+            background: #7dd27b;
+
+            box-shadow:
+                    35px 25px 0 #65c16d,
+                    -25px 65px 0 #71ca72;
+        }
+
+        .tree-left .tree-leaf {
+            top: 35px;
+            left: 0;
+        }
+
+        .tree-right .tree-leaf {
+            top: 30px;
+            right: 0;
+        }
+
+
+        /* =========================================================
+           하단 언덕
+        ========================================================= */
+
+        .hill-back {
+            position: absolute;
+            bottom: -110px;
+            left: -10%;
+
+            width: 120%;
+            height: 310px;
+
+            background: #a6df8d;
+            border-radius: 50% 50% 0 0;
+        }
+
+        .hill-front {
+            position: absolute;
+            bottom: -150px;
+            left: 20%;
+
+            width: 100%;
+            height: 290px;
+
+            background: #73bd78;
+            border-radius: 50% 50% 0 0;
+        }
+
+
+        /* =========================================================
+           메인 UI
+        ========================================================= */
+
+        .ui {
+            position: relative;
+            z-index: 10;
+
+            padding-top: 80px;
+        }
+
+
+        /* 뒤로가기 */
+
+        .back-button {
+            position: absolute;
+
+            left: 95px;
+            top: 78px;
+
+            width: 105px;
+            height: 105px;
+
+            border-radius: 50%;
+
+            border: 0;
+
+            background: #fffdf3;
+
+            box-shadow:
+                    0 5px 0 #d6cdbb,
+                    inset 0 2px 8px rgba(255,255,255,.9);
+
+            color: #202741;
+
+            font-size: 60px;
+            font-weight: bold;
+
+            line-height: 95px;
+            text-align: center;
+        }
+
+
+        /* 제목 */
+
+        .title {
+            margin: 0;
+
+            text-align: center;
+
+            font-size: 57px;
+            line-height: 1;
+
+            font-weight: 900;
+
+            letter-spacing: -2px;
+
+            color: #202741;
+
+            text-shadow:
+                    0 3px 0 rgba(255,255,255,.45);
+        }
+
+
+        /* =========================================================
+           Score / Moves
+        ========================================================= */
+
+        .stats {
+            display: flex;
+
+            justify-content: center;
+            gap: 28px;
+
+            margin-top: 30px;
+        }
+
+        .stat {
+            width: 315px;
+            height: 125px;
+
+            border-radius: 70px;
+
+            display: flex;
+            flex-direction: column;
+
+            justify-content: center;
+            align-items: center;
+
+            background: #fff5b8;
+
+            border: 6px solid #e4bd52;
+
+            box-shadow:
+                    0 7px 0 rgba(164,126,52,.25),
+                    inset 0 5px 8px rgba(255,255,255,.75);
+        }
+
+        .stat.moves {
+            background: #42dc91;
+
+            border-color: #2dbb7c;
+
+            box-shadow:
+                    0 7px 0 rgba(37,137,96,.25),
+                    inset 0 5px 8px rgba(255,255,255,.55);
+        }
+
+        .stat-label {
+            font-size: 25px;
+            font-weight: 900;
+
+            letter-spacing: 1px;
+
+            margin-bottom: 2px;
+        }
+
+        .stat-value {
+            font-size: 53px;
+            line-height: .9;
+
+            font-weight: 900;
+
+            color: #202741;
+        }
+
+
+        /* =========================================================
+           Stage
+        ========================================================= */
+
+        .stage-info {
+            margin-top: 30px;
+
+            display: flex;
+            justify-content: center;
+            align-items: center;
+
+            gap: 40px;
+
+            font-size: 26px;
+            font-weight: 900;
+        }
+
+        .stage-info span {
+            white-space: nowrap;
+        }
+
+
+        /* =========================================================
+           Progress Bar
+        ========================================================= */
+
+        .progress {
+            position: relative;
+
+            width: 720px;
+            height: 48px;
+
+            margin: 30px auto 18px;
+
+            padding: 5px;
+
+            border: 5px solid #1e936d;
+
+            border-radius: 30px;
+
+            background: #fffef3;
+
+            box-shadow:
+                    0 4px 0 rgba(32,39,66,.12),
+                    inset 0 2px 4px rgba(0,0,0,.08);
+        }
+
+        .progress-fill {
+            width: 63%;
+            height: 100%;
+
+            border-radius: 20px;
+
+            background:
+                    linear-gradient(
+                            to bottom,
+                            #64f4aa,
+                            #27d788
+                    );
+        }
+
+
+        /* =========================================================
+           보드 외곽
+        ========================================================= */
+
+        .board-container {
+            position: relative;
+
+            width: 960px;
+
+            margin: 0 auto;
+
+            padding: 25px;
+
+            background: #fffef8;
+
+            border-radius: 48px;
+
+            border: 6px solid #eee8d9;
+
+            box-shadow:
+                    0 9px 0 rgba(54,75,70,.22),
+                    0 0 0 3px rgba(255,255,255,.8);
+        }
+
+
+        /* =========================================================
+           실제 보드
+        ========================================================= */
+
+        .board {
+            display: grid;
+
+            grid-template-columns: repeat(11, 1fr);
+
+            gap: 7px;
+
+            width: 100%;
+        }
+
+
+        /* =========================================================
+           기본 블록
+        ========================================================= */
+
+        .block {
+            position: relative;
+
+            width: 100%;
+            aspect-ratio: 1;
+
+            border-radius: 17px;
+
+            overflow: hidden;
+
+            border: 3px solid rgba(255,255,255,.38);
+
+            box-shadow:
+                    inset 0 5px 7px rgba(255,255,255,.65),
+                    inset 0 -7px 8px rgba(0,0,0,.13),
+                    0 3px 3px rgba(46,70,80,.18);
+        }
+
+
+        /* 위쪽 광택 */
+
+        .block::before {
+            content: "";
+
+            position: absolute;
+
+            left: 14%;
+            top: 9%;
+
+            width: 45%;
+            height: 25%;
+
+            border-radius: 50%;
+
+            background: rgba(255,255,255,.65);
+
+            transform: rotate(-15deg);
+
+            filter: blur(1px);
+        }
+
+
+        /* 작은 빛 */
+
+        .block::after {
+            content: "";
+
+            position: absolute;
+
+            right: 15%;
+            bottom: 17%;
+
+            width: 13%;
+            height: 13%;
+
+            border-radius: 50%;
+
+            background: rgba(255,255,255,.42);
+        }
+
+
+        /* =========================================================
+           보석 색상
+        ========================================================= */
+
+        .green {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #a3efb0 0%,
+                            #52dc78 48%,
+                            #35bf69 100%
+                    );
+        }
+
+        .blue {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #a4e7ff 0%,
+                            #55b9ef 45%,
+                            #218de1 100%
+                    );
+        }
+
+        .pink {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #ffb8d8 0%,
+                            #ef72b4 50%,
+                            #df4e9a 100%
+                    );
+        }
+
+        .purple {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #d9bdf8 0%,
+                            #b47be7 48%,
+                            #9655cf 100%
+                    );
+        }
+
+        .yellow {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #ffe98c 0%,
+                            #ffc934 50%,
+                            #f2aa13 100%
+                    );
+        }
+
+        .orange {
+            background:
+                    linear-gradient(
+                            145deg,
+                            #ffc09e 0%,
+                            #ff8d70 50%,
+                            #f66e5d 100%
+                    );
+        }
+
+
+        /* =========================================================
+           블록 얼굴
+        ========================================================= */
+
+        .face {
+            position: absolute;
+
+            inset: 0;
+
+            z-index: 3;
+        }
+
+
+        /* 눈 */
+
+        .eye {
+            position: absolute;
+
+            top: 55%;
+
+            width: 8%;
+            height: 12%;
+
+            border-radius: 50%;
+
+            background: rgba(44,72,79,.62);
+        }
+
+        .eye.left {
+            left: 32%;
+        }
+
+        .eye.right {
+            right: 32%;
+        }
+
+
+        /* 웃는 입 */
+
+        .mouth {
+            position: absolute;
+
+            left: 50%;
+            top: 62%;
+
+            width: 22%;
+            height: 14%;
+
+            transform: translateX(-50%);
+
+            border-bottom: 3px solid rgba(47,70,76,.58);
+
+            border-radius:
+                    0 0 30px 30px;
+        }
+
+
+        /* 볼 */
+
+        .cheek {
+            position: absolute;
+
+            top: 63%;
+
+            width: 14%;
+            height: 7%;
+
+            border-radius: 50%;
+
+            background: rgba(255,120,150,.28);
+        }
+
+        .cheek.left {
+            left: 17%;
+        }
+
+        .cheek.right {
+            right: 17%;
+        }
+
+
+        /* =========================================================
+           특별 블록 - 별
+        ========================================================= */
+
+        .special {
+            box-shadow:
+                    inset 0 5px 10px rgba(255,255,255,.8),
+                    inset 0 -6px 9px rgba(0,0,0,.12),
+                    0 0 16px rgba(255,226,105,.85),
+                    0 3px 5px rgba(60,60,60,.18);
+        }
+
+        .star {
+            position: absolute;
+
+            z-index: 5;
+
+            left: 50%;
+            top: 50%;
+
+            transform: translate(-50%,-50%);
+
+            width: 54%;
+            height: 54%;
+
+            background: #fff4a3;
+
+            clip-path: polygon(
+                    50% 0%,
+                    61% 36%,
+                    100% 38%,
+                    69% 60%,
+                    80% 100%,
+                    50% 76%,
+                    20% 100%,
+                    31% 60%,
+                    0% 38%,
+                    39% 36%
+            );
+
+            filter:
+                    drop-shadow(0 2px 3px rgba(210,150,40,.3));
+        }
+
+        .star::after {
+            content: "";
+
+            position: absolute;
+
+            width: 25%;
+            height: 25%;
+
+            left: 18%;
+            top: 14%;
+
+            background: white;
+
+            border-radius: 50%;
+        }
+
+
+        /* =========================================================
+           반짝이
+        ========================================================= */
+
+        .sparkle {
+            position: absolute;
+
+            z-index: 7;
+
+            width: 10px;
+            height: 10px;
+
+            background: white;
+
+            transform: rotate(45deg);
+
+            box-shadow:
+                    0 0 7px rgba(255,255,255,.95);
+        }
+
+        .sparkle::before,
+        .sparkle::after {
+            content: "";
+
+            position: absolute;
+
+            background: white;
+        }
+
+        .sparkle::before {
+            width: 4px;
+            height: 20px;
+
+            left: 3px;
+            top: -5px;
+        }
+
+        .sparkle::after {
+            width: 20px;
+            height: 4px;
+
+            left: -5px;
+            top: 3px;
+        }
+
+
+        /* =========================================================
+           폭탄 버튼
+        ========================================================= */
+
+        .bomb-button {
+            width: 420px;
+            height: 105px;
+
+            margin: 28px auto 0;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            gap: 18px;
+
+            border-radius: 60px;
+
+            background:
+                    linear-gradient(
+                            to bottom,
+                            #ffad8c,
+                            #ff806b
+                    );
+
+            border: 6px solid #a95748;
+
+            box-shadow:
+                    0 7px 0 rgba(93,65,58,.25),
+                    inset 0 4px 8px rgba(255,255,255,.55);
+
+            color: white;
+
+            font-size: 33px;
+            font-weight: 900;
+
+            text-shadow:
+                    0 2px 0 rgba(120,70,60,.25);
+        }
+
+        .bomb-icon {
+            position: relative;
+
+            width: 58px;
+            height: 58px;
+
+            border-radius: 50%;
+
+            background:
+                    radial-gradient(
+                            circle at 32% 25%,
+                            #b58cff 0 9%,
+                            #6733bf 35%,
+                            #381b80 100%
+                    );
+
+            border: 3px solid #43247d;
+
+            box-shadow:
+                    inset 5px 5px 7px rgba(255,255,255,.35),
+                    0 4px 5px rgba(40,30,70,.25);
+        }
+
+        .bomb-icon::before {
+            content: "";
+
+            position: absolute;
+
+            width: 18px;
+            height: 11px;
+
+            right: -7px;
+            top: -7px;
+
+            border-radius: 50%;
+
+            border-top: 6px solid #5e4535;
+
+            transform: rotate(-25deg);
+        }
+
+        .bomb-icon::after {
+            content: "";
+
+            position: absolute;
+
+            width: 10px;
+            height: 10px;
+
+            right: -12px;
+            top: -13px;
+
+            border-radius: 50%;
+
+            background: #ffd34f;
+
+            box-shadow:
+                    0 0 8px #fff08c;
+        }
+
+
+        /* =========================================================
+           꽃 장식
+        ========================================================= */
+
+        .flower {
+            position: absolute;
+
+            z-index: 5;
+
+            width: 70px;
+            height: 70px;
+
+            bottom: 22px;
+        }
+
+        .petal {
+            position: absolute;
+
+            width: 35px;
+            height: 35px;
+
+            background: #fffef5;
+
+            border-radius: 50%;
+        }
+
+        .petal:nth-child(1) {
+            left: 17px;
+            top: 0;
+        }
+
+        .petal:nth-child(2) {
+            left: 0;
+            top: 18px;
+        }
+
+        .petal:nth-child(3) {
+            right: 0;
+            top: 18px;
+        }
+
+        .petal:nth-child(4) {
+            left: 17px;
+            bottom: 0;
+        }
+
+        .flower-center {
+            position: absolute;
+
+            left: 24px;
+            top: 24px;
+
+            width: 23px;
+            height: 23px;
+
+            border-radius: 50%;
+
+            background: #ffd45d;
+        }
+
+        .flower-left {
+            left: 65px;
+        }
+
+        .flower-right {
+            right: 65px;
+        }
+
+
+        /* =========================================================
+           실제 블록 데이터
+        ========================================================= */
+
+        @media (max-width: 1084px) {
+
+            .game {
+                width: 100vw;
+                min-height: 100vh;
+            }
+
+            .back-button {
+                left: 7vw;
+            }
+
+            .board-container {
+                width: 90vw;
+            }
+
+            .progress {
+                width: 70vw;
+            }
+
+            .title {
+                font-size: 5.3vw;
+            }
+
+            .stat {
+                width: 29vw;
+                height: 11vw;
+            }
+
+            .stat-label {
+                font-size: 2.2vw;
+            }
+
+            .stat-value {
+                font-size: 4.5vw;
+            }
+
+            .stage-info {
+                font-size: 2.5vw;
+            }
+
+            .bomb-button {
+                width: 40vw;
+                height: 10vw;
+                font-size: 3vw;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="game">
+
+    <!-- 하늘 -->
+    <div class="sun">
+        <div class="sun-face">
+            <div class="sun-eye left"></div>
+            <div class="sun-eye right"></div>
+            <div class="sun-mouth"></div>
+        </div>
+    </div>
+
+    <div class="cloud cloud-1"></div>
+    <div class="cloud cloud-2"></div>
+    <div class="cloud cloud-3"></div>
+
+
+    <!-- 숲 -->
+    <div class="tree tree-left">
+        <div class="tree-leaf"></div>
+        <div class="tree-trunk"></div>
+    </div>
+
+    <div class="tree tree-right">
+        <div class="tree-leaf"></div>
+        <div class="tree-trunk"></div>
+    </div>
+
+    <div class="hill-back"></div>
+    <div class="hill-front"></div>
+
+
+    <div class="ui">
+
+        <!-- 뒤로가기 -->
+        <div class="back-button">←</div>
+
+        <!-- 제목 -->
+        <h1 class="title">
+            POP TARGET BLOCKS!
+        </h1>
+
+
+        <!-- Score / Moves -->
+        <div class="stats">
+
+            <div class="stat">
+                <div class="stat-label">SCORE</div>
+                <div class="stat-value">0</div>
+            </div>
+
+            <div class="stat moves">
+                <div class="stat-label">MOVES LEFT</div>
+                <div class="stat-value">35</div>
+            </div>
+
+        </div>
+
+
+        <!-- Stage -->
+        <div class="stage-info">
+            <span>STAGE 10</span>
+            <span>0 / 105</span>
+            <span>TARGET 0 / 16</span>
+        </div>
+
+
+        <!-- Progress -->
+        <div class="progress">
+            <div class="progress-fill"></div>
+        </div>
+
+
+        <!-- =====================================================
+             게임 보드
+        ====================================================== -->
+
+        <div class="board-container">
+
+            <div class="board">
+
+                <!-- ROW 1 -->
+                <div class="block green">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                        <span class="cheek left"></span>
+                        <span class="cheek right"></span>
+                    </div>
+                </div>
+
+                <div class="block blue">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block pink">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block blue">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block purple">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block green">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block green">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block blue">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block blue">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block yellow">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+                <div class="block blue">
+                    <div class="face">
+                        <span class="eye left"></span>
+                        <span class="eye right"></span>
+                        <span class="mouth"></span>
+                    </div>
+                </div>
+
+
+                <!-- ROW 2 -->
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 3 -->
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block orange"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 4 -->
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 5 - SPECIAL -->
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+                <div class="block pink special">
+                    <span class="star"></span>
+                    <span class="sparkle" style="left:15%;top:18%"></span>
+                </div>
+
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+                <div class="block yellow special">
+                    <span class="star"></span>
+                </div>
+
+                <div class="block pink special">
+                    <span class="star"></span>
+                    <span class="sparkle" style="right:15%;top:15%"></span>
+                </div>
+
+                <div class="block orange special">
+                    <span class="star"></span>
+                </div>
+
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 6 - SPECIAL -->
+                <div class="block orange"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+                <div class="block yellow special">
+                    <span class="star"></span>
+                </div>
+
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink special">
+                    <span class="star"></span>
+                </div>
+
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+                <div class="block yellow special">
+                    <span class="star"></span>
+                </div>
+
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 7 -->
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 8 -->
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue special"><span class="sparkle" style="left:50%;top:20%"></span></div>
+                <div class="block purple special"><span class="sparkle" style="left:25%;top:45%"></span></div>
+                <div class="block orange"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 9 -->
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow special"><span class="star"></span></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow special"><span class="star"></span></div>
+                <div class="block yellow special"><span class="star"></span></div>
+                <div class="block yellow special"><span class="star"></span></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 10 -->
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block orange"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block purple"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+
+                <!-- ROW 11 -->
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block green"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block orange"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block pink"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block yellow"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+                <div class="block blue"><div class="face"><span class="eye left"></span><span class="eye right"></span><span class="mouth"></span></div></div>
+
+            </div>
+        </div>
+
+
+        <!-- 폭탄 -->
+        <div class="bomb-button">
+            <div class="bomb-icon"></div>
+            <span>BOMB ×6</span>
+        </div>
+
+    </div>
+
+
+    <!-- 꽃 -->
+    <div class="flower flower-left">
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="flower-center"></div>
+    </div>
+
+    <div class="flower flower-right">
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="petal"></div>
+        <div class="flower-center"></div>
+    </div>
+
+</div>
+
+</body>
+</html>

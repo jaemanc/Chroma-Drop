@@ -23,6 +23,9 @@ public class GameUI : MonoBehaviour
 
     GameObject homePanel, gamePanel, resultPanel;
     Text scoreText, subText, rightText, bestHomeText, resultTitle, resultScore, resultBest;
+    Image resultDim;
+    RectTransform resultCardRt;
+    Coroutine resultDropCo;
     Text chainPopup;
     Coroutine chainCo;
     Image timerFill;
@@ -55,13 +58,22 @@ public class GameUI : MonoBehaviour
     Image[] itemBtnFill;
     Text adCountdown;
     Image rankTabMe, rankTabNation;
-    Image homeBadge; Text homeBadgeText;
     bool rankNationTab;
     Coroutine rankCo;
     const int RankRowCount = 10;
-    RectTransform itemRow, timerRow;
-    Text gameEyebrow;
-    Text goalSub;        // 목표 문구 아래 진행도 한 줄
+    Text gameEyebrow;    // 스테이지 모드의 목표 문구 (타임어택은 아트에 제목이 박혀 있어 숨긴다)
+    Text goalSub;        // GOAL 팻말 안의 진행도
+
+    // ---- 플레이 화면 (아트) ----
+    //
+    // 홈처럼 화면 전체가 아트 한 장이다. 다만 보드는 월드 스프라이트라 Overlay 캔버스 위에
+    // 그릴 수 없으므로, 아트는 카메라 캔버스(정렬 -30)에 두어 보드 뒤에 깔고
+    // 버튼·글자·슬롯만 Overlay 캔버스에 얹는다. 두 캔버스 모두 같은 비율 맞춤(contain)이라
+    // 자리가 어긋나지 않는다. 좌표는 전부 아트 원본(423x770) 픽셀, y 는 위가 0.
+    const float PlayW = 423f, PlayH = 770f;
+    RectTransform playRoot, boardSlot, traySlot;
+    GameObject playArtCanvas;
+    GameObject eyebrowPatch, movesLabelPatch;
     RectTransform nextBtn, retryBtn, homeBtn;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
@@ -80,9 +92,9 @@ public class GameUI : MonoBehaviour
         // 캐주얼 퍼즐에 어울리는 둥근/기하 계열을 먼저 찾는다.
         // 기본 내장 폰트(LegacyRuntime)는 사무용 산세리프라 게임에 안 어울린다.
         string[] prefer = {
+            "Arial Rounded MT Bold", "Trebuchet MS",                  // example.html 과 같은 순서
             "SF Pro Rounded", "SFProRounded", "SF Compact Rounded",   // iOS/macOS
             "Avenir Next", "AvenirNext-DemiBold", "Avenir",
-            "Arial Rounded MT Bold",
             "Nunito", "Poppins", "Quicksand",                         // 있으면 더 좋다
             "SF Pro Display", "Helvetica Neue",
             "Noto Sans", "Roboto", "Droid Sans"                       // Android 폴백
@@ -140,6 +152,7 @@ public class GameUI : MonoBehaviour
 
     public void ShowHome()
     {
+        if (resultDropCo != null) { StopCoroutine(resultDropCo); resultDropCo = null; }
         homePanel.SetActive(true);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
@@ -152,6 +165,7 @@ public class GameUI : MonoBehaviour
 
     public void ShowGame()
     {
+        if (resultDropCo != null) { StopCoroutine(resultDropCo); resultDropCo = null; }
         RefreshItemButtons();
         homePanel.SetActive(false);
         gamePanel.SetActive(true);
@@ -160,6 +174,14 @@ public class GameUI : MonoBehaviour
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
+        if (playArtCanvas != null) playArtCanvas.SetActive(true);
+        // 방금 켠 패널의 자리를 바로 잰다 — 안 재면 첫 프레임에 보드가 엉뚱한 곳에 한 번 그려진다
+        Canvas.ForceUpdateCanvases();
+    }
+
+    void OnDestroy()
+    {
+        if (playArtCanvas != null) Destroy(playArtCanvas);
     }
 
     // ---------- 게임 HUD (chroma-drop.html) ----------
@@ -167,6 +189,42 @@ public class GameUI : MonoBehaviour
     static readonly Color StatLabel = Palette.Hex(0x5F6A90);
     static readonly Color MintInk   = Palette.Hex(0x2B5148);
     static readonly Color Mint      = Palette.Hex(0x8FD6C4);
+    static readonly Color ScoreFill   = Palette.Hex(0xFFF5B8);
+    static readonly Color ScoreBorder = Palette.Hex(0xE4BD52);
+    static readonly Color MovesFill   = Palette.Hex(0x42DC91);
+    static readonly Color MovesBorder = Palette.Hex(0x2DBB7C);
+
+    static readonly Color TimeInk   = Palette.Hex(0x1A4430);   // 시간 카드 글자 (아트의 진초록)
+    static readonly Color ScoreInk  = Palette.Hex(0x3C2D23);   // 점수 카드 글자 (아트의 진갈색)
+    static readonly Color BarOrange = Palette.Hex(0xECA175);   // 진행바 채움 (아트에서 뽑음)
+    static readonly Color TimeFace  = Palette.Hex(0xB0F2BA);   // 시간 카드 위쪽 바탕 (라벨 덮개)
+    static readonly Color GoalInk   = Palette.Hex(0x7A4E2A);   // GOAL 팻말 글자
+    static readonly Color TitleInk  = Palette.Hex(0x2F6FD6);   // 스테이지 목표 문구 (제목 자리)
+    static readonly Color CountInk  = Palette.Hex(0x4A3A3A);   // 아이템 개수
+
+    Sprite PlayArt()
+    {
+        var tex = Resources.Load<Texture2D>("play_art");
+        if (tex == null) return null;
+        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    /// <summary>플레이 아트가 있으면 보드 판·트레이 받침은 아트가 그린다.</summary>
+    public bool HasPlayArt { get { return playArtCanvas != null; } }
+
+    /// <summary>화면 비율과 무관하게 아트 전체가 보이도록(contain) 맞춘 자리. 남는 쪽은 여백이 된다.</summary>
+    static RectTransform ContainRoot(string name, Transform parent)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(parent, false);
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        var fit = go.AddComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fit.aspectRatio = PlayW / PlayH;
+        return rt;
+    }
 
     void BuildGamePanel()
     {
@@ -176,84 +234,117 @@ public class GameUI : MonoBehaviour
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        // 보드는 화면의 프로토 y 224~671 을 차지한다. HUD 는 그 위아래로만 둔다.
-        // 최상단 두 줄: 이 판이 어떤 판인지(미션) + 얼마나 왔는지(진행도).
-        // 왼쪽 홈 버튼(x 24~76)과 아래 스탯 카드(y 56~) 사이의 빈 띠에 들어간다.
-        // 미션 줄은 크게 — 판에 들어서자마자 읽혀야 하는 한 줄이다.
-        gameEyebrow = Label(safe, "eyebrow", Spaced("CHROMA DROP"), 17, TextAnchor.MiddleCenter, Ink, 84, 13, 282, 28);
-        goalSub = Label(safe, "goalsub", "", 9, TextAnchor.MiddleCenter, Muted, 84, 41, 282, 14);
+        var art = PlayArt();
+        if (art != null)
+        {
+            // 보드 뒤에 깔리는 아트 — 카메라 캔버스는 스프라이트와 같은 정렬 규칙을 따른다
+            playArtCanvas = new GameObject("PlayArtCanvas");
+            var cv = playArtCanvas.AddComponent<Canvas>();
+            cv.renderMode = RenderMode.ScreenSpaceCamera;
+            cv.worldCamera = Camera.main;
+            cv.planeDistance = 100f;
+            cv.sortingOrder = -30;
+            var artSafe = NewRT("safe", playArtCanvas.transform);
+            Stretch(artSafe);
+            artSafe.gameObject.AddComponent<SafeAreaFitter>();
+            var img = NewImage("art", ContainRoot("fit", artSafe), Color.white);
+            img.sprite = art;
+            img.raycastTarget = false;
+            Stretch(img.rectTransform);
+        }
 
-        // ---- 점수 / 남은 수 카드 ----
-        // 두 카드를 화면 가운데에 나란히 둔다. 글자도 카드 안에서 가운데 정렬한다 —
-        // 한쪽은 왼쪽, 한쪽은 오른쪽으로 붙여 두면 두 카드가 어긋나 보인다.
-        const float StatW = 94f, StatH = 38f, StatGap = 10f;
-        float statLeft = (390f - (StatW * 2f + StatGap)) * 0.5f;
+        playRoot = ContainRoot("playroot", safe);
+        curRoot = playRoot; curW = PlayW; curH = PlayH;
 
-        var scoreCard = Card(safe, "statscore", statLeft, 56, StatW, StatH, Cream, 18);
-        var sl = Label(scoreCard.transform, "l", Spaced("SCORE"), 8, TextAnchor.UpperCenter, StatLabel, 0, 0, 0, 0);
-        Anchor(sl.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
-        scoreText = NewText("v", scoreCard.transform, "0", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
-        scoreText.fontStyle = FontStyle.Bold;
-        Anchor(scoreText.transform, 0.5f, 1, 0, -15, StatW - 10, 22);
+        // ---- 상단 ----
+        ArtButton("pause", 29, 15, 45, 44, () => gm.GoHome());
 
-        var movesCard = Card(safe, "statmoves", statLeft + StatW + StatGap, 56, StatW, StatH, Mint, 18);
-        subText = Label(movesCard.transform, "l", "", 8, TextAnchor.UpperCenter, MintInk, 0, 0, 0, 0);
-        Anchor(subText.transform, 0.5f, 1, 0, -5, StatW - 10, 11);
-        rightText = NewText("v", movesCard.transform, "", Mathf.RoundToInt(17 * PS), TextAnchor.UpperCenter, Ink);
-        rightText.fontStyle = FontStyle.Bold;
-        Anchor(rightText.transform, 0.5f, 1, 0, -15, StatW - 10, 22);
+        // 제목 자리: 타임어택은 아트의 "TIME ATTACK!" 을 그대로 쓰고,
+        // 스테이지 모드는 구름 위에 흰 판을 얹고 목표 문구를 쓴다
+        eyebrowPatch = ArtSlot("eyebrowpatch", 135, 18, 150, 62).gameObject;
+        var patchImg = eyebrowPatch.AddComponent<Image>();
+        patchImg.sprite = UiTheme.RoundedSprite(40); patchImg.type = Image.Type.Sliced;
+        patchImg.color = Color.white; patchImg.raycastTarget = false;
+        gameEyebrow = NewText("eyebrow", eyebrowPatch.transform, "", 44, TextAnchor.MiddleCenter, TitleInk);
+        gameEyebrow.fontStyle = FontStyle.Bold;
+        gameEyebrow.raycastTarget = false;
+        gameEyebrow.resizeTextForBestFit = true; gameEyebrow.resizeTextMinSize = 8; gameEyebrow.resizeTextMaxSize = 44;
+        Stretch(gameEyebrow.rectTransform);
+        gameEyebrow.rectTransform.offsetMin = new Vector2(8, 4); gameEyebrow.rectTransform.offsetMax = new Vector2(-8, -4);
 
-        // ---- 제한시간 바 ----
-        // 보드 위쪽 경계(224)보다 위에 둔다 — 예전엔 232 라 블록 위에 겹쳐 있었다
-        timerRow = NewRT("timerrow", safe);
-        timerRow.anchorMin = timerRow.anchorMax = timerRow.pivot = new Vector2(0.5f, 0.5f);
-        timerRow.sizeDelta = Sz(300, 14);
-        var bar = Card(timerRow, "bar", 60, 7, 270, 12, Cream, 6);
-        var brt = (RectTransform)bar.transform.parent;
-        brt.anchorMin = brt.anchorMax = brt.pivot = new Vector2(0.5f, 0.5f);
-        brt.anchoredPosition = Vector2.zero;
-        timerBar = bar.transform.parent.gameObject;
-        timerFill = NewImage("fill", bar.transform, Coral);
-        timerFill.sprite = Rounded(5); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
+        // 점수 / 시간 카드 — 숫자는 아트에서 지워 뒀으므로 덮개 없이 바로 쓴다
+        var clear = new Color(0, 0, 0, 0);
+        scoreText = ArtValue("scoreval", 118, 114, 62, 26, clear, ScoreInk, TextAnchor.MiddleCenter, 56);
+        rightText = ArtValue("timeval", 258, 114, 54, 26, clear, TimeInk, TextAnchor.MiddleCenter, 56);
+        // "TIME LEFT" 라벨은 아트에 있다. 횟수 모드일 때만 덮고 다시 쓴다
+        subText = ArtValue("timelabel", 256, 100, 62, 13, TimeFace, TimeInk, TextAnchor.MiddleCenter, 18);
+        movesLabelPatch = subText.transform.parent.gameObject;
+
+        // 진행바 — 트랙은 아트, 채움만 그린다
+        var bar = ArtSlot("timerbar", 84, 158, 257, 11);
+        timerBar = bar.gameObject;
+        timerFill = NewImage("fill", bar, BarOrange);
+        timerFill.sprite = UiTheme.RoundedSprite(10); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
         Stretch(timerFill.rectTransform);
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
 
-        // ---- 아이템 (보유량이 0 이면 흐려진다) ----
-        // 하단은 트레이가 쓰므로 상단 정보줄 아래에 붙인다
+        // ---- 보드 / 트레이 자리 (그리는 건 월드 쪽, 여기선 자리만 잰다) ----
+        boardSlot = ArtSlot("boardslot", 18, 193, 387, 387);
+        traySlot = ArtSlot("trayslot", 232, 697, 95, 60);
+
+        // ---- 아이템 4종 ----
         int ni = Shop.Items.Length;
         itemBtnLabel = new Text[ni];
         itemBtnFill = new Image[ni];
-        // 보드와 트레이 사이에 둔다. 둘 다 월드 좌표에 있으므로 이 줄도 월드를 따라간다 —
-        // 프로토 좌표로 고정하면 화면 비율이 달라질 때 판 위로 올라탄다.
-        const float ItemW = 88f, ItemH = 40f, ItemGap = 8f;
-        itemRow = NewRT("itemrow", safe);
-        itemRow.anchorMin = itemRow.anchorMax = itemRow.pivot = new Vector2(0.5f, 0.5f);
-        itemRow.sizeDelta = Sz(390, ItemH);
-
-        float itemsW = ni * ItemW + (ni - 1) * ItemGap;
-        float itemLeft = (390f - itemsW) * 0.5f;
+        float[] pillX = { 37f, 127f, 217f, 305f };
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            var f = Card(itemRow, "item" + i, itemLeft + i * (ItemW + ItemGap), ItemH * 0.5f,
-                         ItemW, ItemH, e.Tint, 14);
-            var frt = (RectTransform)f.transform.parent;
-            frt.anchorMin = frt.anchorMax = new Vector2(0.5f, 0.5f);
-            frt.pivot = new Vector2(0.5f, 0.5f);
-            frt.anchoredPosition = new Vector2((itemLeft + i * (ItemW + ItemGap) + ItemW * 0.5f - 195f) * PS, 0);
-            HookButton(f, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); }, e.Name, 12);
-            itemBtnFill[i] = f;
-            itemBtnLabel[i] = f.transform.Find("l").GetComponent<Text>();
+            float px = pillX[Mathf.Min(i, pillX.Length - 1)];
+            var btn = ArtButton("item" + i, px, 612, 80, 48, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
+            // 못 쓰는 상태면 흰 반투명 판으로 흐리게
+            var dim = NewImage("dim", btn, new Color(1, 1, 1, 0));
+            dim.sprite = UiTheme.RoundedSprite(40); dim.type = Image.Type.Sliced; dim.raycastTarget = false;
+            Stretch(dim.rectTransform);
+            itemBtnFill[i] = dim;
+            itemBtnLabel[i] = ArtValue("itemcnt" + i, px + 50, 623, 26, 26, clear, Color.white, TextAnchor.MiddleCenter, 44);
+            // 목업의 개수 글자: 흰 글자에 갈색 테두리
+            var outline = itemBtnLabel[i].gameObject.AddComponent<Outline>();
+            outline.effectColor = CountInk;
+            outline.effectDistance = new Vector2(1.5f, -1.5f);
         }
 
-        // ---- 하단 조작 ----
-        // 하단은 트레이가 쓴다. 홈은 상단 모서리에 작은 아이콘으로 둔다.
-        HookButton(Card(safe, "home", 24, 10, 52, 44, Cream, 14), () => gm.GoHome(), "\u2190", 20);
+        // ---- GOAL 팻말 ----
+        goalSub = ArtValue("goalsub", 84, 702, 116, 52, clear, GoalInk, TextAnchor.MiddleCenter, 22);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
         Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
         chainPopup.gameObject.SetActive(false);
     }
+
+    void LateUpdate()
+    {
+        // 아트 캔버스는 별도 루트라 게임 패널의 켜짐을 따라가게 한다
+        if (playArtCanvas != null && gamePanel != null && playArtCanvas.activeSelf != gamePanel.activeInHierarchy)
+            playArtCanvas.SetActive(gamePanel.activeInHierarchy);
+    }
+
+    /// <summary>Overlay 캔버스의 월드 모서리는 곧 화면 픽셀이다. 레이아웃 전(폭 0)이면 false.</summary>
+    static bool SlotRect(RectTransform rt, out Rect r)
+    {
+        r = new Rect();
+        if (rt == null) return false;
+        var c = new Vector3[4];
+        rt.GetWorldCorners(c);
+        r = Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+        return r.width > 1f && r.height > 1f;
+    }
+
+    /// <summary>보드 칸 격자(W x H 칸)가 들어갈 화면 사각형.</summary>
+    public bool BoardSlotRect(out Rect r) { return SlotRect(boardSlot, out r); }
+
+    /// <summary>트레이 조각이 들어갈 화면 사각형.</summary>
+    public bool TraySlotRect(out Rect r) { return SlotRect(traySlot, out r); }
 
     /// <summary>카드 바깥(테두리 오브젝트)에 버튼과 눌림 반응, 가운데 글자를 붙인다.</summary>
     void HookButton(Image cardFill, UnityAction onClick, string text, float size)
@@ -270,6 +361,61 @@ public class GameUI : MonoBehaviour
         Stretch(t.rectTransform);
     }
 
+    /// <summary>Card 에 아래 두께(lip)를 붙인 입체 버튼 — 홈 화면 시작 버튼과 같은 구조다.
+    /// 평소엔 두께가 드러나 보이고 누르면 face 가 그 속으로 가라앉는다.
+    /// 반환한 fill 이미지는 HookButton 에 그대로 넘길 수 있다 (2단 구조라 부모가 하나 더 있을 뿐).</summary>
+    Image LipCard(Transform parent, string name, float x, float y, float w, float h,
+                  Color fill, Color lipColor, float radius, float lipPx, Color? borderColor = null)
+    {
+        var root = NewRT(name, parent);
+        Place(root, Top, Top, new Vector2(0, 1), P(x, y), Sz(w, h));
+
+        var lip = NewImage("lip", root, lipColor);
+        lip.sprite = Rounded(radius); lip.type = Image.Type.Sliced; lip.raycastTarget = false;
+        var lrt = lip.rectTransform;
+        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
+        lrt.offsetMin = new Vector2(0, -lipPx * PS); lrt.offsetMax = Vector2.zero;
+
+        var faceRt = NewRT("face", root);
+        faceRt.anchorMin = Vector2.zero; faceRt.anchorMax = Vector2.one;
+        faceRt.offsetMin = faceRt.offsetMax = Vector2.zero;
+        var faceOuter = faceRt.gameObject.AddComponent<Image>();
+        faceOuter.sprite = Rounded(radius); faceOuter.type = Image.Type.Sliced;
+        faceOuter.color = borderColor ?? Ink;
+
+        var faceIn = NewImage("fill", faceRt, fill);
+        faceIn.sprite = Rounded(Mathf.Max(2f, radius - Bd)); faceIn.type = Image.Type.Sliced;
+        faceIn.raycastTarget = false;
+        var fir = faceIn.rectTransform;
+        fir.anchorMin = Vector2.zero; fir.anchorMax = Vector2.one;
+        fir.offsetMin = new Vector2(Bd * PS, Bd * PS); fir.offsetMax = new Vector2(-Bd * PS, -Bd * PS);
+
+        return faceIn;
+    }
+
+    /// <summary>lip 두께용 그림자 색 — 원래 색을 그대로 어둡게 낮춘다.</summary>
+    static Color Shade(Color c) { return new Color(c.r * 0.78f, c.g * 0.78f, c.b * 0.78f, c.a); }
+
+    Dictionary<ShopItem, Sprite> itemIcons;
+
+    /// <summary>아이템 그림 — 참고 아트(Resources/items)를 그대로 쓰고, 없으면 폭탄만 절차 생성으로 돌아간다.</summary>
+    Sprite ItemIconSprite(ShopItem it)
+    {
+        if (itemIcons == null) itemIcons = new Dictionary<ShopItem, Sprite>();
+        Sprite got;
+        if (itemIcons.TryGetValue(it, out got)) return got;
+
+        string name = it == ShopItem.BombPiece ? "bomb"
+                    : it == ShopItem.Hammer ? "hammer"
+                    : it == ShopItem.Rainbow ? "rainbow" : "shuffle";
+        var t = Resources.Load<Texture2D>("items/" + name);
+        got = t != null
+            ? Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), Mathf.Max(t.width, t.height))
+            : (it == ShopItem.BombPiece ? BoardView.MakeBombSprite() : null);
+        itemIcons[it] = got;
+        return got;
+    }
+
     /// <summary>아이템 버튼의 보유량 표시. 0 이면 흐리게.</summary>
     void RefreshItemButtons()
     {
@@ -279,9 +425,9 @@ public class GameUI : MonoBehaviour
             var e = Shop.Items[i];
             int n = Wallet.Count(e.Item);
             bool usable = n > 0 && !(e.MovesOnly && gm.timeAttack);
-            itemBtnLabel[i].text = e.Name + (n > 0 ? "  x" + n : "");
-            itemBtnFill[i].color = usable ? e.Tint : Color.Lerp(e.Tint, ScreenBg, 0.72f);
-            itemBtnLabel[i].color = usable ? Ink : Muted;
+            itemBtnLabel[i].text = n.ToString();
+            itemBtnFill[i].color = new Color(1, 1, 1, usable ? 0f : 0.55f);   // 못 쓰면 흰 판으로 흐리게
+            itemBtnLabel[i].color = usable ? Color.white : Muted;
         }
     }
 
@@ -350,90 +496,36 @@ public class GameUI : MonoBehaviour
     }
 
     /// <summary>매 프레임 HUD 갱신 (Playing 중 GameManager가 호출)</summary>
-    /// <summary>아이템 줄을 월드 좌표에 맞춰 옮긴다. 보드·트레이와 같은 자리에 붙어 있어야
-    /// 화면 비율이 바뀌어도 판 위로 올라타지 않는다.</summary>
-    /// <summary>타이머는 보드 위 경계 위로, 아이템 줄은 아래 경계 밑으로 민다.
-    /// 크기를 추정하지 않고 실제 사각형을 재서 밀어내므로 화면 비율이 어떻든 안 겹친다.</summary>
-    public void FollowWorld(Camera cam, float worldX, float boardTopY, float boardBottomY)
-    {
-        if (cam == null) return;
-        PlaceOutside(timerRow, cam, worldX, boardTopY, true);
-        PlaceOutside(itemRow, cam, worldX, boardBottomY, false);
-    }
-
-    /// <summary>경계선 바깥에 붙인다. above 면 위, 아니면 아래.</summary>
-    void PlaceOutside(RectTransform rt, Camera cam, float worldX, float worldEdgeY, bool above)
-    {
-        if (rt == null) return;
-
-        PlaceAtWorld(rt, cam, new Vector3(worldX, worldEdgeY, 0));
-
-        var canvas = GetComponent<Canvas>();
-        float scale = canvas != null && canvas.scaleFactor > 0 ? canvas.scaleFactor : 1f;
-        float marginPx = EdgeMargin * scale;
-
-        rt.GetWorldCorners(rectCorners);
-        float top = rectCorners[1].y, bottom = rectCorners[0].y;
-        float edge = RectTransformUtility.WorldToScreenPoint(cam, new Vector3(worldX, worldEdgeY, 0)).y;
-
-        float deltaPx = above ? (edge + marginPx) - bottom : (edge - marginPx) - top;
-        rt.anchoredPosition += new Vector2(0, deltaPx / scale);
-    }
-
-    /// <summary>보드 경계와 띄우는 간격 (캔버스 단위).</summary>
-    const float EdgeMargin = 26f;
-    static readonly Vector3[] rectCorners = new Vector3[4];
-
-    /// <summary>월드 좌표를 이 RectTransform 의 부모 기준 좌표로 옮긴다.
-    /// 캔버스가 Overlay 냐 Camera 냐에 따라 변환이 달라지므로 API 로 처리한다 —
-    /// position 에 화면 픽셀을 그냥 넣으면 Camera 모드에서 엉뚱한 데로 간다.</summary>
-    void PlaceAtWorld(RectTransform rt, Camera cam, Vector3 world)
-    {
-        if (rt == null) return;
-        var canvas = GetComponent<Canvas>();
-        var uiCam = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay
-                  ? canvas.worldCamera : null;
-
-        Vector2 screen = RectTransformUtility.WorldToScreenPoint(cam, world);
-        Vector2 local;
-        if (RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                (RectTransform)rt.parent, screen, uiCam, out local))
-            rt.anchoredPosition = local;
-    }
-
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
 
-        // 맨 윗줄은 목표 문구, 그 아래는 진행도 — 보드 위쪽 여백이 좁아 두 줄까지가 한계다
-        if (gameEyebrow != null)
+        // 제목 자리: 타임어택은 아트 제목, 스테이지는 목표 문구
+        bool ta = g.TimeAttackMode;
+        if (eyebrowPatch != null && eyebrowPatch.activeSelf == ta) eyebrowPatch.SetActive(!ta);
+        if (!ta)
         {
-            if (g.TimeAttackMode) { gameEyebrow.text = "TIME ATTACK!"; gameEyebrow.color = Ink; }
-            else
-            {
-                gameEyebrow.text = GoalLine(g);
-                gameEyebrow.color = g.GoalMet ? Coral : Ink;
-            }
+            gameEyebrow.text = GoalLine(g);
+            gameEyebrow.color = g.GoalMet ? Coral : TitleInk;
         }
-        if (goalSub != null) goalSub.text = g.TimeAttackMode ? "" : ProgressLine(g);
-        timerBar.SetActive(true);
+        goalSub.text = ta ? "SCORE " + g.Score.ToString("N0") : ProgressLine(g);
+
+        // 시간 카드: 타임어택은 아트 라벨("TIME LEFT") 그대로, 횟수 모드는 덮고 다시 쓴다
+        if (movesLabelPatch != null && movesLabelPatch.activeSelf == ta) movesLabelPatch.SetActive(!ta);
         float frac;
-        if (g.TimeAttackMode)
+        if (ta)
         {
-            subText.text = Spaced("TIME LEFT");
             int sec = Mathf.CeilToInt(g.TimeLeftSec);
             rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
             frac = g.PieceTimerFrac;   // 막대는 이 조각을 놓을 시간. 전체 시간은 카드에 있다
         }
         else
         {
-            subText.text = Spaced(g.PieceLimited ? "PIECES LEFT" : "MOVES LEFT");
+            subText.text = g.PieceLimited ? "PIECES LEFT" : "MOVES LEFT";
             rightText.text = g.MovesLeft.ToString();
             frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
         }
-        frac = Mathf.Clamp01(frac);
-        timerFill.rectTransform.localScale = new Vector3(frac, 1, 1);
-        timerFill.color = Color.Lerp(Coral, Palette.Hex(0x7FCFC0), frac);
+        timerFill.rectTransform.localScale = new Vector3(Mathf.Clamp01(frac), 1, 1);
     }
 
     /// <summary>이 판의 성격을 한마디로. 다섯 종류마다 문구가 하나씩이라
@@ -506,11 +598,8 @@ public class GameUI : MonoBehaviour
     static readonly Color TealInk    = Palette.Hex(0x0E4A3E);
 
     readonly Dictionary<int, Sprite> roundCache = new Dictionary<int, Sprite>();
-    Sprite circleSprite;
-    Image[] modeFill;
-    Text[] modeEyebrow;
-    Text selectedModeText, coinHomeText, stageNumText;
-    Image stagePrev, stageNext;
+    Text coinHomeText, stageNumText;
+    RectTransform stagePrevRt, stageNextRt;
 
     Sprite Rounded(float protoRadius)
     {
@@ -541,242 +630,148 @@ public class GameUI : MonoBehaviour
         return inner;
     }
 
-    Text Label(Transform parent, string name, string text, float size, TextAnchor anchor, Color c,
-               float x, float y, float w, float h)
+    // ---------- 홈 (chroma_drop_main.html) ----------
+    //
+    // 화면 전체가 아트 한 장이고, 그 위에 투명 버튼과 '실제 값' 만 얹는다.
+    // 아트에 박힌 숫자(코인·스테이지·최고점)는 같은 색 판으로 덮고 진짜 값을 쓴다.
+    // 좌표는 전부 아트 원본(612x1254) 픽셀 기준이며 y 는 위가 0 이다.
+
+    const float ArtW = 612f, ArtH = 1254f;
+
+    static readonly Color CardInk   = Palette.Hex(0x1B2450);   // 카드 위 진한 글씨
+    static readonly Color CardSub   = Palette.Hex(0x5A6486);   // 카드 위 설명 글씨
+    static readonly Color CardFace  = Palette.Hex(0xF6F4F3);   // 스테이지 카드 바탕
+    static readonly Color BestFace  = Palette.Hex(0xE9E4E1);   // 최고기록 카드 바탕
+    static readonly Color PillNavy  = Palette.Hex(0x142A6C);   // 상단 코인 알약 안쪽
+    static readonly Color PillCream = Palette.Hex(0xFCF4E2);   // 최고기록 카드 안 코인 알약
+
+    RectTransform artRoot;
+    RectTransform curRoot; float curW, curH;   // ArtSlot 이 지금 어느 아트 위에 자리를 잡는지
+    Sprite homeArt;
+    Text topCoinText, stageDescText;
+    Image classicDim, rushDim;
+
+    Sprite HomeArt()
     {
-        var t = NewText(name, parent, text, Mathf.RoundToInt(size * PS), anchor, c);
+        if (homeArt != null) return homeArt;
+        var tex = Resources.Load<Texture2D>("main_art");
+        if (tex == null) return null;
+        homeArt = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        return homeArt;
+    }
+
+    /// <summary>아트 픽셀 좌표(위가 0)에 맞춘 자리 하나.</summary>
+    RectTransform ArtSlot(string name, float x, float y, float w, float h)
+    {
+        var rt = NewRT(name, curRoot);
+        rt.anchorMin = new Vector2(x / curW, 1f - (y + h) / curH);
+        rt.anchorMax = new Vector2((x + w) / curW, 1f - y / curH);
+        rt.offsetMin = rt.offsetMax = Vector2.zero;
+        return rt;
+    }
+
+    /// <summary>아트에 그려진 버튼 위에 얹는 투명 버튼. 누르면 눌리는 반응만 준다.</summary>
+    RectTransform ArtButton(string name, float x, float y, float w, float h, UnityAction onClick)
+    {
+        var rt = ArtSlot(name, x, y, w, h);
+        var img = rt.gameObject.AddComponent<Image>();
+        img.color = new Color(0, 0, 0, 0);      // 안 보이지만 터치는 받는다
+        var b = rt.gameObject.AddComponent<Button>();
+        b.targetGraphic = img;
+        b.transition = Selectable.Transition.None;
+        b.onClick.AddListener(onClick);
+        rt.gameObject.AddComponent<UiPressImage>().target = rt;
+        return rt;
+    }
+
+    /// <summary>아트에 그려진 숫자를 같은 색 판으로 덮고 그 위에 실제 값을 쓴다.
+    /// 판을 안 깔면 밑에 그려진 숫자가 비쳐서 두 개로 겹쳐 보인다.</summary>
+    Text ArtValue(string name, float x, float y, float w, float h,
+                  Color patch, Color ink, TextAnchor anchor, int maxSize)
+    {
+        var rt = ArtSlot(name, x, y, w, h);
+        var bg = rt.gameObject.AddComponent<Image>();
+        bg.color = patch;
+        bg.raycastTarget = false;
+
+        var t = NewText("v", rt, "", maxSize, anchor, ink);
         t.fontStyle = FontStyle.Bold;
-        Place(t.rectTransform, Top, Top, new Vector2(0, 1), P(x, y), Sz(w, h));
+        t.raycastTarget = false;
+        t.resizeTextForBestFit = true;      // 아트가 화면 크기에 맞춰 늘어나므로 글자도 따라간다
+        t.resizeTextMinSize = 8;
+        t.resizeTextMaxSize = maxSize;
+        Stretch(t.rectTransform);
         return t;
     }
 
     void BuildHomePanel()
     {
-        homePanel = NewImage("homebg", transform, ScreenBg).gameObject;
+        homePanel = NewImage("homebg", transform, Color.black).gameObject;
         Stretch((RectTransform)homePanel.transform);
 
         var safe = NewRT("safe", homePanel.transform);
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        if (circleSprite == null) circleSprite = MakeCircleSprite();
+        // 아트 한 장이 화면을 덮는다 (object-fit: cover). 남는 쪽은 잘려 나간다.
+        var art = NewImage("art", safe, Color.white);
+        art.sprite = HomeArt();
+        art.raycastTarget = false;
+        artRoot = art.rectTransform;
+        artRoot.anchorMin = artRoot.anchorMax = artRoot.pivot = new Vector2(0.5f, 0.5f);
+        artRoot.anchoredPosition = Vector2.zero;
+        var fit = art.gameObject.AddComponent<AspectRatioFitter>();
+        fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+        fit.aspectRatio = ArtW / ArtH;
+        curRoot = artRoot; curW = ArtW; curH = ArtH;
 
-        // ---- 장식: 원형 얼룩 두 개 + 기울어진 칩 두 개 ----
-        Blob(safe, "blobY", BlobYellow, 0.55f, -40, 90, 300);
-        Blob(safe, "blobP", BlobPurple, 0.60f, ProtoW - 200, 844 - 200, 260);
-        Chip(safe, "chipC", Coral, 18, 150, -14f);
-        Chip(safe, "chipP", Purple, ProtoW - 18 - 64, 165, 12f);
+        // ---- 상단: 설정(국가 선택) + 코인 ----
+        ArtButton("settings", 519, 28, 61, 62, ShowCountryPicker);
+        topCoinText = ArtValue("topcoin", 386, 34, 82, 42, PillNavy, Color.white, TextAnchor.MiddleCenter, 40);
 
-        // ---- 상단 바 (노치는 그리지 않는다) ----
-        var menu = Card(safe, "menu", 20, 22, 44, 44, Color.white, 14);
-        var menuBtn = menu.transform.parent.gameObject.AddComponent<Button>();
-        menuBtn.targetGraphic = menu.transform.parent.GetComponent<Image>();
-        menuBtn.transition = Selectable.Transition.None;
-        menuBtn.onClick.AddListener(ShowCountryPicker);
-        var dotCols = new[] { Coral, Yellow, Purple, Teal };
-        for (int i = 0; i < 4; i++)
-        {
-            var d = NewImage("dot" + i, menu.transform, dotCols[i]);
-            d.sprite = Rounded(4); d.type = Image.Type.Sliced; d.raycastTarget = false;
-            var rt = d.rectTransform;
-            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
-            rt.sizeDelta = Sz(12, 12);
-            rt.anchoredPosition = new Vector2((5 + (i % 2) * 16) * PS, -(5 + (i / 2) * 16) * PS);
-            if (i == 3) homeBadge = d;                       // 국가 색이 여기 들어간다
-        }
-
-        homeBadgeText = Label(safe, "acct", "", 11, TextAnchor.MiddleLeft, Muted, 72, 34, 160, 20);
-
-        var ranks = Card(safe, "ranks", ProtoW - 20 - 108, 22, 108, 44, Color.white, 20);
-        var ranksBtn = ranks.transform.parent.gameObject.AddComponent<Button>();
-        ranksBtn.targetGraphic = ranks.transform.parent.GetComponent<Image>();
-        ranksBtn.transition = Selectable.Transition.None;
-        ranksBtn.onClick.AddListener(() => ShowRanking(false));
-        var rl = NewText("l", ranks.transform, "RANKINGS", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink);
-        rl.fontStyle = FontStyle.Bold;
-        Stretch(rl.rectTransform);
-
-        // ---- 타이틀 ----
-        Label(safe, "eyebrow", Spaced("COLOR MATCHER"), 11, TextAnchor.MiddleCenter, Muted, 20, 94, 350, 20);
-        var title = Label(safe, "title", "", 42, TextAnchor.MiddleCenter, Ink, 20, 114, 350, 96);
-        title.supportRichText = true;
-        title.lineSpacing = 1.02f;
-        title.text = "CHROMA\n<color=#E4795A>DROP</color>";
-        Label(safe, "tagline", "Match. Pop. Beat your best.", 14, TextAnchor.MiddleCenter, Body, 20, 216, 350, 24);
-
-        // ---- 모드 카드 ----
-        modeFill = new Image[2];
-        modeEyebrow = new Text[2];
-        string[] eyebrows = { "CLASSIC", "RUSH" };
-        string[] labels = { "Moves", "Time Attack" };
-        for (int i = 0; i < 2; i++)
-        {
-            bool ta = i == 1;
-            float cw = (ProtoW - 40 - 12) / 2f;
-            var card = Card(safe, "mode" + i, 20 + i * (cw + 12), 268, cw, 78, Color.white, 18);
-            var b = card.transform.parent.gameObject.AddComponent<Button>();
-            b.targetGraphic = card.transform.parent.GetComponent<Image>();
-            b.transition = Selectable.Transition.None;
-            b.onClick.AddListener(() => { gm.timeAttack = ta; RefreshHomeButtons(); });
-            card.transform.parent.gameObject.AddComponent<UiPressImage>().target = (RectTransform)card.transform.parent;
-
-            modeEyebrow[i] = Label(card.transform, "eb", eyebrows[i], 10, TextAnchor.UpperLeft, Muted, 0, 0, 0, 0);
-            var er = modeEyebrow[i].rectTransform;
-            er.anchorMin = er.anchorMax = er.pivot = new Vector2(0, 1);
-            er.sizeDelta = Sz(cw - 28, 16); er.anchoredPosition = new Vector2(14 * PS, -12 * PS);
-
-            var ml = NewText("ml", card.transform, labels[i], Mathf.RoundToInt(17 * PS), TextAnchor.UpperLeft, Ink);
-            ml.fontStyle = FontStyle.Bold;
-            var mr = ml.rectTransform;
-            mr.anchorMin = mr.anchorMax = mr.pivot = new Vector2(0, 1);
-            mr.sizeDelta = Sz(cw - 28, 44); mr.anchoredPosition = new Vector2(14 * PS, -32 * PS);
-            modeFill[i] = card;
-        }
-
-        // ---- 시작 버튼 (아래 두께가 있는 카드) ----
-        var startRoot = NewRT("start", safe);
-        Place(startRoot, Top, Top, new Vector2(0, 1), P(20, 362), Sz(350, 60));
-        var lip = NewImage("lip", startRoot, CoralLip);
-        lip.sprite = Rounded(18); lip.type = Image.Type.Sliced; lip.raycastTarget = false;
-        var lrt = lip.rectTransform;
-        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
-        lrt.offsetMin = new Vector2(0, -5 * PS); lrt.offsetMax = Vector2.zero;
-
-        var faceRt = NewRT("face", startRoot);
-        faceRt.anchorMin = Vector2.zero; faceRt.anchorMax = Vector2.one;
-        faceRt.offsetMin = faceRt.offsetMax = Vector2.zero;
-        var faceOuter = faceRt.gameObject.AddComponent<Image>();
-        faceOuter.sprite = Rounded(18); faceOuter.type = Image.Type.Sliced; faceOuter.color = Ink;
-        var faceIn = NewImage("fill", faceRt, Coral);
-        faceIn.sprite = Rounded(15); faceIn.type = Image.Type.Sliced; faceIn.raycastTarget = false;
-        var fir = faceIn.rectTransform;
-        fir.anchorMin = Vector2.zero; fir.anchorMax = Vector2.one;
-        fir.offsetMin = new Vector2(Bd * PS, Bd * PS); fir.offsetMax = new Vector2(-Bd * PS, -Bd * PS);
-
-        var sl = NewText("l", faceIn.transform, "START GAME", Mathf.RoundToInt(17 * PS), TextAnchor.MiddleLeft, Color.white);
-        sl.fontStyle = FontStyle.Bold;
-        Place(sl.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(24 * PS, 0), Sz(240, 30));
-        var ar = NewText("arrow", faceIn.transform, "\u2192", Mathf.RoundToInt(20 * PS), TextAnchor.MiddleRight, Color.white);
-        ar.fontStyle = FontStyle.Bold;
-        Place(ar.rectTransform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-24 * PS, 0), Sz(40, 32));
-
-        var sb = startRoot.gameObject.AddComponent<Button>();
-        sb.targetGraphic = faceOuter;
-        sb.transition = Selectable.Transition.None;
-        sb.onClick.AddListener(() =>
+        // ---- PLAY / 모드 ----
+        ArtButton("play", 112, 620, 388, 104, () =>
         {
             if (!gm.timeAttack) gm.stageLevel = Progress.Selected;
             gm.StartGame();
         });
-        startRoot.gameObject.AddComponent<UiPressImage>().target = faceRt;
 
-        selectedModeText = Label(safe, "selmode", "", 12, TextAnchor.MiddleLeft, Body, 20, 434, 240, 20);
+        var classic = ArtButton("classic", 36, 745, 260, 93, () => { gm.timeAttack = false; RefreshHomeButtons(); });
+        var rush = ArtButton("rush", 316, 745, 260, 93, () => { gm.timeAttack = true; RefreshHomeButtons(); });
+        classicDim = ModeDim(classic);
+        rushDim = ModeDim(rush);
 
-        // ---- 스테이지 고르기 ----
-        // 깬 스테이지까지만 고를 수 있다. 진행은 PlayerPrefs 에 로컬 저장되므로
-        // 서버 없이도 앱을 껐다 켜면 그대로 남는다.
-        stagePrev = Card(safe, "stgprev", 262, 428, 40, 32, Color.white, 10);
-        HookButton(stagePrev, () => { Progress.Selected = Progress.Selected - 1; RefreshHomeButtons(); }, "\u25C0", 12);
-        stageNext = Card(safe, "stgnext", 330, 428, 40, 32, Color.white, 10);
-        HookButton(stageNext, () => { Progress.Selected = Progress.Selected + 1; RefreshHomeButtons(); }, "\u25B6", 12);
-        stageNumText = Label(safe, "stgnum", "", 14, TextAnchor.MiddleCenter, Ink, 300, 428, 32, 32);
+        // ---- 스테이지 카드 ----
+        stageDescText = ArtValue("stagedesc", 122, 876, 220, 94, CardFace, CardSub, TextAnchor.MiddleLeft, 26);
+        stageNumText = ArtValue("stgnum", 408, 897, 62, 48, CardFace, CardInk, TextAnchor.MiddleCenter, 40);
+        stagePrevRt = ArtButton("stgprev", 352, 895, 56, 53,
+                                () => { Progress.Selected = Progress.Selected - 1; RefreshHomeButtons(); });
+        stageNextRt = ArtButton("stgnext", 470, 895, 58, 53,
+                                () => { Progress.Selected = Progress.Selected + 1; RefreshHomeButtons(); });
 
-        // ---- 최고 기록 카드 ----
-        var best = Card(safe, "bestcard", 20, 472, 350, 328, Cream, 22);
-        Label(best.transform, "bl", Spaced("PERSONAL BEST"), 11, TextAnchor.UpperLeft, Muted, 0, 0, 0, 0);
-        var blr = best.transform.Find("bl").GetComponent<RectTransform>();
-        blr.anchorMin = blr.anchorMax = blr.pivot = new Vector2(0, 1);
-        blr.sizeDelta = Sz(220, 18); blr.anchoredPosition = new Vector2(18 * PS, -18 * PS);
+        // ---- 최고기록 카드 ----
+        bestHomeText = ArtValue("bestnum", 62, 1016, 240, 54, BestFace, CardInk, TextAnchor.MiddleLeft, 46);
+        coinHomeText = ArtValue("bestcoin", 352, 1010, 118, 42, PillCream, CardInk, TextAnchor.MiddleCenter, 34);
 
-        bestHomeText = NewText("bv", best.transform, "0", Mathf.RoundToInt(34 * PS), TextAnchor.UpperLeft, Ink);
-        bestHomeText.fontStyle = FontStyle.Bold;
-        var bvr = bestHomeText.rectTransform;
-        bvr.anchorMin = bvr.anchorMax = bvr.pivot = new Vector2(0, 1);
-        bvr.sizeDelta = Sz(240, 46); bvr.anchoredPosition = new Vector2(18 * PS, -34 * PS);
+        // ---- 하단 메뉴 ----
+        ArtButton("ranking", 60, 1088, 82, 96, () => ShowRanking(false));
+        ArtButton("shop", 188, 1088, 82, 96, ShowShop);
 
-        coinHomeText = CoinChip(best.transform, "coinchip", 1, 1, -66, -14, 112, 34);
-
-        var star = Card(best.transform, "star", 0, 0, 40, 40, Yellow, 12);
-        var srt2 = (RectTransform)star.transform.parent;
-        srt2.anchorMin = srt2.anchorMax = srt2.pivot = new Vector2(1, 1);
-        srt2.sizeDelta = Sz(40, 40); srt2.anchoredPosition = new Vector2(-18 * PS, -18 * PS);
-        var st = NewText("s", star.transform, "\u2605", Mathf.RoundToInt(18 * PS), TextAnchor.MiddleCenter, Ink);
-        Stretch(st.rectTransform);
-
-        // 색 견본 그리드 — 팔레트를 미리 보여준다
-        var grid = NewImage("swatches", best.transform, SwatchBg);
-        grid.sprite = Rounded(14); grid.type = Image.Type.Sliced; grid.raycastTarget = false;
-        var gr = grid.rectTransform;
-        gr.anchorMin = gr.anchorMax = gr.pivot = new Vector2(0, 1);
-        gr.sizeDelta = Sz(314, 162); gr.anchoredPosition = new Vector2(18 * PS, -86 * PS);
-        var sw = new[] { Coral, Yellow, Teal, Purple, Coral, Teal,
-                         Yellow, Purple, Coral, Yellow, Teal, Purple,
-                         Teal, Coral, Yellow, Purple, Teal, Coral };
-        for (int i = 0; i < sw.Length; i++)
-        {
-            var q = NewImage("sw" + i, grid.transform, sw[i]);
-            q.sprite = Rounded(8); q.type = Image.Type.Sliced; q.raycastTarget = false;
-            var qr = q.rectTransform;
-            qr.anchorMin = qr.anchorMax = qr.pivot = new Vector2(0, 1);
-            qr.sizeDelta = Sz(42, 42);
-            qr.anchoredPosition = new Vector2((10 + (i % 6) * 50) * PS, -(10 + (i / 6) * 50) * PS);
-        }
-
-        var lb = Card(best.transform, "lbbtn", 0, 0, 152, 48, Color.white, 16);
-        var lbr = (RectTransform)lb.transform.parent;
-        lbr.anchorMin = lbr.anchorMax = lbr.pivot = new Vector2(0, 1);
-        lbr.sizeDelta = Sz(152, 48); lbr.anchoredPosition = new Vector2(18 * PS, -262 * PS);
-        var lbBtn = lb.transform.parent.gameObject.AddComponent<Button>();
-        lbBtn.targetGraphic = lb.transform.parent.GetComponent<Image>();
-        lbBtn.transition = Selectable.Transition.None;
-        lbBtn.onClick.AddListener(() => ShowRanking(false));
-        lb.transform.parent.gameObject.AddComponent<UiPressImage>().target = lbr;
         var ver = NewText("ver", safe, "v" + Application.version + "  ·  jaemanc",
-                          Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Muted);
+                          Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
         Place(ver.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-              new Vector2(0, 22 * PS), Sz(300, 18));
-
-        var lbl = NewText("l", lb.transform, "RANKS", Mathf.RoundToInt(15 * PS), TextAnchor.MiddleCenter, Ink);
-        lbl.fontStyle = FontStyle.Bold;
-        Stretch(lbl.rectTransform);
-
-        var sh = Card(best.transform, "shopbtn", 0, 0, 152, 48, Yellow, 16);
-        var shr = (RectTransform)sh.transform.parent;
-        shr.anchorMin = shr.anchorMax = shr.pivot = new Vector2(0, 1);
-        shr.sizeDelta = Sz(152, 48); shr.anchoredPosition = new Vector2(180 * PS, -262 * PS);
-        HookButton(sh, ShowShop, "SHOP", 15);
+              new Vector2(0, 10 * PS), Sz(300, 18));
     }
 
-    void Blob(Transform parent, string name, Color c, float alpha, float x, float y, float d)
+    /// <summary>고르지 않은 모드를 덮어 어둡게 하는 판. 아트에는 선택 표시가 없어서 이걸로 구분한다.</summary>
+    Image ModeDim(RectTransform btn)
     {
-        var img = NewImage(name, parent, new Color(c.r, c.g, c.b, alpha));
-        img.sprite = circleSprite; img.raycastTarget = false;
-        Place(img.rectTransform, Top, Top, new Vector2(0, 1), P(x, y), Sz(d, d));
-    }
-
-    void Chip(Transform parent, string name, Color c, float x, float y, float deg)
-    {
-        var chip = Card(parent, name, x, y, 64, 64, c, 16);
-        var rt = (RectTransform)chip.transform.parent;
-        rt.localRotation = Quaternion.Euler(0, 0, deg);
-        chip.raycastTarget = false;
-        chip.transform.parent.GetComponent<Image>().raycastTarget = false;
-    }
-
-    static Sprite MakeCircleSprite()
-    {
-        const int S = 128;
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear };
-        var px = new Color[S * S];
-        float c = (S - 1) / 2f;
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-            {
-                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
-                px[y * S + x] = new Color(1, 1, 1, Mathf.Clamp01(c - d));
-            }
-        tex.SetPixels(px); tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 100f);
+        var dim = NewImage("dim", btn, new Color(0.03f, 0.05f, 0.15f, 0.45f));
+        dim.sprite = UiTheme.RoundedSprite(46);
+        dim.type = Image.Type.Sliced;
+        dim.raycastTarget = false;
+        Stretch(dim.rectTransform);
+        return dim;
     }
 
     static readonly Vector2 Top = new Vector2(0.5f, 1f);
@@ -791,59 +786,39 @@ public class GameUI : MonoBehaviour
 
     void RefreshHomeButtons()
     {
-        if (modeFill == null) return;
-        for (int i = 0; i < 2; i++)
-        {
-            bool on = (i == 1) == gm.timeAttack;
-            modeFill[i].color = on ? Teal : Color.white;
-            modeEyebrow[i].color = on ? TealInk : Muted;
-        }
+        if (bestHomeText == null) return;
+
+        // 아트에는 선택 표시가 없으므로, 고르지 않은 모드를 어둡게 덮어 구분한다
+        if (classicDim != null) classicDim.enabled = gm.timeAttack;
+        if (rushDim != null) rushDim.enabled = !gm.timeAttack;
+
         bestHomeText.text = gm.BestForSelection().ToString("N0");
-        if (coinHomeText != null) coinHomeText.text = Wallet.Coins.ToString("N0");
+        string coins = Wallet.Coins.ToString("N0");
+        if (coinHomeText != null) coinHomeText.text = coins;
+        if (topCoinText != null) topCoinText.text = coins;
 
         int lv = Progress.Selected;
         var st = StageTable.Get(lv);
-        selectedModeText.text = gm.timeAttack
-            ? "Time attack · 3 min"
-            : "Stage " + lv + " · clear " + st.ClearBlocks + " blocks in " + st.Moves + " moves";
-
-        // 타임어택에는 스테이지가 없다
         bool stageMode = !gm.timeAttack;
-        SetActive(stagePrev, stageMode);
-        SetActive(stageNext, stageMode);
-        if (stageNumText != null)
-        {
-            stageNumText.gameObject.SetActive(stageMode);
-            stageNumText.text = lv.ToString();
-        }
-        if (stageMode)
-        {
-            // 안 깬 스테이지는 고를 수 없다
-            SetInteractable(stagePrev, lv > 1);
-            SetInteractable(stageNext, lv < Progress.Unlocked);
-        }
-        RefreshBadge();
+
+        if (stageDescText != null)
+            stageDescText.text = stageMode
+                ? "Stage " + lv + "\nClear " + st.ClearBlocks + " blocks\nin " + st.MoveBudget + " moves"
+                : "Time Attack\n" + Mathf.RoundToInt(StageTable.TimeAttack.Seconds / 60f) + " minutes";
+
+        if (stageNumText != null) stageNumText.text = stageMode ? lv.ToString() : "∞";
+
+        // 안 깬 스테이지는 고를 수 없다. 타임어택에는 스테이지가 없다.
+        SetHit(stagePrevRt, stageMode && lv > 1);
+        SetHit(stageNextRt, stageMode && lv < Progress.Unlocked);
     }
 
-    static void SetActive(Image cardFill, bool on)
+    /// <summary>아트 위 투명 버튼을 켜고 끈다 (아트는 그대로 보인다).</summary>
+    static void SetHit(RectTransform rt, bool on)
     {
-        if (cardFill != null) cardFill.transform.parent.gameObject.SetActive(on);
-    }
-
-    static void SetInteractable(Image cardFill, bool on)
-    {
-        if (cardFill == null) return;
-        var b = cardFill.transform.parent.GetComponent<Button>();
+        if (rt == null) return;
+        var b = rt.GetComponent<Button>();
         if (b != null) b.interactable = on;
-        cardFill.color = on ? Color.white : new Color(0.88f, 0.89f, 0.91f);
-    }
-
-    void RefreshBadge()
-    {
-        if (homeBadge == null) return;
-        string c = PlayerAccount.Country;
-        homeBadge.color = PlayerAccount.BadgeColor(c);
-        homeBadgeText.text = c;
     }
 
     // ---------- 결과 ----------
@@ -852,13 +827,15 @@ public class GameUI : MonoBehaviour
 
     void BuildResultPanel()
     {
-        resultPanel = NewImage("resultdim", transform, new Color(0.106f, 0.129f, 0.255f, 0.55f)).gameObject;
+        resultDim = NewImage("resultdim", transform, new Color(0.106f, 0.129f, 0.255f, 0.55f));
+        resultPanel = resultDim.gameObject;
         Stretch((RectTransform)resultPanel.transform);
 
         var card = Card(resultPanel.transform, "rcard", 0, 0, 330, 380, Cream, 24);
         var cr = (RectTransform)card.transform.parent;
         cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
         cr.anchoredPosition = Vector2.zero;
+        resultCardRt = cr;
 
         resultTitle = NewText("t", card.transform, "", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
         resultTitle.fontStyle = FontStyle.Bold;
@@ -928,9 +905,88 @@ public class GameUI : MonoBehaviour
             PlaceButton(homeBtn, 172, 136);
         }
 
-        // 결과 카드를 잠깐 보여준 뒤 리더보드를 띄운다.
-        if (Leaderboard.I != null && Leaderboard.I.Configured)
-            StartCoroutine(OpenRankAfter(1.6f));
+        if (resultDropCo != null) StopCoroutine(resultDropCo);
+        resultCardRt.localScale = Vector3.one;   // 이전 연출이 중간에 끊겼을 수 있으니 초기화
+
+        // 실패/타임업이면 카드가 위에서 덜컹 떨어지고, 클리어면 가운데서 짠 하고 튀어나온다.
+        bool gameOver = ta || !cleared;
+        resultDropCo = StartCoroutine(gameOver ? ResultDropInCo() : ResultPopInCo());
+    }
+
+    const float ResultDimAlpha = 0.55f;
+    const float ResultDimAlphaGameOver = 0.68f;   // 실패/타임업 때 배경을 조금 더 어둡게
+
+    void SetDimAlpha(float a)
+    {
+        var c = resultDim.color; c.a = a; resultDim.color = c;
+    }
+
+    /// <summary>게임오버 카드가 화면 위에서 덜컹거리며 떨어져 가운데에 안착한다. 착지 1초 뒤 리더보드를 연다.</summary>
+    IEnumerator ResultDropInCo()
+    {
+        var panelRt = (RectTransform)resultPanel.transform;
+        float cardH = resultCardRt.rect.height;
+        float startY = panelRt.rect.height * 0.5f + cardH * 0.5f + 40f;
+        const float overshoot = -16f;
+        const float dur = 0.42f;
+
+        SetDimAlpha(0f);
+        resultCardRt.anchoredPosition = new Vector2(0, startY);
+
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / dur);
+            float y = k < 0.75f
+                ? Mathf.Lerp(startY, overshoot, (k / 0.75f) * (k / 0.75f))   // 가속하며 떨어지다 살짝 지나친다
+                : Mathf.Lerp(overshoot, 0f, (k - 0.75f) / 0.25f);            // 덜컹, 제자리로
+            resultCardRt.anchoredPosition = new Vector2(0, y);
+            SetDimAlpha(Mathf.Lerp(0f, ResultDimAlphaGameOver, k));
+            yield return null;
+        }
+        resultCardRt.anchoredPosition = Vector2.zero;
+        SetDimAlpha(ResultDimAlphaGameOver);
+
+        yield return OpenRankAfterLanding();
+        resultDropCo = null;
+    }
+
+    /// <summary>클리어 카드가 가운데서 짠! 하고 튀어나오듯 확대·안착한다. 착지 1초 뒤 리더보드를 연다.</summary>
+    IEnumerator ResultPopInCo()
+    {
+        const float overshoot = 1.12f;
+        const float dur = 0.32f;
+
+        resultCardRt.anchoredPosition = Vector2.zero;
+        resultCardRt.localScale = Vector3.one * 0.4f;
+        SetDimAlpha(0f);
+
+        float t = 0f;
+        while (t < dur)
+        {
+            t += Time.deltaTime;
+            float k = Mathf.Clamp01(t / dur);
+            float scale = k < 0.7f
+                ? Mathf.Lerp(0.4f, overshoot, k / 0.7f)          // 확 커지며 튀어나온다
+                : Mathf.Lerp(overshoot, 1f, (k - 0.7f) / 0.3f);  // 짠! 하고 제자리로
+            resultCardRt.localScale = Vector3.one * scale;
+            SetDimAlpha(Mathf.Lerp(0f, ResultDimAlpha, k));
+            yield return null;
+        }
+        resultCardRt.localScale = Vector3.one;
+        SetDimAlpha(ResultDimAlpha);
+
+        yield return OpenRankAfterLanding();
+        resultDropCo = null;
+    }
+
+    /// <summary>착지 1초 뒤 리더보드를 연다 (결과 화면을 벗어났으면 열지 않는다).</summary>
+    IEnumerator OpenRankAfterLanding()
+    {
+        if (Leaderboard.I == null || !Leaderboard.I.Configured) yield break;
+        yield return new WaitForSeconds(1f);
+        if (gm.Phase == GamePhase.Result) ShowRanking(false);
     }
 
     // ---------- 랭킹 ----------
@@ -1038,12 +1094,6 @@ public class GameUI : MonoBehaviour
         r.Score.color = Ink;
     }
 
-    IEnumerator OpenRankAfter(float delay)
-    {
-        yield return new WaitForSeconds(delay);
-        if (gm.Phase == GamePhase.Result) ShowRanking(false);
-    }
-
     public void ShowRanking(bool nation)
     {
         rankNationTab = nation;
@@ -1121,28 +1171,6 @@ public class GameUI : MonoBehaviour
         bool canSubmit = gm.CanSubmit;
         adBtnLabel.text = canSubmit ? "WATCH AD  ·  SUBMIT SCORE" : "WATCH AD  ·  REFRESH";
         adBtn.gameObject.SetActive(Leaderboard.I != null && Leaderboard.I.Configured);
-    }
-
-    /// <summary>상단 HUD(점수·남은 수 카드)의 아래 끝 화면 좌표.
-    /// 보드는 이보다 아래에 있어야 한다.</summary>
-    public float HudBottomScreenY()
-    {
-        float lowest = float.MaxValue;
-        foreach (var name in new[] { "statscore", "statmoves" })
-        {
-            var rt = FindChild(name);
-            if (rt == null) continue;
-            rt.GetWorldCorners(rectCorners);
-            if (rectCorners[0].y < lowest) lowest = rectCorners[0].y;
-        }
-        return lowest == float.MaxValue ? 0f : lowest;
-    }
-
-    RectTransform FindChild(string name)
-    {
-        foreach (var rt in GetComponentsInChildren<RectTransform>(true))
-            if (rt.name == name) return rt;
-        return null;
     }
 
     /// <summary>결과 화면 버튼 한 칸을 옮긴다 (프로토 x, 너비).</summary>
@@ -1270,14 +1298,19 @@ public class GameUI : MonoBehaviour
             rr.sizeDelta = Sz(314, 56);
             rr.anchoredPosition = new Vector2(0, -(skinTop + 20 + i * 64) * PS);
 
-            // 실제 타일 스프라이트를 팔레트 색 3가지로 보여준다 — 사기 전에 재질이 보여야 한다
+            // 실제 타일 스프라이트를 팔레트 색 3가지로 보여준다 — 사기 전에 재질이 보여야 한다.
+            // 게임과 똑같이 광택·표정 오버레이까지 얹어야 미리보기가 실제와 같다.
             var sp = BoardView.MakeTileSprite(sk.Skin);
+            var ovSp = BoardView.MakeTileOverlaySprite();
             var demo = Palette.Generate(4, new System.Random(1));
             for (int k = 0; k < 3; k++)
             {
                 var sw = NewImage("sw" + k, row.transform, demo[k]);
                 sw.sprite = sp; sw.raycastTarget = false;
                 Anchor(sw.transform, 0, 0.5f, 12 + k * 40, 0, 36, 36);
+                var swo = NewImage("ov" + k, sw.transform, Color.white);
+                swo.sprite = ovSp; swo.raycastTarget = false;
+                Stretch(swo.rectTransform);
                 if (k == 0) skinSwatch[i] = sw;
             }
 
@@ -1446,7 +1479,7 @@ public class GameUI : MonoBehaviour
             string code = list[i];
             int cx = i % cols, cy = i / cols;
             var b = NewPlainButton("c" + code, card.transform, PlayerAccount.BadgeColor(code),
-                () => { PlayerAccount.Country = code; RefreshBadge(); countryPanel.SetActive(false); });
+                () => { PlayerAccount.Country = code; countryPanel.SetActive(false); });
             Place((RectTransform)b.transform, new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.885f), new Vector2(0.5f, 0.5f),
                 new Vector2((cx - (cols - 1) / 2f) * 145, -cy * 92), new Vector2(130, 78));
             var lt = NewText("l", b.transform, code, 38, TextAnchor.MiddleCenter, Color.white);
