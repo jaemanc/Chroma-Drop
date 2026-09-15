@@ -1,5 +1,5 @@
 // GameUI.cs — 런타임 생성 uGUI (씬/프리팹/폰트 에셋 의존 없음).
-// 홈 / 게임 HUD / 결과 3개 패널을 코드로 조립. 노치 대응(SafeArea) 포함.
+// 게임 HUD / 결과 패널을 코드로 조립 (홈은 MainGame 씬). 노치 대응(SafeArea) 포함.
 // 한글 표시는 OS 폰트(iOS: Apple SD Gothic Neo, Android: Noto Sans CJK 등)를 동적 로드,
 // 없으면 내장 폰트 + 영문 라벨로 폴백.
 
@@ -21,8 +21,8 @@ public class GameUI : MonoBehaviour
     readonly List<UiButton> buttons = new List<UiButton>();
     readonly Dictionary<UiButton, UiKind> buttonKinds = new Dictionary<UiButton, UiKind>();
 
-    GameObject homePanel, gamePanel, resultPanel;
-    Text scoreText, subText, rightText, bestHomeText, resultTitle, resultScore, resultBest;
+    GameObject gamePanel, resultPanel;
+    Text scoreText, subText, rightText, resultTitle, resultScore, resultBest;
     Image resultDim;
     RectTransform resultCardRt;
     Coroutine resultDropCo;
@@ -66,14 +66,13 @@ public class GameUI : MonoBehaviour
 
     // ---- 플레이 화면 (아트) ----
     //
-    // 홈처럼 화면 전체가 아트 한 장이다. 다만 보드는 월드 스프라이트라 Overlay 캔버스 위에
+    // 화면 전체가 테마 그림 한 장이다. 다만 보드는 월드 스프라이트라 Overlay 캔버스 위에
     // 그릴 수 없으므로, 아트는 카메라 캔버스(정렬 -30)에 두어 보드 뒤에 깔고
     // 버튼·글자·슬롯만 Overlay 캔버스에 얹는다. 두 캔버스 모두 같은 비율 맞춤(contain)이라
-    // 자리가 어긋나지 않는다. 좌표는 전부 아트 원본(423x770) 픽셀, y 는 위가 0.
-    const float PlayW = 423f, PlayH = 770f;
+    // 자리가 어긋나지 않는다. 좌표는 전부 테마 그림 원본(1024x1536) 픽셀, y 는 위가 0.
+    const float PlayW = 1024f, PlayH = 1536f;   // ponytail: 테마 그림은 전부 이 크기라고 가정한다. 크기가 다른 테마가 오면 BlockTheme 에 크기를 둔다
     RectTransform playRoot, boardSlot, traySlot;
     GameObject playArtCanvas;
-    GameObject eyebrowPatch, movesLabelPatch;
     RectTransform nextBtn, retryBtn, homeBtn;
     readonly List<Image> nextCells = new List<Image>();
     readonly List<Image> holdCells = new List<Image>();
@@ -132,13 +131,11 @@ public class GameUI : MonoBehaviour
         roundSmall = UiTheme.RoundedSprite(4f);
 
         BuildGamePanel();
-        BuildHomePanel();
         BuildResultPanel();
         BuildRankPanel();
         BuildCountryPanel();
         BuildAdPanel();
         BuildShopPanel();
-        homePanel.SetActive(false);
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
@@ -150,24 +147,10 @@ public class GameUI : MonoBehaviour
 
     // ---------- 패널 전환 ----------
 
-    public void ShowHome()
-    {
-        if (resultDropCo != null) { StopCoroutine(resultDropCo); resultDropCo = null; }
-        homePanel.SetActive(true);
-        gamePanel.SetActive(false);
-        resultPanel.SetActive(false);
-        rankPanel.SetActive(false);
-        countryPanel.SetActive(false);
-        adPanel.SetActive(false);
-        shopPanel.SetActive(false);
-        RefreshHomeButtons();
-    }
-
     public void ShowGame()
     {
         if (resultDropCo != null) { StopCoroutine(resultDropCo); resultDropCo = null; }
         RefreshItemButtons();
-        homePanel.SetActive(false);
         gamePanel.SetActive(true);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
@@ -197,20 +180,26 @@ public class GameUI : MonoBehaviour
     static readonly Color TimeInk   = Palette.Hex(0x1A4430);   // 시간 카드 글자 (아트의 진초록)
     static readonly Color ScoreInk  = Palette.Hex(0x3C2D23);   // 점수 카드 글자 (아트의 진갈색)
     static readonly Color BarOrange = Palette.Hex(0xECA175);   // 진행바 채움 (아트에서 뽑음)
-    static readonly Color TimeFace  = Palette.Hex(0xB0F2BA);   // 시간 카드 위쪽 바탕 (라벨 덮개)
     static readonly Color GoalInk   = Palette.Hex(0x7A4E2A);   // GOAL 팻말 글자
     static readonly Color TitleInk  = Palette.Hex(0x2F6FD6);   // 스테이지 목표 문구 (제목 자리)
-    static readonly Color CountInk  = Palette.Hex(0x4A3A3A);   // 아이템 개수
 
-    Sprite PlayArt()
+    Image playArtImage;
+
+    /// <summary>테마 배경 그림이 깔려 있으면 보드 판·트레이 받침은 그림이 그린다.</summary>
+    public bool HasPlayArt { get { return playArtImage != null && playArtImage.enabled; } }
+
+    static readonly Rect DefaultGrid = new Rect(112, 380, 800, 800);   // 테마 그림이 없을 때 보드 자리
+
+    /// <summary>판을 시작할 때 고른 테마의 배경 그림을 깔고, 보드 자리를 그 그림의 격자에 맞춘다.
+    /// 그림이 없으면 배경 없이 기본 자리를 쓴다 — 그림 한 장 빠졌다고 판이 안 그려지면 안 된다.</summary>
+    public void SetTheme(BlockTheme theme)
     {
-        var tex = Resources.Load<Texture2D>("play_art");
-        if (tex == null) return null;
-        return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
+        var tex = Resources.Load<Texture2D>(theme.Art);
+        playArtImage.sprite = tex != null ? Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f) : null;
+        playArtImage.enabled = tex != null;
+        var g = tex != null ? theme.Grid : DefaultGrid;
+        PlaceSlot(boardSlot, g.x, g.y, g.width, g.height);
     }
-
-    /// <summary>플레이 아트가 있으면 보드 판·트레이 받침은 아트가 그린다.</summary>
-    public bool HasPlayArt { get { return playArtCanvas != null; } }
 
     /// <summary>화면 비율과 무관하게 아트 전체가 보이도록(contain) 맞춘 자리. 남는 쪽은 여백이 된다.</summary>
     static RectTransform ContainRoot(string name, Transform parent)
@@ -234,92 +223,94 @@ public class GameUI : MonoBehaviour
         Stretch(safe);
         safe.gameObject.AddComponent<SafeAreaFitter>();
 
-        var art = PlayArt();
-        if (art != null)
-        {
-            // 보드 뒤에 깔리는 아트 — 카메라 캔버스는 스프라이트와 같은 정렬 규칙을 따른다
-            playArtCanvas = new GameObject("PlayArtCanvas");
-            var cv = playArtCanvas.AddComponent<Canvas>();
-            cv.renderMode = RenderMode.ScreenSpaceCamera;
-            cv.worldCamera = Camera.main;
-            cv.planeDistance = 100f;
-            cv.sortingOrder = -30;
-            var artSafe = NewRT("safe", playArtCanvas.transform);
-            Stretch(artSafe);
-            artSafe.gameObject.AddComponent<SafeAreaFitter>();
-            var img = NewImage("art", ContainRoot("fit", artSafe), Color.white);
-            img.sprite = art;
-            img.raycastTarget = false;
-            Stretch(img.rectTransform);
-        }
+        // 보드 뒤에 깔리는 테마 그림 — 카메라 캔버스는 스프라이트와 같은 정렬 규칙을 따른다. 그림은 SetTheme 이 넣는다
+        playArtCanvas = new GameObject("PlayArtCanvas");
+        var cv = playArtCanvas.AddComponent<Canvas>();
+        cv.renderMode = RenderMode.ScreenSpaceCamera;
+        cv.worldCamera = Camera.main;
+        cv.planeDistance = 100f;
+        cv.sortingOrder = -30;
+        var artSafe = NewRT("safe", playArtCanvas.transform);
+        Stretch(artSafe);
+        artSafe.gameObject.AddComponent<SafeAreaFitter>();
+        playArtImage = NewImage("art", ContainRoot("fit", artSafe), Color.white);
+        playArtImage.raycastTarget = false;
+        playArtImage.enabled = false;
+        Stretch(playArtImage.rectTransform);
 
         playRoot = ContainRoot("playroot", safe);
         curRoot = playRoot; curW = PlayW; curH = PlayH;
-
-        // ---- 상단 ----
-        ArtButton("pause", 29, 15, 45, 44, () => gm.GoHome());
-
-        // 제목 자리: 타임어택은 아트의 "TIME ATTACK!" 을 그대로 쓰고,
-        // 스테이지 모드는 구름 위에 흰 판을 얹고 목표 문구를 쓴다
-        eyebrowPatch = ArtSlot("eyebrowpatch", 135, 18, 150, 62).gameObject;
-        var patchImg = eyebrowPatch.AddComponent<Image>();
-        patchImg.sprite = UiTheme.RoundedSprite(40); patchImg.type = Image.Type.Sliced;
-        patchImg.color = Color.white; patchImg.raycastTarget = false;
-        gameEyebrow = NewText("eyebrow", eyebrowPatch.transform, "", 44, TextAnchor.MiddleCenter, TitleInk);
-        gameEyebrow.fontStyle = FontStyle.Bold;
-        gameEyebrow.raycastTarget = false;
-        gameEyebrow.resizeTextForBestFit = true; gameEyebrow.resizeTextMinSize = 8; gameEyebrow.resizeTextMaxSize = 44;
-        Stretch(gameEyebrow.rectTransform);
-        gameEyebrow.rectTransform.offsetMin = new Vector2(8, 4); gameEyebrow.rectTransform.offsetMax = new Vector2(-8, -4);
-
-        // 점수 / 시간 카드 — 숫자는 아트에서 지워 뒀으므로 덮개 없이 바로 쓴다
         var clear = new Color(0, 0, 0, 0);
-        scoreText = ArtValue("scoreval", 118, 114, 62, 26, clear, ScoreInk, TextAnchor.MiddleCenter, 56);
-        rightText = ArtValue("timeval", 258, 114, 54, 26, clear, TimeInk, TextAnchor.MiddleCenter, 56);
-        // "TIME LEFT" 라벨은 아트에 있다. 횟수 모드일 때만 덮고 다시 쓴다
-        subText = ArtValue("timelabel", 256, 100, 62, 13, TimeFace, TimeInk, TextAnchor.MiddleCenter, 18);
-        movesLabelPatch = subText.transform.parent.gameObject;
 
-        // 진행바 — 트랙은 아트, 채움만 그린다
-        var bar = ArtSlot("timerbar", 84, 158, 257, 11);
+        // ---- 상단: 테마 그림의 하늘 자리 ----
+        HudCard("pausecard", 40, 50, 120, 110);
+        ArtButton("pause", 40, 50, 120, 110, () => gm.GoHome());
+        ArtValue("pauseicon", 40, 50, 120, 110, clear, TitleInk, TextAnchor.MiddleCenter, 56).text = "II";
+
+        // 제목 자리: 스테이지는 목표 문구, 타임어택은 모드 이름
+        HudCard("eyebrowcard", 190, 50, 794, 110);
+        gameEyebrow = ArtValue("eyebrow", 210, 60, 754, 90, clear, TitleInk, TextAnchor.MiddleCenter, 60);
+        // 조건이 겹치면 제목이 여러 줄이 된다 — 넘침을 막아야 자동 축소(Best Fit)가 칸에 맞춰 걸린다
+        gameEyebrow.horizontalOverflow = HorizontalWrapMode.Wrap;
+        gameEyebrow.verticalOverflow = VerticalWrapMode.Truncate;
+
+        // 점수 / 남은 수(시간) 카드
+        HudCard("scorecard", 40, 190, 460, 120);
+        ArtValue("scorelabel", 40, 198, 460, 36, clear, Muted, TextAnchor.MiddleCenter, 28).text = "SCORE";
+        scoreText = ArtValue("scoreval", 40, 234, 460, 68, clear, ScoreInk, TextAnchor.MiddleCenter, 60);
+        HudCard("timecard", 524, 190, 460, 120);
+        subText = ArtValue("timelabel", 524, 198, 460, 36, clear, Muted, TextAnchor.MiddleCenter, 28);
+        rightText = ArtValue("timeval", 524, 234, 460, 68, clear, TimeInk, TextAnchor.MiddleCenter, 60);
+
+        // 진행바 — 이 조각을 놓을 남은 시간
+        HudCard("timertrack", 40, 330, 944, 24).color = new Color(1, 1, 1, 0.45f);
+        var bar = ArtSlot("timerbar", 40, 330, 944, 24);
         timerBar = bar.gameObject;
         timerFill = NewImage("fill", bar, BarOrange);
         timerFill.sprite = UiTheme.RoundedSprite(10); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
         Stretch(timerFill.rectTransform);
         timerFill.rectTransform.pivot = new Vector2(0, 0.5f);
 
-        // ---- 보드 / 트레이 자리 (그리는 건 월드 쪽, 여기선 자리만 잰다) ----
-        boardSlot = ArtSlot("boardslot", 18, 193, 387, 387);
-        traySlot = ArtSlot("trayslot", 232, 697, 95, 60);
+        // ---- 보드 / 트레이 자리 (그리는 건 월드 쪽, 여기선 자리만 잰다). 보드 자리는 SetTheme 이 격자에 맞춘다 ----
+        boardSlot = ArtSlot("boardslot", DefaultGrid.x, DefaultGrid.y, DefaultGrid.width, DefaultGrid.height);
+        traySlot = ArtSlot("trayslot", 624, 1275, 360, 200);
 
-        // ---- 아이템 4종 ----
+        // ---- 아이템 4종: 판 아래 ----
         int ni = Shop.Items.Length;
         itemBtnLabel = new Text[ni];
         itemBtnFill = new Image[ni];
-        float[] pillX = { 37f, 127f, 217f, 305f };
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            float px = pillX[Mathf.Min(i, pillX.Length - 1)];
-            var btn = ArtButton("item" + i, px, 612, 80, 48, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
+            float px = 40f + i * 244.3f;
+            HudCard("itemcard" + i, px, 1125, 211, 120);
+            var btn = ArtButton("item" + i, px, 1125, 211, 120, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
             // 못 쓰는 상태면 흰 반투명 판으로 흐리게
             var dim = NewImage("dim", btn, new Color(1, 1, 1, 0));
             dim.sprite = UiTheme.RoundedSprite(40); dim.type = Image.Type.Sliced; dim.raycastTarget = false;
             Stretch(dim.rectTransform);
             itemBtnFill[i] = dim;
-            itemBtnLabel[i] = ArtValue("itemcnt" + i, px + 50, 623, 26, 26, clear, Color.white, TextAnchor.MiddleCenter, 44);
-            // 목업의 개수 글자: 흰 글자에 갈색 테두리
-            var outline = itemBtnLabel[i].gameObject.AddComponent<Outline>();
-            outline.effectColor = CountInk;
-            outline.effectDistance = new Vector2(1.5f, -1.5f);
+            ArtValue("itemname" + i, px, 1135, 211, 40, clear, Muted, TextAnchor.MiddleCenter, 30).text = e.Name;
+            itemBtnLabel[i] = ArtValue("itemcnt" + i, px, 1175, 211, 60, clear, Ink, TextAnchor.MiddleCenter, 48);
         }
 
-        // ---- GOAL 팻말 ----
-        goalSub = ArtValue("goalsub", 84, 702, 116, 52, clear, GoalInk, TextAnchor.MiddleCenter, 22);
+        // ---- GOAL 카드 ----
+        HudCard("goalcard", 40, 1275, 560, 110);
+        goalSub = ArtValue("goalsub", 60, 1285, 520, 90, clear, GoalInk, TextAnchor.MiddleCenter, 34);
 
         chainPopup = NewText("chainpop", safe, "", 100, TextAnchor.MiddleCenter, Coral);
         Place(chainPopup.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(980, 180));
         chainPopup.gameObject.SetActive(false);
+    }
+
+    /// <summary>HUD 글자 밑에 까는 흰 둥근 카드. 테마 그림에는 HUD 자리가 없어서 직접 깐다.</summary>
+    Image HudCard(string name, float x, float y, float w, float h)
+    {
+        var img = ArtSlot(name, x, y, w, h).gameObject.AddComponent<Image>();
+        img.sprite = UiTheme.RoundedSprite(40); img.type = Image.Type.Sliced;
+        img.color = new Color(1, 1, 1, 0.92f);
+        img.raycastTarget = false;
+        return img;
     }
 
     void LateUpdate()
@@ -427,7 +418,7 @@ public class GameUI : MonoBehaviour
             bool usable = n > 0 && !(e.MovesOnly && gm.timeAttack);
             itemBtnLabel[i].text = n.ToString();
             itemBtnFill[i].color = new Color(1, 1, 1, usable ? 0f : 0.55f);   // 못 쓰면 흰 판으로 흐리게
-            itemBtnLabel[i].color = usable ? Color.white : Muted;
+            itemBtnLabel[i].color = usable ? Ink : Muted;
         }
     }
 
@@ -500,21 +491,25 @@ public class GameUI : MonoBehaviour
     {
         scoreText.text = g.Score.ToString("N0");
 
-        // 제목 자리: 타임어택은 아트 제목, 스테이지는 목표 문구
+        // 제목 자리: 스테이지는 목표 문구, 타임어택은 모드 이름
         bool ta = g.TimeAttackMode;
-        if (eyebrowPatch != null && eyebrowPatch.activeSelf == ta) eyebrowPatch.SetActive(!ta);
         if (!ta)
         {
             gameEyebrow.text = GoalLine(g);
             gameEyebrow.color = g.GoalMet ? Coral : TitleInk;
         }
+        else
+        {
+            gameEyebrow.text = "TIME ATTACK!";
+            gameEyebrow.color = TitleInk;
+        }
         goalSub.text = ta ? "SCORE " + g.Score.ToString("N0") : ProgressLine(g);
 
-        // 시간 카드: 타임어택은 아트 라벨("TIME LEFT") 그대로, 횟수 모드는 덮고 다시 쓴다
-        if (movesLabelPatch != null && movesLabelPatch.activeSelf == ta) movesLabelPatch.SetActive(!ta);
+        // 시간 카드: 타임어택은 남은 시간, 횟수 모드는 남은 수
         float frac;
         if (ta)
         {
+            subText.text = "TIME LEFT";
             int sec = Mathf.CeilToInt(g.TimeLeftSec);
             rightText.text = (sec / 60) + ":" + (sec % 60).ToString("00");
             frac = g.PieceTimerFrac;   // 막대는 이 조각을 놓을 시간. 전체 시간은 카드에 있다
@@ -530,31 +525,26 @@ public class GameUI : MonoBehaviour
 
     /// <summary>이 판의 성격을 한마디로. 다섯 종류마다 문구가 하나씩이라
     /// 판에 들어서는 순간 무슨 판인지 읽힌다.
-    /// 겹친 판은 가장 특이한 것을 큰 줄에 세우고 나머지는 아래 줄로 내린다 —
-    /// 다 이어 붙이면 글자가 왼쪽 홈 버튼까지 밀고 나간다.</summary>
+    /// 겹친 판은 조건마다 한 줄씩 모두 보여 준다 — 하나만 보이면 다른 조건이 남아
+    /// 판이 안 끝나는 이유가 안 읽힌다. 제목 칸은 글자가 넘치면 스스로 줄어든다.</summary>
     static string GoalLine(GameManager g)
     {
         var st = g.Stage;
-        if (g.MarksTotal > 0) return "POP TARGET BLOCKS!";
-        if (st.HasPollution) return "CLEAR THE ROT!";
-        if (g.PieceLimited) return "JUST " + st.PieceLimit + " PIECES!!";
-        if (st.SteelCount > 0) return "STEEL PIECES?!";
-        if (st.ClearBlocks > 0) return "POP " + st.ClearBlocks + " BLOCKS!";
-        return "KEEP POPPING!";
+        var lines = new List<string>();
+        if (g.MarksTotal > 0) lines.Add("POP TARGET BLOCKS!");
+        if (st.HasPollution) lines.Add("CLEAR THE ROT!");
+        if (g.PieceLimited) lines.Add("JUST " + st.PieceLimit + " PIECES!!");
+        if (st.SteelCount > 0) lines.Add("STEEL PIECES?!");
+        if (st.ClearBlocks > 0) lines.Add("POP " + st.ClearBlocks + " BLOCKS!");
+        return lines.Count > 0 ? string.Join("\n", lines.ToArray()) : "KEEP POPPING!";
     }
 
-    /// <summary>지금 얼마나 왔는지 + 큰 줄에 못 실은 나머지 조건.</summary>
+    /// <summary>지금 얼마나 왔는지. 조건 이름은 제목이 모두 보여 주므로 여기선 수치만 쓴다.</summary>
     static string ProgressLine(GameManager g)
     {
-        var st = g.Stage;
         string s = "STAGE " + g.stageLevel;
         if (g.ClearTarget > 0) s += "   " + Mathf.Min(g.Broken, g.ClearTarget) + " / " + g.ClearTarget;
         if (g.MarksTotal > 0) s += "   TARGET " + (g.MarksTotal - g.MarksLeft) + " / " + g.MarksTotal;
-
-        // 겹친 판에서 큰 줄이 이미 가져간 것은 빼고 남은 것만 붙인다
-        if (g.MarksTotal > 0 && st.HasPollution) s += "   ROT";
-        if (g.PieceLimited && (g.MarksTotal > 0 || st.HasPollution)) s += "   " + st.PieceLimit + "P";
-        if (st.SteelCount > 0 && (g.MarksTotal > 0 || st.HasPollution || g.PieceLimited)) s += "   STEEL";
         return s;
     }
 
@@ -598,8 +588,6 @@ public class GameUI : MonoBehaviour
     static readonly Color TealInk    = Palette.Hex(0x0E4A3E);
 
     readonly Dictionary<int, Sprite> roundCache = new Dictionary<int, Sprite>();
-    Text coinHomeText, stageNumText;
-    RectTransform stagePrevRt, stageNextRt;
 
     Sprite Rounded(float protoRadius)
     {
@@ -630,44 +618,25 @@ public class GameUI : MonoBehaviour
         return inner;
     }
 
-    // ---------- 홈 (chroma_drop_main.html) ----------
+    // ---------- 아트 좌표 헬퍼 ----------
     //
-    // 화면 전체가 아트 한 장이고, 그 위에 투명 버튼과 '실제 값' 만 얹는다.
-    // 아트에 박힌 숫자(코인·스테이지·최고점)는 같은 색 판으로 덮고 진짜 값을 쓴다.
-    // 좌표는 전부 아트 원본(612x1254) 픽셀 기준이며 y 는 위가 0 이다.
+    // 화면 아트 위에 투명 버튼과 '실제 값' 을 얹는다. 좌표는 아트 원본 픽셀 기준이며 y 는 위가 0 이다.
 
-    const float ArtW = 612f, ArtH = 1254f;
-
-    static readonly Color CardInk   = Palette.Hex(0x1B2450);   // 카드 위 진한 글씨
-    static readonly Color CardSub   = Palette.Hex(0x5A6486);   // 카드 위 설명 글씨
-    static readonly Color CardFace  = Palette.Hex(0xF6F4F3);   // 스테이지 카드 바탕
-    static readonly Color BestFace  = Palette.Hex(0xE9E4E1);   // 최고기록 카드 바탕
-    static readonly Color PillNavy  = Palette.Hex(0x142A6C);   // 상단 코인 알약 안쪽
-    static readonly Color PillCream = Palette.Hex(0xFCF4E2);   // 최고기록 카드 안 코인 알약
-
-    RectTransform artRoot;
     RectTransform curRoot; float curW, curH;   // ArtSlot 이 지금 어느 아트 위에 자리를 잡는지
-    Sprite homeArt;
-    Text topCoinText, stageDescText;
-    Image classicDim, rushDim;
-
-    Sprite HomeArt()
-    {
-        if (homeArt != null) return homeArt;
-        var tex = Resources.Load<Texture2D>("main_art");
-        if (tex == null) return null;
-        homeArt = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f);
-        return homeArt;
-    }
 
     /// <summary>아트 픽셀 좌표(위가 0)에 맞춘 자리 하나.</summary>
     RectTransform ArtSlot(string name, float x, float y, float w, float h)
     {
         var rt = NewRT(name, curRoot);
+        PlaceSlot(rt, x, y, w, h);
+        return rt;
+    }
+
+    void PlaceSlot(RectTransform rt, float x, float y, float w, float h)
+    {
         rt.anchorMin = new Vector2(x / curW, 1f - (y + h) / curH);
         rt.anchorMax = new Vector2((x + w) / curW, 1f - y / curH);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
-        return rt;
     }
 
     /// <summary>아트에 그려진 버튼 위에 얹는 투명 버튼. 누르면 눌리는 반응만 준다.</summary>
@@ -704,76 +673,6 @@ public class GameUI : MonoBehaviour
         return t;
     }
 
-    void BuildHomePanel()
-    {
-        homePanel = NewImage("homebg", transform, Color.black).gameObject;
-        Stretch((RectTransform)homePanel.transform);
-
-        var safe = NewRT("safe", homePanel.transform);
-        Stretch(safe);
-        safe.gameObject.AddComponent<SafeAreaFitter>();
-
-        // 아트 한 장이 화면을 덮는다 (object-fit: cover). 남는 쪽은 잘려 나간다.
-        var art = NewImage("art", safe, Color.white);
-        art.sprite = HomeArt();
-        art.raycastTarget = false;
-        artRoot = art.rectTransform;
-        artRoot.anchorMin = artRoot.anchorMax = artRoot.pivot = new Vector2(0.5f, 0.5f);
-        artRoot.anchoredPosition = Vector2.zero;
-        var fit = art.gameObject.AddComponent<AspectRatioFitter>();
-        fit.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
-        fit.aspectRatio = ArtW / ArtH;
-        curRoot = artRoot; curW = ArtW; curH = ArtH;
-
-        // ---- 상단: 설정(국가 선택) + 코인 ----
-        ArtButton("settings", 519, 28, 61, 62, ShowCountryPicker);
-        topCoinText = ArtValue("topcoin", 386, 34, 82, 42, PillNavy, Color.white, TextAnchor.MiddleCenter, 40);
-
-        // ---- PLAY / 모드 ----
-        ArtButton("play", 112, 620, 388, 104, () =>
-        {
-            if (!gm.timeAttack) gm.stageLevel = Progress.Selected;
-            gm.StartGame();
-        });
-
-        var classic = ArtButton("classic", 36, 745, 260, 93, () => { gm.timeAttack = false; RefreshHomeButtons(); });
-        var rush = ArtButton("rush", 316, 745, 260, 93, () => { gm.timeAttack = true; RefreshHomeButtons(); });
-        classicDim = ModeDim(classic);
-        rushDim = ModeDim(rush);
-
-        // ---- 스테이지 카드 ----
-        stageDescText = ArtValue("stagedesc", 122, 876, 220, 94, CardFace, CardSub, TextAnchor.MiddleLeft, 26);
-        stageNumText = ArtValue("stgnum", 408, 897, 62, 48, CardFace, CardInk, TextAnchor.MiddleCenter, 40);
-        stagePrevRt = ArtButton("stgprev", 352, 895, 56, 53,
-                                () => { Progress.Selected = Progress.Selected - 1; RefreshHomeButtons(); });
-        stageNextRt = ArtButton("stgnext", 470, 895, 58, 53,
-                                () => { Progress.Selected = Progress.Selected + 1; RefreshHomeButtons(); });
-
-        // ---- 최고기록 카드 ----
-        bestHomeText = ArtValue("bestnum", 62, 1016, 240, 54, BestFace, CardInk, TextAnchor.MiddleLeft, 46);
-        coinHomeText = ArtValue("bestcoin", 352, 1010, 118, 42, PillCream, CardInk, TextAnchor.MiddleCenter, 34);
-
-        // ---- 하단 메뉴 ----
-        ArtButton("ranking", 60, 1088, 82, 96, () => ShowRanking(false));
-        ArtButton("shop", 188, 1088, 82, 96, ShowShop);
-
-        var ver = NewText("ver", safe, "v" + Application.version + "  ·  jaemanc",
-                          Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.45f));
-        Place(ver.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-              new Vector2(0, 10 * PS), Sz(300, 18));
-    }
-
-    /// <summary>고르지 않은 모드를 덮어 어둡게 하는 판. 아트에는 선택 표시가 없어서 이걸로 구분한다.</summary>
-    Image ModeDim(RectTransform btn)
-    {
-        var dim = NewImage("dim", btn, new Color(0.03f, 0.05f, 0.15f, 0.45f));
-        dim.sprite = UiTheme.RoundedSprite(46);
-        dim.type = Image.Type.Sliced;
-        dim.raycastTarget = false;
-        Stretch(dim.rectTransform);
-        return dim;
-    }
-
     static readonly Vector2 Top = new Vector2(0.5f, 1f);
 
     /// <summary>글자 사이에 공백을 끼워 자간을 넓힌다 (uGUI 에는 letter-spacing 이 없다).</summary>
@@ -782,43 +681,6 @@ public class GameUI : MonoBehaviour
         var sb = new System.Text.StringBuilder();
         foreach (var ch in t) { sb.Append(ch); sb.Append(' '); }
         return sb.ToString().TrimEnd();
-    }
-
-    void RefreshHomeButtons()
-    {
-        if (bestHomeText == null) return;
-
-        // 아트에는 선택 표시가 없으므로, 고르지 않은 모드를 어둡게 덮어 구분한다
-        if (classicDim != null) classicDim.enabled = gm.timeAttack;
-        if (rushDim != null) rushDim.enabled = !gm.timeAttack;
-
-        bestHomeText.text = gm.BestForSelection().ToString("N0");
-        string coins = Wallet.Coins.ToString("N0");
-        if (coinHomeText != null) coinHomeText.text = coins;
-        if (topCoinText != null) topCoinText.text = coins;
-
-        int lv = Progress.Selected;
-        var st = StageTable.Get(lv);
-        bool stageMode = !gm.timeAttack;
-
-        if (stageDescText != null)
-            stageDescText.text = stageMode
-                ? "Stage " + lv + "\nClear " + st.ClearBlocks + " blocks\nin " + st.MoveBudget + " moves"
-                : "Time Attack\n" + Mathf.RoundToInt(StageTable.TimeAttack.Seconds / 60f) + " minutes";
-
-        if (stageNumText != null) stageNumText.text = stageMode ? lv.ToString() : "∞";
-
-        // 안 깬 스테이지는 고를 수 없다. 타임어택에는 스테이지가 없다.
-        SetHit(stagePrevRt, stageMode && lv > 1);
-        SetHit(stageNextRt, stageMode && lv < Progress.Unlocked);
-    }
-
-    /// <summary>아트 위 투명 버튼을 켜고 끈다 (아트는 그대로 보인다).</summary>
-    static void SetHit(RectTransform rt, bool on)
-    {
-        if (rt == null) return;
-        var b = rt.GetComponent<Button>();
-        if (b != null) b.interactable = on;
     }
 
     // ---------- 결과 ----------

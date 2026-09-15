@@ -16,6 +16,13 @@ class CoreTests
     {
         // 1. 조각 세트: 13종, 전부 3칸 이상, 전 회전에서 2x2 미포함
         Assert(Piece.Shapes.Count == 13, "조각 13종");
+
+        // 판 크기 변경 — 테마마다 판 크기가 다르다. 한 줄 아이템이 새 크기만큼 지우고, 끝나면 원래 크기로 돌린다
+        Board.SetSize(8, 8);
+        var small = new Board(Rules.ColorCount, 3);
+        Assert(small.EffectCells(ItemType.Row, 2, 7).Count == 8, "8x8 판: Row = 8칸");
+        Assert(small.InBounds(7, 7) && !small.InBounds(8, 0), "8x8 판: 경계");
+        Board.SetSize(11, 11);
         bool allNo2x2 = true, allGe3 = true;
         foreach (var kv in Piece.Shapes)
         {

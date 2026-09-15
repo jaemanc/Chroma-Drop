@@ -1,5 +1,5 @@
 // Palette.cs — 색상 팔레트 (게임 흐름과 분리된 순수 유틸).
-// 판을 시작할 때 아래 고정 세트 중 하나를 시드로 뽑아 쓴다.
+// 판을 시작할 때 BlockTheme 의 고정 세트 중 하나를 시드로 뽑아 쓴다.
 // 예전에는 색상환을 균등분할해 매번 새 색을 만들었는데, 조합에 따라 두 색이
 // 비슷하게 나오는 경우가 있어 검증된 세트를 박아두는 쪽으로 바꿨다.
 
@@ -7,17 +7,6 @@ using UnityEngine;
 
 public static class Palette
 {
-    /// <summary>보드 아트에서 뽑은 네 색 — 초록·파랑·핑크·노랑.
-    /// 블록 그림과 순서가 같아야 한다 (Resources/tiles/jelly_0..3).
-    /// 노랑은 참고 아트의 별 색(H48)을 가져오고, 명도만 눌러 다른 세 색과 같은 띠에 넣었다 —
-    /// 원본 밝기(V=1.0)로는 혼자 튄다.</summary>
-    public static readonly Color[][] Sets =
-    {
-        new[] { Hex(0x4FD541), Hex(0x17B8FD), Hex(0xFE62AA), Hex(0xD7B736) },
-    };
-
-    public static readonly string[] SetNames = { "보드 아트" };
-
     // 흰색을 많이 섞으면 타일끼리 서로 뿌예져 경계가 사라진다.
     // 채도는 조금만 빼고 명도를 중간 띠에 묶어 색을 살린다.
     public const float Desaturate = 0.04f;   // 0 = 원색, 1 = 무채색 — 참고 UI 만큼 쨍하게 낮췄다
@@ -50,7 +39,12 @@ public static class Palette
     /// 그림과 같은 색이어야 해서 명도를 누르지 않는다.</summary>
     public static Color[] Generate(int n, System.Random r)
     {
-        var set = Sets[r.Next(Sets.Length)];
+        return Generate(n, BlockTheme.All[r.Next(BlockTheme.All.Length)].Colors);
+    }
+
+    /// <summary>주어진 색 세트에서 앞의 n색.</summary>
+    public static Color[] Generate(int n, Color[] set)
+    {
         var outp = new Color[n];
         for (int i = 0; i < n; i++) outp[i] = set[i % set.Length];
         return outp;

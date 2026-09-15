@@ -137,7 +137,13 @@ namespace ColorMatcher.Core
 
     public class Board
     {
-        public const int W = 11, H = 11, Empty = -1;
+        public const int Empty = -1;
+
+        // 판 크기. 블록 테마마다 달라서 새 판을 만들기 전에 SetSize 로 정한다.
+        // ponytail: 전역 값이라 크기가 다른 판을 동시에 둘 수 없다. 서버에서 여러 판을 함께 검증하게 되면 인스턴스 값으로 옮길 것.
+        public static int W { get; private set; } = 11;
+        public static int H { get; private set; } = 11;
+        public static void SetSize(int w, int h) { W = w; H = h; }
 
         // 특수 칸. 음수라 색 인덱스(0..ColorCount-1)와 겹치지 않는다.
         public const int Obstacle = -2;      // 벽돌: 매칭에 안 끼고, 옆 칸이 터질 때만 금이 간다

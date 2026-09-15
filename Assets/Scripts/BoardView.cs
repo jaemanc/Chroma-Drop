@@ -114,6 +114,7 @@ public class BoardView : MonoBehaviour
     int liveParts;
 
     // ---- 착지 충격파 링 ----
+    GameObject popFx;
     const int MaxRings = 12;
     Sprite shock;                 // 원형 링
     Transform[] rTr;
@@ -279,6 +280,7 @@ public class BoardView : MonoBehaviour
         {
             var bg = new GameObject("blast_" + i);
             bg.transform.SetParent(transform, false);
+            
             var bsr = bg.AddComponent<SpriteRenderer>();
             bsr.sprite = blastSprite;
             bsr.sortingOrder = 5;
@@ -290,6 +292,7 @@ public class BoardView : MonoBehaviour
         BuildParticlePool();
         BuildSparklePool();
         BuildRingPool();
+        popFx = Resources.Load<GameObject>("effect/BasicHitParticle");
     }
 
     /// <summary>모서리 반경을 월드 단위로 지정한다. 스프라이트가 스케일되므로
@@ -436,31 +439,15 @@ public class BoardView : MonoBehaviour
 
     public void SetVisible(bool v) { gameObject.SetActive(v); }
 
-    /// <summary>참고 아트에서 잘라낸 블록 그림을 읽는다. 한 장이라도 없으면
-    /// 절차 생성 스프라이트로 돌아간다 — 아트가 빠져도 게임은 돈다.</summary>
+    /// <summary>참고 아트에서 잘라낸 특수 블록 그림을 읽는다. 없는 그림은
+    /// 절차 생성 스프라이트로 돌아간다 — 아트가 빠져도 게임은 돈다.
+    /// 색 블록 그림은 판마다 세트를 골라 UseTheme 이 읽는다.</summary>
     void LoadTileArt()
     {
-        jellyArt = new Sprite[4];
-        faceArt = new Sprite[4][];
-        for (int i = 0; i < jellyArt.Length; i++)
-        {
-            jellyArt[i] = LoadArt("tiles/jelly_" + i);
-            if (jellyArt[i] == null) return;
-
-            // 같은 색이라도 칸마다 표정이 달라야 한다 — 참고 아트가 그렇게 그려져 있다.
-            // jelly_i 가 첫 장이고, jelly_i_1 부터 있는 만큼 이어 붙인다.
-            var faces = new List<Sprite> { jellyArt[i] };
-            for (int k = 1; ; k++)
-            {
-                var extra = LoadArt("tiles/jelly_" + i + "_" + k);
-                if (extra == null) break;
-                faces.Add(extra);
-            }
-            faceArt[i] = faces.ToArray();
-        }
-        starArt = new Sprite[jellyArt.Length];
-        blinkArt = new Sprite[jellyArt.Length];
-        winkArt = new Sprite[jellyArt.Length];
+        const int n = 4;   // 색 블록 수 — 블록 세트 한 벌의 장 수와 같다
+        starArt = new Sprite[n];
+        blinkArt = new Sprite[n];
+        winkArt = new Sprite[n];
         for (int i = 0; i < starArt.Length; i++)
         {
             starArt[i] = LoadArt("tiles/star_" + i);
@@ -482,14 +469,32 @@ public class BoardView : MonoBehaviour
             mushArt[i] = LoadArt("tiles/mush_" + i);
             poisonArt[i] = LoadArt("tiles/poison_" + i);
         }
-        if (steelArt[0] == null || brickArt[0] == null) return;
 
         // 화살표 블록도 칸의 색을 따른다 — 팔레트 색마다 한 장씩 구워 뒀다
-        arrowHArt = LoadArtSet("tiles/arrow_h", jellyArt.Length);
-        arrowVArt = LoadArtSet("tiles/arrow_v", jellyArt.Length);
+        arrowHArt = LoadArtSet("tiles/arrow_h", n);
+        arrowVArt = LoadArtSet("tiles/arrow_v", n);
+    }
+
+    /// <summary>테마를 적용한다: 블록 세트 한 벌(Resources/blocks/{theme.Blocks})을 판의 색 블록 그림으로 쓴다.
+    /// 파일 이름순이 팔레트 색 순서다 — BlockTheme.Colors 와 순서가 맞아야 한다.
+    /// 세트 폴더가 없으면 지금 그림을 그대로 둔다 — 한 벌 빠졌다고 판이 안 그려지면 안 된다.</summary>
+    public void UseTheme(BlockTheme theme)
+    {
+        var texs = Resources.LoadAll<Texture2D>("blocks/" + theme.Blocks);
+        if (texs.Length == 0) return;
+        System.Array.Sort(texs, (a, b) => string.CompareOrdinal(a.name, b.name));
+
+        jellyArt = new Sprite[texs.Length];
+        faceArt = new Sprite[texs.Length][];
+        for (int i = 0; i < texs.Length; i++)
+        {
+            jellyArt[i] = ToSprite(texs[i]);
+            faceArt[i] = new[] { jellyArt[i] };
+        }
+        tileDraw = theme.BlockScale;      // 칸 대비 그림 크기 — 그림 여백이 세트마다 달라 BlockTheme 이 정한다
+        if (useArt) return;
 
         useArt = true;
-        tileDraw = 1.10f;      // 아트는 그림 둘레에 여백이 있어 칸을 꽉 채우려면 조금 키운다 — 목업처럼 블록끼리 맞닿게
         bandageStages = new Sprite[ObstacleStyle.Stages];
         whiteArt = MakeWhiteTileSprite();
     }
@@ -518,7 +523,11 @@ public class BoardView : MonoBehaviour
     static Sprite LoadArt(string path)
     {
         var t = Resources.Load<Texture2D>(path);
-        if (t == null) return null;
+        return t == null ? null : ToSprite(t);
+    }
+
+    static Sprite ToSprite(Texture2D t)
+    {
         // 긴 변을 1칸(1 유닛)에 맞춘다. 가로 기준으로 맞추면 세로가 긴 그림이
         // 칸을 넘겨 위아래로 눌린 것처럼 보인다.
         return Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f),
@@ -703,7 +712,7 @@ public class BoardView : MonoBehaviour
             // 내구도를 준 강철은 맞을수록 금이 간다.
             int st = hp > 0 ? ObstacleStyle.StageFor(hp, steelMaxHp) : 0;
 
-            if (useArt)
+            if (useArt && steelArt[0] != null)
             {
                 // 오염 판의 못 깨는 칸은 독블록을 만들어내는 숙주 버섯이다
                 bool source = rotStage && hp == 0;
@@ -733,7 +742,7 @@ public class BoardView : MonoBehaviour
             // 한 방에 사라지는 것처럼 보인다 — 이 판의 최대 내구도를 기준으로 환산한다.
             int stage = ObstacleStyle.StageFor(hp, obstacleMaxHp);
 
-            if (useArt)
+            if (useArt && brickArt[0] != null)
             {
                 // 오염 판에서는 벽돌이 곧 독블록이다 (그림에 색이 들어 있어 틴트는 흰색)
                 var poison = rotStage ? Variant(poisonArt, x, y) : null;
@@ -1345,7 +1354,7 @@ public class BoardView : MonoBehaviour
             var sr = tiles[p.X, p.Y];
             if (useArt) sr.sprite = whiteArt;   // 아트 위에는 색을 곱해도 안 보인다 — 실루엣으로 번쩍인다
             sr.color = c;
-            sr.transform.localScale = Vector3.one * 1.10f;
+            sr.transform.localScale = Vector3.one * tileDraw * 1.05f;   // 칸을 꽉 채우는 그림도 옆 칸을 덮지 않게 그림 크기 기준
         }
     }
 
@@ -1357,6 +1366,14 @@ public class BoardView : MonoBehaviour
         for (int i = 0; i < pts.Count; i++)
         {
             Color col = (colors != null && i < colors.Count) ? colors[i] : Color.white;
+            if (popFx != null)
+            {
+                 var fx = Instantiate(popFx, transform);
+                fx.transform.localPosition = new Vector3(pts[i].X, pts[i].Y, -1.2f);
+                var main = fx.GetComponent<ParticleSystem>().main;
+                main.startColor = col;   
+            }
+
             for (int k = 0; k < perCell; k++)
                 Spawn(pts[i].X, pts[i].Y, col, energy, tint);
         }

@@ -8,6 +8,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using ColorMatcher.Core;
 
 public enum GamePhase { Home, Playing, Result }
@@ -21,6 +22,12 @@ public class GameManager : MonoBehaviour
     public bool timeAttack = false;
     public int seed = 0;                   // 0 = 랜덤
     public int stageLevel = 1;             // 스테이지. 설정은 stages/stages.json 이 갖는다
+
+    /// <summary>메인 화면 씬. 홈으로 가면 이 씬을 연다.</summary>
+    public const string MenuScene = "MainGame";
+    /// <summary>메인 화면에서 고른 모드 (true = 타임어택). 게임 씬이 뜨면 이 모드로 바로 시작한다.
+    /// null 이면 메인 화면을 거치지 않고 열린 것이므로 메인 화면으로 돌아간다.</summary>
+    public static bool? LaunchTimeAttack;
 
     [Header("연출 시간(초)")]
     public float stampTime = 0.34f;        // 들어올림 → 내려찍기 → 버팀 → 복원 전체
@@ -125,7 +132,13 @@ public class GameManager : MonoBehaviour
 
         stageLevel = Progress.Selected;   // 지난번에 고른 스테이지에서 이어간다
         FitCamera();
-        GoHome();
+        if (LaunchTimeAttack.HasValue)
+        {
+            timeAttack = LaunchTimeAttack.Value;
+            LaunchTimeAttack = null;
+            StartGame();
+        }
+        else GoHome();
     }
 
 
@@ -176,7 +189,7 @@ public class GameManager : MonoBehaviour
         busy = false;
         Phase = GamePhase.Home;
         if (view != null) { view.HideGhost(); view.SetVisible(false); }
-        ui.ShowHome();
+        SceneManager.LoadScene(MenuScene);   // 홈 화면은 따로 만든 메인 화면 씬이다
     }
 
     /// <summary>홈 화면에서 선택된 difficulty/timeAttack/seed로 시작</summary>
@@ -203,9 +216,19 @@ public class GameManager : MonoBehaviour
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         curSeed = s;
+        // 블록 테마를 판마다 무작위로 고른다. 판 크기가 테마를 따르므로 판을 만들기 전에 정한다
+        var theme = BlockTheme.All[new System.Random(s + 2).Next(BlockTheme.All.Length)];
+        ui.SetTheme(theme);
+        if (Board.W != theme.Size || Board.H != theme.Size)
+        {
+            Board.SetSize(theme.Size, theme.Size);
+            Destroy(view.gameObject);   // 칸 배열이 이전 판 크기로 지어져 있어 새로 짓는다
+            view = new GameObject("BoardView").AddComponent<BoardView>();
+        }
+        view.SetFramePanels(!ui.HasPlayArt);   // 테마 그림이 없으면 코드로 그린 판을 쓴다
         board = new Board(stage.ColorCount, s);
         pieceRng = new System.Random(s + 1);
-        palette = Palette.Generate(stage.ColorCount, new System.Random(s + 2));
+        palette = Palette.Generate(stage.ColorCount, theme.Colors);
 
         taRunning = timeAttack;
         // 피스 제한 스테이지는 '남은 수' 가 곧 '남은 피스' 다 — 세는 것이 같으므로 카운터도 같은 것을 쓴다.
@@ -234,6 +257,7 @@ public class GameManager : MonoBehaviour
         if (stage.HasPollution) SpawnPollutionSource(new System.Random(s + 5));
 
         view.Build();
+        view.UseTheme(theme);
         // 오염 판의 벽돌은 전부 독벽돌이다 — 손상 단계도 그 내구도로 환산해야 맞다
         view.SetObstacleMaxHp(stage.HasPollution ? stage.PollutionHp : stage.ObstacleHp);
         view.SetSteelMaxHp(stage.SteelHp);

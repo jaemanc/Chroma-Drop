@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics><meta name="design_doc_mode" content="canvas"><link rel="preconnect" href="https://fonts.gstatic.com"><link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=Gothic+A1:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#ece9f5;font-family:'Gothic A1',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.dv-turn{padding:44px 48px 36px;border-bottom:1px solid rgba(40,30,90,.1)}
+.dv-thd{display:flex;align-items:baseline;gap:10px;margin:0 0 22px}
+.dv-tid{font:700 10px 'JetBrains Mono',monospace;padding:4px 8px;background:#2C2F73;color:#fff;border-radius:5px;text-decoration:none}
+.dv-tname{font:700 14px/1.2 'Gothic A1',sans-serif;color:#2C2F73}
+.dv-opts{display:flex;flex-wrap:wrap;gap:34px;align-items:flex-start}
+.dv-opt{flex:none;display:flex;flex-direction:column;gap:10px;scroll-margin-top:16px}
+.dv-oid{font:700 10.5px 'JetBrains Mono',monospace;padding:3px 7px;background:rgba(44,47,115,.1);color:#2C2F73;border-radius:5px;text-decoration:none}
+.dv-olabel{display:flex;align-items:baseline;gap:8px;font:500 11.5px/1.3 'Gothic A1',sans-serif;color:rgba(44,47,115,.6)}
+.dv-opt:target .dv-oid{background:#7C4DEF;color:#fff}
+.dv-next{margin:24px 0 0;font:12px/1.6 'Gothic A1',sans-serif;color:rgba(44,47,115,.55)}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-9px) rotate(3deg)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.045)}}
+@keyframes pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1);opacity:1}}
+@keyframes shine{0%{transform:translateX(-120%)}100%{transform:translateX(320%)}}
+@keyframes twinkle{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.15)}}
+</style><template id="__bundler_thumbnail"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><rect width="200" height="200" fill="#4a43c9"/><g transform="translate(60,60)"><rect width="34" height="34" rx="9" fill="#8FE3FF"/><rect x="46" width="34" height="34" rx="9" fill="#FFE783"/><rect y="46" width="34" height="34" rx="9" fill="#FFB3DA"/><rect x="46" y="46" width="34" height="34" rx="9" fill="#B7F5A8"/></g></svg></template></helmet>
+
+<section class="dv-turn" id="t1">
+<div class="dv-thd"><a class="dv-tid" href="#t1">1</a><span class="dv-tname">Chroma Drop · Unity 모바일 UI 킷 (설계 기준: 390×844 dp / Unity Reference 1170×2532, Scale 3x, Match Width)</span></div>
+
+<div class="dv-opts">
+
+<div class="dv-opt" id="1a"><div class="dv-olabel"><a class="dv-oid" href="#1a">1a</a>인터랙티브 프로토타입 — 실제로 눌러보며 전체 플로우 확인 (탭 블라스트 로직 동작)</div>
+
+<div style="display:flex;gap:22px;align-items:flex-start">
+
+<div style="display:flex;flex-direction:column;gap:8px;width:172px">
+<div style="font:700 10px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em">SCREEN JUMP</div>
+<sc-for list="{{ navItems }}" as="nav" hint-placeholder-count="7">
+<button onClick="{{ nav.go }}" style="all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:10px;background:{{ nav.bg }};color:{{ nav.fg }};font:600 12px 'Gothic A1',sans-serif;box-sizing:border-box;width:100%" style-hover="filter:brightness(.96)">
+<span style="font:500 9.5px 'JetBrains Mono',monospace;opacity:.55">{{ nav.code }}</span>{{ nav.label }}</button>
+</sc-for>
+<div style="margin-top:6px;padding:11px 12px;border-radius:10px;background:#fff;border:1px solid rgba(44,47,115,.12);font:400 11px/1.6 'Gothic A1',sans-serif;color:rgba(44,47,115,.65)">보드 타일을 탭하면 같은 색 2개 이상이 터집니다. 남은 무브/타이머가 0이면 결과 화면으로 전환.</div>
+</div>
+
+<div style="position:relative;width:390px;height:844px;border-radius:34px;overflow:hidden;background:linear-gradient(180deg,#4a43c9 0%,#6a5fd8 38%,#9b8de7 74%,#c3b6f0 100%);box-shadow:0 14px 38px rgba(38,28,86,.3);font-family:'Baloo 2',system-ui">
+
+  <!-- main background art (bg_main_sky.png · 876×1796) -->
+  <img src="uploads/main_theme_chroma_drop.png" alt="" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:blur(22px) saturate(1.08);transform:scale(1.14);pointer-events:none">
+  <div style="position:absolute;inset:0;background:radial-gradient(120% 55% at 50% 74%,rgba(255,255,255,.34),transparent 62%);pointer-events:none"></div>
+  <div style="position:absolute;left:34px;top:120px;width:10px;height:10px;background:#fff;border-radius:2px;transform:rotate(45deg);animation:twinkle 2.6s ease-in-out infinite;pointer-events:none"></div>
+  <div style="position:absolute;right:52px;top:186px;width:14px;height:14px;background:#FFE9A3;border-radius:3px;transform:rotate(45deg);animation:twinkle 3.4s ease-in-out .6s infinite;pointer-events:none"></div>
+  <div style="position:absolute;left:90px;top:250px;width:7px;height:7px;background:#fff;border-radius:2px;transform:rotate(45deg);animation:twinkle 2.1s ease-in-out 1.1s infinite;pointer-events:none"></div>
+
+  <!-- status bar -->
+  <sc-if value="{{ notHome }}" hint-placeholder-val="{{ true }}">
+  <div style="position:relative;height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;color:#fff;font:600 13px 'Baloo 2',system-ui;opacity:.92"><span>9:41</span><span style="letter-spacing:2px">▮▮▮ ⌁ ▰</span></div>
+
+  <!-- ===== TOP HUD (persistent) ===== -->
+  <div style="position:relative;display:flex;align-items:center;gap:9px;padding:4px 14px 0">
+    <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;width:46px;height:46px;border-radius:14px;background:#fff;border:3px solid #3E4496;box-shadow:0 4px 0 #3E4496;display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:8px;box-sizing:border-box">
+      <span style="background:#FF7EB6;border-radius:3px"></span><span style="background:#FFD34E;border-radius:3px"></span><span style="background:#7C4DEF;border-radius:3px"></span><span style="background:#4EC3F7;border-radius:3px"></span>
+    </button>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:6px;color:#fff;font:800 17px 'Baloo 2',system-ui;text-shadow:0 2px 3px rgba(30,20,70,.45)">Lv. {{ level }}</div>
+      <div style="display:flex;align-items:center;gap:6px;margin-top:2px">
+        <div style="width:22px;height:22px;border-radius:50%;background:linear-gradient(180deg,#FFE070,#F5A623);border:2px solid #fff;box-shadow:0 2px 4px rgba(30,20,70,.35);display:grid;place-items:center;color:#fff;font:800 11px 'Baloo 2'">★</div>
+        <div style="flex:1;height:13px;border-radius:999px;background:rgba(20,14,60,.45);border:2px solid #fff;overflow:hidden;box-sizing:border-box">
+          <div style="height:100%;width:{{ xpPct }}%;background:linear-gradient(90deg,#5EEAD4,#22D3EE);border-radius:999px"></div>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:7px;height:38px;padding:0 6px 0 4px;border-radius:999px;background:rgba(20,14,60,.5);border:2.5px solid #fff;box-sizing:border-box">
+      <div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(180deg,#FFE070,#F0A11B);border:2px solid #FFF4C2;display:grid;place-items:center;color:#B26B00;font:800 13px 'Baloo 2'">♛</div>
+      <span style="color:#fff;font:700 15px 'Baloo 2';min-width:56px;text-align:right">{{ coinsLabel }}</span>
+      <button onClick="{{ goShop }}" style="all:unset;cursor:pointer;width:24px;height:24px;border-radius:50%;background:#3FC9F5;border:2px solid #fff;display:grid;place-items:center;color:#fff;font:800 15px 'Baloo 2';line-height:1">+</button>
+    </div>
+    <button onClick="{{ goSettings }}" style="all:unset;cursor:pointer;width:42px;height:42px;border-radius:50%;background:rgba(20,14,60,.4);border:2.5px solid #C9BCF5;display:grid;place-items:center;color:#fff;font:700 20px 'Baloo 2'">⚙</button>
+  </div>
+  </sc-if>
+
+  <!-- ===== HOME ===== -->
+  <sc-if value="{{ isHome }}" hint-placeholder-val="{{ true }}">
+  <!-- S01_Home : 원본 아트(1:1) + 투명 히트박스 오버레이. 좌표는 이미지 비율(%) 기준 -->
+  <div style="position:absolute;top:0;left:50%;transform:translateX(-50%);height:100%;aspect-ratio:876 / 1796">
+    <img src="uploads/main_theme_chroma_drop.png" alt="Chroma Drop main" style="display:block;width:100%;height:100%">
+    <sc-for list="{{ hotspots }}" as="h" hint-placeholder-count="11">
+      <button onClick="{{ h.act }}" aria-label="{{ h.id }}" style="all:unset;cursor:pointer;position:absolute;left:{{ h.l }}%;top:{{ h.t }}%;width:{{ h.w }}%;height:{{ h.h }}%;border-radius:{{ h.r }};outline:{{ h.ring }};outline-offset:2px" style-active="transform:translateY(3px) scale(.985);filter:brightness(1.07)"></button>
+    </sc-for>
+  </div>
+  </sc-if>
+
+  <!-- ===== GAME ===== -->
+  <sc-if value="{{ isGame }}" hint-placeholder-val="{{ false }}">
+  <div style="position:relative;padding:10px 16px 0">
+    <div style="display:flex;gap:9px">
+      <div style="flex:1;padding:8px 12px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);border-radius:16px">
+        <div style="font:700 10px 'Baloo 2';letter-spacing:.12em;color:#C9C0F5">SCORE</div>
+        <div style="font:800 25px/1 'Baloo 2';color:#fff">{{ scoreLabel }}</div>
+      </div>
+      <div style="width:104px;padding:8px 12px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);border-radius:16px;text-align:center">
+        <div style="font:700 10px 'Baloo 2';letter-spacing:.12em;color:#C9C0F5">{{ counterLabel }}</div>
+        <div style="font:800 25px/1 'Baloo 2';color:{{ counterColor }}">{{ counterValue }}</div>
+      </div>
+      <button onClick="{{ pause }}" style="all:unset;cursor:pointer;width:52px;border-radius:16px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);display:grid;place-items:center;color:#fff;font:800 19px 'Baloo 2';letter-spacing:2px">❙❙</button>
+    </div>
+
+    <div style="margin-top:10px;height:12px;border-radius:999px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.7);overflow:hidden;box-sizing:border-box">
+      <div style="height:100%;width:{{ goalPct }}%;background:linear-gradient(90deg,#FFE070,#FF7EB6);border-radius:999px;transition:width .35s ease"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:5px;font:700 11px 'Baloo 2';color:#EDE7FF"><span>STAGE GOAL {{ goalLabel }}</span><span>★★☆</span></div>
+
+    <div style="margin-top:12px;padding:8px;border-radius:22px;background:rgba(28,20,80,.32);border:3px solid rgba(255,255,255,.4)">
+      <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:4px">
+        <sc-for list="{{ cells }}" as="cell" hint-placeholder-count="72">
+          <button onClick="{{ cell.tap }}" style="all:unset;cursor:pointer;aspect-ratio:1;border-radius:11px;background:{{ cell.bg }};border:2px solid rgba(255,255,255,.8);box-shadow:inset 0 -5px 0 {{ cell.shade }};display:grid;place-items:center;box-sizing:border-box;transform:scale({{ cell.scale }});transition:transform .12s ease" style-active="transform:scale(.86)">
+            <span style="font:700 9px 'Baloo 2';color:rgba(255,255,255,.9)">{{ cell.face }}</span>
+          </button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <sc-for list="{{ boosters }}" as="b" hint-placeholder-count="3">
+        <button onClick="{{ b.use }}" style="all:unset;cursor:pointer;flex:1;height:60px;border-radius:18px;background:#FCF8EC;border:3px solid #3E4496;box-shadow:0 5px 0 #3E4496;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative;box-sizing:border-box" style-active="transform:translateY(3px);box-shadow:0 2px 0 #3E4496">
+          <span style="font:700 20px 'Baloo 2';color:#7C4DEF">{{ b.icon }}</span>
+          <span style="font:700 10px 'Baloo 2';color:#8C90C0;letter-spacing:.06em">{{ b.name }}</span>
+          <span style="position:absolute;top:-8px;right:-6px;min-width:22px;height:22px;padding:0 5px;border-radius:999px;background:#FF4D6D;border:2.5px solid #fff;color:#fff;font:800 11px/22px 'Baloo 2';text-align:center;box-sizing:border-box">{{ b.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== SHOP ===== -->
+  <sc-if value="{{ isShop }}" hint-placeholder-val="{{ false }}">
+  <div style="position:relative;padding:14px 16px 0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;width:40px;height:40px;border-radius:12px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);display:grid;place-items:center;color:#fff;font:800 17px 'Baloo 2'">‹</button>
+      <div style="color:#fff;font:800 26px 'Baloo 2';text-shadow:0 3px 0 rgba(40,28,100,.4)">SHOP</div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <sc-for list="{{ shopTabs }}" as="t" hint-placeholder-count="3">
+        <button onClick="{{ t.pick }}" style="all:unset;cursor:pointer;flex:1;height:40px;border-radius:999px;background:{{ t.bg }};border:2.5px solid {{ t.border }};color:{{ t.fg }};font:800 14px/40px 'Baloo 2';text-align:center;box-sizing:border-box">{{ t.label }}</button>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+      <sc-for list="{{ shopItems }}" as="it" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:#FCF8EC;border:3px solid #3E4496;border-radius:20px;box-shadow:0 5px 0 #3E4496">
+          <div style="width:60px;height:60px;border-radius:16px;background:{{ it.art }};border:2.5px solid rgba(255,255,255,.9);box-shadow:inset 0 -6px 0 rgba(0,0,0,.12);display:grid;place-items:center;font:800 22px 'Baloo 2';color:#fff">{{ it.icon }}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font:800 16px 'Baloo 2';color:#2C2F73">{{ it.name }}</div>
+            <div style="font:600 12px 'Gothic A1';color:#8C90C0">{{ it.desc }}</div>
+          </div>
+          <button onClick="{{ it.buy }}" style="all:unset;cursor:pointer;height:42px;padding:0 16px;border-radius:999px;background:linear-gradient(180deg,#FFDD65,#F5A21C);border:3px solid #D97A08;box-shadow:0 4px 0 #C46703;color:#fff;font:800 15px/42px 'Baloo 2';text-shadow:0 2px 0 rgba(170,85,0,.55);box-sizing:border-box" style-active="transform:translateY(3px);box-shadow:0 1px 0 #C46703">{{ it.price }}</button>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== RANKING ===== -->
+  <sc-if value="{{ isRanking }}" hint-placeholder-val="{{ false }}">
+  <div style="position:relative;padding:14px 16px 0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;width:40px;height:40px;border-radius:12px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);display:grid;place-items:center;color:#fff;font:800 17px 'Baloo 2'">‹</button>
+      <div style="color:#fff;font:800 26px 'Baloo 2';text-shadow:0 3px 0 rgba(40,28,100,.4)">RANKING</div>
+    </div>
+    <div style="display:flex;align-items:flex-end;justify-content:center;gap:10px;margin-top:20px">
+      <sc-for list="{{ podium }}" as="p" hint-placeholder-count="3">
+        <div style="width:96px;display:flex;flex-direction:column;align-items:center;gap:7px">
+          <div style="width:56px;height:56px;border-radius:50%;background:{{ p.art }};border:3px solid #fff;box-shadow:0 4px 8px rgba(25,18,70,.4);display:grid;place-items:center;font:800 20px 'Baloo 2';color:#fff">{{ p.initial }}</div>
+          <div style="color:#fff;font:700 13px 'Baloo 2'">{{ p.name }}</div>
+          <div style="width:100%;height:{{ p.h }}px;border-radius:14px 14px 0 0;background:linear-gradient(180deg,#FCF8EC,#E6DFC8);border:3px solid #3E4496;border-bottom:none;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:8px;box-sizing:border-box">
+            <div style="font:800 26px/1 'Baloo 2';color:#2C2F73">{{ p.rank }}</div>
+            <div style="font:700 12px 'Baloo 2';color:#8C90C0">{{ p.score }}</div>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+      <sc-for list="{{ ranks }}" as="r" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 13px;background:{{ r.bg }};border:3px solid {{ r.border }};border-radius:16px;box-shadow:0 4px 0 {{ r.border }}">
+          <span style="width:26px;font:800 16px 'Baloo 2';color:{{ r.numColor }};text-align:center">{{ r.rank }}</span>
+          <span style="width:34px;height:34px;border-radius:50%;background:{{ r.art }};border:2.5px solid #fff;display:grid;place-items:center;color:#fff;font:800 14px 'Baloo 2'">{{ r.initial }}</span>
+          <span style="flex:1;font:700 15px 'Baloo 2';color:{{ r.fg }}">{{ r.name }}</span>
+          <span style="font:800 16px 'Baloo 2';color:{{ r.fg }}">{{ r.score }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== SETTINGS ===== -->
+  <sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+  <div style="position:relative;padding:14px 16px 0">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;width:40px;height:40px;border-radius:12px;background:rgba(20,14,60,.42);border:2.5px solid rgba(255,255,255,.75);display:grid;place-items:center;color:#fff;font:800 17px 'Baloo 2'">‹</button>
+      <div style="color:#fff;font:800 26px 'Baloo 2';text-shadow:0 3px 0 rgba(40,28,100,.4)">SETTINGS</div>
+    </div>
+    <div style="margin-top:14px;padding:6px 14px;background:#FCF8EC;border:3px solid #3E4496;border-radius:20px;box-shadow:0 5px 0 #3E4496">
+      <sc-for list="{{ toggles }}" as="tg" hint-placeholder-count="4">
+        <div style="display:flex;align-items:center;gap:12px;padding:14px 0;border-bottom:1.5px solid rgba(44,47,115,.1)">
+          <span style="width:34px;height:34px;border-radius:10px;background:#EFE9FB;display:grid;place-items:center;font:700 16px 'Baloo 2';color:#7C4DEF">{{ tg.icon }}</span>
+          <span style="flex:1;font:700 15px 'Baloo 2';color:#2C2F73">{{ tg.label }}</span>
+          <button onClick="{{ tg.toggle }}" style="all:unset;cursor:pointer;width:58px;height:32px;border-radius:999px;background:{{ tg.trackBg }};border:2.5px solid {{ tg.trackBorder }};position:relative;box-sizing:border-box;transition:background .2s">
+            <span style="position:absolute;top:2px;left:{{ tg.knobX }}px;width:23px;height:23px;border-radius:50%;background:#fff;box-shadow:0 2px 3px rgba(0,0,0,.25);transition:left .2s ease"></span>
+          </button>
+        </div>
+      </sc-for>
+      <div style="display:flex;align-items:center;gap:12px;padding:14px 0">
+        <span style="width:34px;height:34px;border-radius:10px;background:#EFE9FB;display:grid;place-items:center;font:700 16px 'Baloo 2';color:#7C4DEF">ⓘ</span>
+        <span style="flex:1;font:700 15px 'Baloo 2';color:#2C2F73">Version</span>
+        <span style="font:600 13px 'JetBrains Mono',monospace;color:#8C90C0">1.0.0 (24)</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;margin-top:12px">
+      <button style="all:unset;cursor:pointer;flex:1;height:52px;border-radius:999px;background:rgba(20,14,60,.35);border:3px solid rgba(255,255,255,.65);color:#fff;font:800 15px/52px 'Baloo 2';text-align:center;box-sizing:border-box">RESTORE</button>
+      <button style="all:unset;cursor:pointer;flex:1;height:52px;border-radius:999px;background:rgba(255,77,109,.9);border:3px solid #C22D4A;box-shadow:0 5px 0 #A82340;color:#fff;font:800 15px/52px 'Baloo 2';text-align:center;box-sizing:border-box">RESET DATA</button>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== PAUSE OVERLAY ===== -->
+  <sc-if value="{{ isPaused }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;background:rgba(24,16,64,.68);display:grid;place-items:center;padding:24px">
+    <div style="width:100%;padding:22px 20px;background:#FCF8EC;border:4px solid #3E4496;border-radius:28px;box-shadow:0 8px 0 #3E4496;animation:pop .28s ease-out;text-align:center">
+      <div style="font:800 30px 'Baloo 2';color:#2C2F73">PAUSED</div>
+      <div style="font:600 13px 'Gothic A1';color:#8C90C0;margin-top:2px">진행 상황은 자동 저장됩니다</div>
+      <div style="display:flex;flex-direction:column;gap:11px;margin-top:18px">
+        <button onClick="{{ resume }}" style="all:unset;cursor:pointer;height:60px;border-radius:999px;background:linear-gradient(180deg,#FFDD65,#F5A21C);border:4px solid #D97A08;box-shadow:0 6px 0 #C46703;color:#fff;font:800 22px/60px 'Baloo 2';text-shadow:0 2px 0 rgba(170,85,0,.55);box-sizing:border-box" style-active="transform:translateY(4px);box-shadow:0 2px 0 #C46703">RESUME</button>
+        <button onClick="{{ restart }}" style="all:unset;cursor:pointer;height:54px;border-radius:999px;background:linear-gradient(180deg,#4FE3C6,#10AC91);border:3.5px solid #0A7D69;box-shadow:0 5px 0 #086B5A;color:#fff;font:800 19px/54px 'Baloo 2';box-sizing:border-box">RESTART</button>
+        <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;height:48px;border-radius:999px;background:#fff;border:3px solid #C9CDEB;color:#4A4FA0;font:800 17px/48px 'Baloo 2';box-sizing:border-box">QUIT TO HOME</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- ===== RESULT OVERLAY ===== -->
+  <sc-if value="{{ isResult }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;background:rgba(24,16,64,.7);display:grid;place-items:center;padding:22px">
+    <div style="width:100%;padding:26px 20px 20px;background:#FCF8EC;border:4px solid #3E4496;border-radius:28px;box-shadow:0 8px 0 #3E4496;animation:pop .3s ease-out;text-align:center;position:relative">
+      <div style="position:absolute;top:-30px;left:50%;transform:translateX(-50%);width:72px;height:72px;border-radius:50%;background:linear-gradient(180deg,#FFE070,#F0A11B);border:4px solid #fff;box-shadow:0 5px 10px rgba(25,18,70,.35);display:grid;place-items:center;font:800 30px 'Baloo 2';color:#fff">🏆</div>
+      <div style="margin-top:34px;font:800 32px 'Baloo 2';color:#2C2F73">{{ resultTitle }}</div>
+      <div style="font:700 14px 'Baloo 2';letter-spacing:.1em;color:#8C90C0;margin-top:2px">{{ modeLabel }} · STAGE {{ level }}</div>
+      <div style="display:flex;gap:10px;margin-top:18px">
+        <div style="flex:1;padding:12px 8px;background:#fff;border:3px solid #C9CDEB;border-radius:16px">
+          <div style="font:700 10px 'Baloo 2';letter-spacing:.1em;color:#8C90C0">SCORE</div>
+          <div style="font:800 24px/1.1 'Baloo 2';color:#2C2F73">{{ scoreLabel }}</div>
+        </div>
+        <div style="flex:1;padding:12px 8px;background:#fff;border:3px solid #C9CDEB;border-radius:16px">
+          <div style="font:700 10px 'Baloo 2';letter-spacing:.1em;color:#8C90C0">BEST</div>
+          <div style="font:800 24px/1.1 'Baloo 2';color:#2C2F73">{{ bestLabel }}</div>
+        </div>
+        <div style="flex:1;padding:12px 8px;background:#fff;border:3px solid #C9CDEB;border-radius:16px">
+          <div style="font:700 10px 'Baloo 2';letter-spacing:.1em;color:#8C90C0">COINS</div>
+          <div style="font:800 24px/1.1 'Baloo 2';color:#F0A11B">+{{ earned }}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;justify-content:center;margin-top:16px;font:800 30px 'Baloo 2';color:#F5B315">{{ stars }}</div>
+      <div style="display:flex;gap:11px;margin-top:16px">
+        <button onClick="{{ goHome }}" style="all:unset;cursor:pointer;flex:1;height:56px;border-radius:999px;background:#fff;border:3px solid #C9CDEB;color:#4A4FA0;font:800 17px/56px 'Baloo 2';text-align:center;box-sizing:border-box">HOME</button>
+        <button onClick="{{ restart }}" style="all:unset;cursor:pointer;flex:1.4;height:56px;border-radius:999px;background:linear-gradient(180deg,#FFDD65,#F5A21C);border:3.5px solid #D97A08;box-shadow:0 6px 0 #C46703;color:#fff;font:800 19px/56px 'Baloo 2';text-align:center;text-shadow:0 2px 0 rgba(170,85,0,.55);box-sizing:border-box" style-active="transform:translateY(4px);box-shadow:0 2px 0 #C46703">PLAY AGAIN</button>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+  <!-- toast -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;left:0;right:0;bottom:120px;display:grid;place-items:center;pointer-events:none">
+    <div style="padding:10px 20px;border-radius:999px;background:rgba(24,16,64,.88);border:2.5px solid rgba(255,255,255,.7);color:#fff;font:700 14px 'Gothic A1';animation:pop .22s ease-out">{{ toast }}</div>
+  </div>
+  </sc-if>
+
+  <!-- safe area guides -->
+  <sc-if value="{{ showSafe }}" hint-placeholder-val="{{ false }}">
+  <div style="position:absolute;inset:0;pointer-events:none">
+    <div style="position:absolute;top:44px;left:0;right:0;border-top:1px dashed rgba(255,80,160,.8)"></div>
+    <div style="position:absolute;bottom:34px;left:0;right:0;border-top:1px dashed rgba(255,80,160,.8)"></div>
+    <div style="position:absolute;top:0;bottom:0;left:16px;border-left:1px dashed rgba(255,80,160,.5)"></div>
+    <div style="position:absolute;top:0;bottom:0;right:16px;border-left:1px dashed rgba(255,80,160,.5)"></div>
+  </div>
+  </sc-if>
+
+  <div style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);width:132px;height:5px;border-radius:999px;background:rgba(255,255,255,.55)"></div>
+</div>
+</div>
+</div>
+
+<div class="dv-opt" id="1b"><div class="dv-olabel"><a class="dv-oid" href="#1b">1b</a>컴포넌트 라이브러리 + 디자인 토큰 (Unity 프리팹 / 9-slice 기준 포함)</div>
+<div style="width:760px;padding:26px;background:#fff;border:1px solid rgba(44,47,115,.12);border-radius:18px;box-shadow:0 2px 6px rgba(40,30,90,.07);display:flex;flex-direction:column;gap:26px">
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">01 · COLOR TOKENS</div>
+    <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:10px">
+      <sc-for list="{{ tokens }}" as="tk" hint-placeholder-count="12">
+        <div>
+          <div style="height:54px;border-radius:10px;background:{{ tk.hex }};border:1px solid rgba(0,0,0,.1)"></div>
+          <div style="font:700 10.5px 'Gothic A1';color:#2C2F73;margin-top:5px">{{ tk.name }}</div>
+          <div style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">{{ tk.hex }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">02 · BUTTONS — 모두 pill / bottom-shadow 4~8px / press 시 translateY</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end">
+      <div style="display:flex;flex-direction:column;gap:6px"><button style="all:unset;cursor:pointer;width:200px;height:70px;border-radius:999px;background:linear-gradient(180deg,#FFDD65,#F5A21C);border:4px solid #D97A08;box-shadow:0 8px 0 #C46703,inset 0 3px 0 rgba(255,255,255,.65);color:#fff;font:800 28px/70px 'Baloo 2';text-align:center;text-shadow:0 3px 0 rgba(170,85,0,.6);box-sizing:border-box" style-active="transform:translateY(5px);box-shadow:0 3px 0 #C46703">PLAY</button><span style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">Btn_Primary_Gold · 200×70 · 9-slice 40,40,40,48</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><button style="all:unset;cursor:pointer;width:160px;height:60px;border-radius:999px;background:linear-gradient(180deg,#4FE3C6,#10AC91);border:4px solid #0A7D69;box-shadow:0 7px 0 #086B5A,inset 0 3px 0 rgba(255,255,255,.55);color:#fff;font:800 21px/60px 'Baloo 2';text-align:center;box-sizing:border-box">CLASSIC</button><span style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">Btn_Mode_Teal · 160×60</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><button style="all:unset;cursor:pointer;width:160px;height:60px;border-radius:999px;background:linear-gradient(180deg,#B49CFF,#7B44EE);border:4px solid #5A27C4;box-shadow:0 7px 0 #4C1FAB,inset 0 3px 0 rgba(255,255,255,.5);color:#fff;font:800 21px/60px 'Baloo 2';text-align:center;box-sizing:border-box">RUSH</button><span style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">Btn_Mode_Purple · 160×60</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><button style="all:unset;cursor:pointer;width:130px;height:52px;border-radius:999px;background:#fff;border:3px solid #C9CDEB;color:#4A4FA0;font:800 17px/52px 'Baloo 2';text-align:center;box-sizing:border-box">HOME</button><span style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">Btn_Ghost · 130×52</span></div>
+      <div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;gap:8px"><button style="all:unset;cursor:pointer;width:52px;height:52px;border-radius:50%;background:rgba(20,14,60,.4);border:2.5px solid #C9BCF5;color:#fff;font:700 22px/52px 'Baloo 2';text-align:center;box-sizing:border-box">⚙</button><button style="all:unset;cursor:pointer;width:52px;height:52px;border-radius:14px;background:#fff;border:3px solid #3E4496;box-shadow:0 4px 0 #3E4496;color:#3E4496;font:800 20px/46px 'Baloo 2';text-align:center;box-sizing:border-box">▦</button><button style="all:unset;cursor:pointer;width:52px;height:52px;border-radius:999px;background:#E8E6F2;border:3px solid #C9CDEB;color:#A8ACCB;font:800 20px/46px 'Baloo 2';text-align:center;box-sizing:border-box">✕</button></div><span style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">Btn_Icon_Round / Square / Disabled · 52×52</span></div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">03 · TILES (Sprite Atlas: tiles_01 · 132×132 @3x)</div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <sc-for list="{{ tileSpecs }}" as="ts" hint-placeholder-count="5">
+        <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+          <div style="width:62px;height:62px;border-radius:16px;background:{{ ts.bg }};border:3px solid rgba(255,255,255,.85);box-shadow:inset 0 -7px 0 {{ ts.shade }};display:grid;place-items:center;font:700 15px 'Baloo 2';color:rgba(255,255,255,.92)">{{ ts.face }}</div>
+          <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#8C90C0">{{ ts.id }}</span>
+        </div>
+      </sc-for>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="width:62px;height:62px;border-radius:16px;background:linear-gradient(135deg,#FFE070,#FF7EB6,#4EC3F7);border:3px solid #fff;box-shadow:0 0 14px rgba(255,255,255,.9);display:grid;place-items:center;font:800 22px 'Baloo 2';color:#fff">✦</div>
+        <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#8C90C0">tile_rainbow</span>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="width:62px;height:62px;border-radius:16px;background:#6E6A8F;border:3px solid rgba(255,255,255,.5);box-shadow:inset 0 -7px 0 rgba(0,0,0,.25);display:grid;place-items:center;font:800 20px 'Baloo 2';color:rgba(255,255,255,.7)">⛓</div>
+        <span style="font:500 9.5px 'JetBrains Mono',monospace;color:#8C90C0">tile_locked</span>
+      </div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">04 · HUD & CARDS</div>
+    <div style="display:flex;flex-wrap:wrap;gap:14px;align-items:flex-start">
+      <div style="display:flex;align-items:center;gap:7px;height:44px;padding:0 8px 0 5px;border-radius:999px;background:rgba(20,14,60,.75);border:3px solid #fff;box-sizing:border-box"><span style="width:30px;height:30px;border-radius:50%;background:linear-gradient(180deg,#FFE070,#F0A11B);border:2px solid #FFF4C2;display:grid;place-items:center;font:800 14px 'Baloo 2';color:#B26B00">♛</span><span style="color:#fff;font:800 17px 'Baloo 2'">91,419</span><span style="width:26px;height:26px;border-radius:50%;background:#3FC9F5;border:2px solid #fff;display:grid;place-items:center;color:#fff;font:800 16px 'Baloo 2'">+</span></div>
+      <div style="width:190px;padding:9px 12px;background:rgba(20,14,60,.75);border:3px solid #fff;border-radius:16px;box-sizing:border-box"><div style="font:700 10px 'Baloo 2';letter-spacing:.12em;color:#C9C0F5">SCORE</div><div style="font:800 25px/1 'Baloo 2';color:#fff">12,480</div></div>
+      <div style="width:250px;padding:12px 14px;background:#FCF8EC;border:3px solid #3E4496;border-radius:18px;box-shadow:0 5px 0 #3E4496;box-sizing:border-box"><div style="font:700 11px 'Baloo 2';letter-spacing:.1em;color:#8C90C0">PERSONAL BEST</div><div style="font:800 22px/1 'Baloo 2';color:#2C2F73">24,860</div></div>
+      <div style="width:150px"><div style="height:14px;border-radius:999px;background:rgba(20,14,60,.6);border:2.5px solid #fff;overflow:hidden;box-sizing:border-box"><div style="height:100%;width:62%;background:linear-gradient(90deg,#5EEAD4,#22D3EE)"></div></div><div style="font:500 10px 'JetBrains Mono',monospace;color:#8C90C0;margin-top:5px">Bar_XP · fill 62%</div></div>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">05 · TYPE SCALE — Baloo 2 (게임 UI) / Gothic A1 (한글 본문)</div>
+    <div style="display:flex;flex-direction:column;gap:7px">
+      <sc-for list="{{ typeScale }}" as="ty" hint-placeholder-count="5">
+        <div style="display:flex;align-items:baseline;gap:16px;padding-bottom:6px;border-bottom:1px solid rgba(44,47,115,.08)">
+          <span style="width:120px;font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">{{ ty.token }}</span>
+          <span style="font-family:'Baloo 2';font-weight:800;font-size:{{ ty.px }}px;color:#2C2F73;line-height:1.1">{{ ty.sample }}</span>
+          <span style="margin-left:auto;font:500 10px 'JetBrains Mono',monospace;color:#8C90C0">{{ ty.spec }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <div>
+    <div style="font:700 12px 'JetBrains Mono',monospace;color:rgba(44,47,115,.45);letter-spacing:.08em;margin-bottom:12px">06 · UNITY 구현 노트</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <sc-for list="{{ unityNotes }}" as="un" hint-placeholder-count="6">
+        <div style="padding:12px 14px;background:#F7F6FB;border:1px solid rgba(44,47,115,.1);border-radius:12px">
+          <div style="font:700 12px 'Gothic A1';color:#2C2F73">{{ un.t }}</div>
+          <div style="font:400 11.5px/1.65 'Gothic A1';color:rgba(44,47,115,.7);margin-top:3px">{{ un.d }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="dv-opt" id="1c"><div class="dv-olabel"><a class="dv-oid" href="#1c">1c</a>상태 · 오버레이 보드 (로딩 / 무브 소진 / 레벨업 / 코인 부족 / 네트워크 / 일시정지)</div>
+<div style="display:flex;flex-wrap:wrap;gap:16px;width:820px">
+<sc-for list="{{ stateCards }}" as="sc" hint-placeholder-count="6">
+  <div style="display:flex;flex-direction:column;gap:7px">
+    <div style="width:250px;height:420px;border-radius:26px;overflow:hidden;position:relative;background:linear-gradient(180deg,#4a43c9,#9b8de7);box-shadow:0 8px 22px rgba(38,28,86,.22);font-family:'Baloo 2'">
+      <div style="position:absolute;inset:0;background:rgba(24,16,64,.6)"></div>
+      <div style="position:absolute;left:18px;right:18px;top:50%;transform:translateY(-50%);padding:20px 16px;background:#FCF8EC;border:3.5px solid #3E4496;border-radius:22px;box-shadow:0 6px 0 #3E4496;text-align:center">
+        <div style="width:54px;height:54px;margin:0 auto;border-radius:50%;background:{{ sc.art }};border:3px solid #fff;display:grid;place-items:center;font:800 22px 'Baloo 2';color:#fff">{{ sc.icon }}</div>
+        <div style="font:800 21px 'Baloo 2';color:#2C2F73;margin-top:10px">{{ sc.title }}</div>
+        <div style="font:500 11.5px/1.55 'Gothic A1';color:#8C90C0;margin-top:4px">{{ sc.body }}</div>
+        <div style="height:48px;margin-top:14px;border-radius:999px;background:linear-gradient(180deg,#FFDD65,#F5A21C);border:3px solid #D97A08;box-shadow:0 5px 0 #C46703;color:#fff;font:800 16px/48px 'Baloo 2';text-shadow:0 2px 0 rgba(170,85,0,.55)">{{ sc.cta }}</div>
+        <div style="font:700 12px 'Baloo 2';color:#A8ACCB;margin-top:10px">{{ sc.alt }}</div>
+      </div>
+    </div>
+    <span style="font:500 10.5px 'JetBrains Mono',monospace;color:#8C90C0">{{ sc.id }}</span>
+  </div>
+</sc-for>
+</div>
+</div>
+
+</div>
+<p class="dv-next">다음 제안: "1a에 스와이프 매치 방식도 추가" · "레벨 맵(월드) 화면 추가" · "1b를 다크 테마 변형으로" · "튜토리얼/온보딩 플로우 만들어줘"</p>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;showSafeArea&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Handoff&quot;},&quot;showHitboxes&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Handoff&quot;},&quot;tileFaces&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Art&quot;}}">
+const PAL = [
+  {bg:'linear-gradient(180deg,#8FE3FF,#3FB6F0)',shade:'rgba(0,70,120,.22)',id:'tile_blue',face:''},
+  {bg:'linear-gradient(180deg,#FFE783,#F7B62B)',shade:'rgba(150,85,0,.22)',id:'tile_yellow',face:'^◡^'},
+  {bg:'linear-gradient(180deg,#FFB3DA,#F86BB4)',shade:'rgba(150,10,80,.2)',id:'tile_pink',face:''},
+  {bg:'linear-gradient(180deg,#B7F5A8,#5FCB62)',shade:'rgba(20,90,20,.22)',id:'tile_green',face:''},
+  {bg:'linear-gradient(180deg,#CDB5FF,#8E5CF0)',shade:'rgba(60,15,130,.24)',id:'tile_purple',face:''}
+];
+const COLS = 8, ROWS = 9;
+const RULES = [
+  {name:'Time Attack', sub:'2 minutes', icon:'∞'},
+  {name:'Move Limit', sub:'25 moves', icon:'25'},
+  {name:'Endless', sub:'no limit', icon:'∞'}
+];
+
+class Component extends DCLogic {
+  state = {
+    screen:'home', mode:'classic', rule:0, level:12, xp:62,
+    coins:91419, best:24860, score:0, moves:25, timeLeft:120,
+    paused:false, toast:null, grid:null, earned:0, boosters:[3,1,2]
+  };
+
+  componentDidMount() {
+    this.setState({grid:this.newGrid()});
+    this.timer = setInterval(() => {
+      if (this.state.screen !== 'game' || this.state.paused) return;
+      if (this.state.rule !== 0) return;
+      const t = this.state.timeLeft - 1;
+      if (t <= 0) this.finish(); else this.setState({timeLeft:t});
+    }, 1000);
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.tt); }
+
+  newGrid() { return Array.from({length:COLS*ROWS}, () => Math.floor(Math.random()*PAL.length)); }
+
+  flash(msg) {
+    this.setState({toast:msg});
+    clearTimeout(this.tt);
+    this.tt = setTimeout(() => this.setState({toast:null}), 1400);
+  }
+
+  group(g, i) {
+    const t = g[i], seen = new Set(), st = [i];
+    while (st.length) {
+      const k = st.pop();
+      if (seen.has(k) || g[k] !== t) continue;
+      seen.add(k);
+      const r = Math.floor(k/COLS), c = k%COLS;
+      if (c > 0) st.push(k-1);
+      if (c < COLS-1) st.push(k+1);
+      if (r > 0) st.push(k-COLS);
+      if (r < ROWS-1) st.push(k+COLS);
+    }
+    return [...seen];
+  }
+
+  tap(i) {
+    if (this.state.paused) return;
+    const g = this.state.grid.slice();
+    const grp = this.group(g, i);
+    if (grp.length < 2) { this.flash('같은 색 2개 이상을 탭하세요'); return; }
+    grp.forEach(k => g[k] = -1);
+    for (let c = 0; c < COLS; c++) {
+      const col = [];
+      for (let r = ROWS-1; r >= 0; r--) { const v = g[r*COLS+c]; if (v >= 0) col.push(v); }
+      for (let r = ROWS-1; r >= 0; r--) {
+        const v = col[ROWS-1-r];
+        g[r*COLS+c] = v === undefined ? Math.floor(Math.random()*PAL.length) : v;
+      }
+    }
+    const gain = grp.length * grp.length * 10;
+    const moves = this.state.rule === 1 ? this.state.moves - 1 : this.state.moves;
+    this.setState({grid:g, score:this.state.score + gain, moves}, () => {
+      if (this.state.rule === 1 && moves <= 0) this.finish();
+    });
+    if (grp.length >= 5) this.flash('COMBO! +' + gain);
+  }
+
+  finish() {
+    const earned = Math.round(this.state.score/12);
+    this.setState({
+      screen:'result', paused:false, earned,
+      coins:this.state.coins + earned,
+      best:Math.max(this.state.best, this.state.score)
+    });
+  }
+
+  go(s) { this.setState({screen:s, paused:false}); }
+  start() {
+    this.setState({screen:'game', score:0, moves:25, timeLeft:120, paused:false, grid:this.newGrid()});
+  }
+
+  renderVals() {
+    const s = this.state;
+    const fmt = n => (n||0).toLocaleString('en-US');
+    const timed = s.rule === 0;
+    const mm = String(Math.floor(s.timeLeft/60)), ss = String(s.timeLeft%60).padStart(2,'0');
+    const goalPct = Math.min(100, Math.round(s.score/15000*100));
+    const navs = [
+      ['S01','Home','home'],['S02','Gameplay','game'],['S03','Pause','pause'],
+      ['S04','Result','result'],['S05','Shop','shop'],['S06','Ranking','ranking'],['S07','Settings','settings']
+    ];
+    const active = n => n === 'pause' ? (s.screen==='game'&&s.paused) : n === s.screen;
+    const mkToggle = (icon,label,key) => {
+      const on = this.state['t_'+key] !== false;
+      return {icon, label,
+        toggle:() => this.setState({['t_'+key]: !on}),
+        trackBg: on ? 'linear-gradient(180deg,#4FE3C6,#10AC91)' : '#E4E2EE',
+        trackBorder: on ? '#0A7D69' : '#C9CDEB',
+        knobX: on ? 30 : 2};
+    };
+    return {
+      level:s.level, xpPct:s.xp, coinsLabel:fmt(s.coins), bestLabel:fmt(s.best), scoreLabel:fmt(s.score),
+      earned:fmt(s.earned), toast:s.toast, showSafe:this.props.showSafeArea ?? false,
+      isHome:s.screen==='home', notHome:s.screen!=='home', isGame:s.screen==='game', isShop:s.screen==='shop',
+      hotspots: [
+        {id:'Btn_Collection', l:3.5, t:1.4, w:11, h:4.7, r:'14px', act:()=>this.flash('컬렉션 (미구현)')},
+        {id:'Btn_CoinAdd', l:78.5, t:2.0, w:8.5, h:3.6, r:'999px', act:()=>this.go('shop')},
+        {id:'Btn_Settings', l:86.5, t:1.6, w:10, h:4.4, r:'999px', act:()=>this.go('settings')},
+        {id:'Btn_Play', l:17, t:50.2, w:66, h:9.8, r:'999px', act:()=>this.start()},
+        {id:'Btn_Mode_Classic', l:4.5, t:62.4, w:45, h:8.2, r:'999px', act:()=>this.setState({mode:'classic'},()=>this.flash('CLASSIC 모드 선택'))},
+        {id:'Btn_Mode_Rush', l:50.5, t:62.4, w:45, h:8.2, r:'999px', act:()=>this.setState({mode:'rush'},()=>this.flash('RUSH 모드 선택'))},
+        {id:'Btn_Rule_Prev', l:57, t:74.4, w:9.5, h:4.6, r:'12px', act:()=>{const r=(s.rule+RULES.length-1)%RULES.length;this.setState({rule:r},()=>this.flash(RULES[r].name+' · '+RULES[r].sub));}},
+        {id:'Btn_Rule_Next', l:79.5, t:74.4, w:9.5, h:4.6, r:'12px', act:()=>{const r=(s.rule+1)%RULES.length;this.setState({rule:r},()=>this.flash(RULES[r].name+' · '+RULES[r].sub));}},
+        {id:'Btn_Favorite', l:81, t:82.4, w:11, h:5.4, r:'12px', act:()=>this.flash('즐겨찾기에 추가')},
+        {id:'Btn_Ranking', l:29, t:89.2, w:16, h:7.4, r:'16px', act:()=>this.go('ranking')},
+        {id:'Btn_Shop', l:55.5, t:89.2, w:16, h:7.4, r:'16px', act:()=>this.go('shop')}
+      ].map(h => ({...h, ring: (this.props.showHitboxes ?? false) ? '2px dashed rgba(255,60,140,.95)' : 'none'})),
+      isRanking:s.screen==='ranking', isSettings:s.screen==='settings',
+      isPaused:s.screen==='game'&&s.paused, isResult:s.screen==='result',
+      goHome:()=>this.go('home'), goShop:()=>this.go('shop'), goRanking:()=>this.go('ranking'),
+      goSettings:()=>this.go('settings'), startGame:()=>this.start(), restart:()=>this.start(),
+      pause:()=>this.setState({paused:true}), resume:()=>this.setState({paused:false}),
+      pickClassic:()=>this.setState({mode:'classic'}), pickRush:()=>this.setState({mode:'rush'}),
+      classicRing: s.mode==='classic' ? '3px solid rgba(255,255,255,.9)' : 'none',
+      rushRing: s.mode==='rush' ? '3px solid rgba(255,255,255,.9)' : 'none',
+      modeLabel: s.mode.toUpperCase(),
+      ruleName:RULES[s.rule].name, ruleSub:RULES[s.rule].sub, ruleIcon:RULES[s.rule].icon,
+      prevRule:()=>this.setState({rule:(s.rule+RULES.length-1)%RULES.length}),
+      nextRule:()=>this.setState({rule:(s.rule+1)%RULES.length}),
+      counterLabel: timed ? 'TIME' : (s.rule===1 ? 'MOVES' : 'COMBO'),
+      counterValue: timed ? mm+':'+ss : (s.rule===1 ? s.moves : '×2'),
+      counterColor: timed && s.timeLeft <= 20 ? '#FF7E9B' : '#fff',
+      goalPct, goalLabel: fmt(s.score) + ' / 15,000',
+      resultTitle: s.score >= 15000 ? 'STAGE CLEAR!' : 'TIME UP!',
+      stars: s.score >= 15000 ? '★★★' : (s.score >= 6000 ? '★★☆' : '★☆☆'),
+      navItems: navs.map(([code,label,n]) => ({
+        code, label, go: n==='pause' ? (()=>this.setState({screen:'game',paused:true})) : (()=>this.go(n)),
+        bg: active(n) ? '#2C2F73' : '#fff', fg: active(n) ? '#fff' : '#2C2F73'
+      })),
+      cells: (s.grid || this.newGrid()).map((v,i) => ({
+        bg:PAL[v].bg, shade:PAL[v].shade, face:(this.props.tileFaces ?? true) ? PAL[v].face : '',
+        scale:1, tap:()=>this.tap(i)
+      })),
+      boosters: [
+        {icon:'💥', name:'BOMB', count:s.boosters[0], use:()=>this.flash('BOMB 사용 — 3×3 제거')},
+        {icon:'⚡', name:'LINE', count:s.boosters[1], use:()=>this.flash('LINE 사용 — 한 줄 제거')},
+        {icon:'🔀', name:'SHUFFLE', count:s.boosters[2], use:()=>this.setState({grid:this.newGrid()})}
+      ],
+      shopTabs: ['COINS','BOOSTER','SKIN'].map((label,i) => {
+        const on = (this.state.shopTab ?? 0) === i;
+        return {label, pick:()=>this.setState({shopTab:i}),
+          bg: on ? 'linear-gradient(180deg,#FFDD65,#F5A21C)' : 'rgba(20,14,60,.35)',
+          border: on ? '#D97A08' : 'rgba(255,255,255,.6)', fg:'#fff'};
+      }),
+      shopItems: [
+        {icon:'♛', name:'Pouch of Coins', desc:'5,000 코인', price:'₩1,200', art:'linear-gradient(180deg,#FFE070,#F0A11B)', buy:()=>this.setState({coins:s.coins+5000},()=>this.flash('+5,000 코인'))},
+        {icon:'♛', name:'Treasure Chest', desc:'30,000 코인 · +15% 보너스', price:'₩5,900', art:'linear-gradient(180deg,#FFC44D,#E8850E)', buy:()=>this.setState({coins:s.coins+30000},()=>this.flash('+30,000 코인'))},
+        {icon:'💥', name:'Bomb ×5', desc:'3×3 범위 제거', price:'1,500', art:'linear-gradient(180deg,#FFB3DA,#F86BB4)', buy:()=>this.flash('부스터 구매 완료')},
+        {icon:'✦', name:'Rainbow Pack', desc:'레인보우 타일 ×3', price:'2,400', art:'linear-gradient(135deg,#4EC3F7,#B49CFF)', buy:()=>this.flash('부스터 구매 완료')}
+      ],
+      podium: [
+        {rank:'2', name:'MINA', score:'31,200', initial:'M', h:86, art:'linear-gradient(180deg,#8FE3FF,#3FB6F0)'},
+        {rank:'1', name:'JUNO', score:'42,850', initial:'J', h:116, art:'linear-gradient(180deg,#FFE070,#F0A11B)'},
+        {rank:'3', name:'RIO', score:'28,400', initial:'R', h:66, art:'linear-gradient(180deg,#B7F5A8,#5FCB62)'}
+      ],
+      ranks: [
+        {rank:'4', name:'SEOJIN', score:'26,110', initial:'S', art:'linear-gradient(180deg,#CDB5FF,#8E5CF0)', bg:'#FCF8EC', border:'#3E4496', fg:'#2C2F73', numColor:'#8C90C0'},
+        {rank:'5', name:'YOU', score:fmt(s.best), initial:'Y', art:'linear-gradient(180deg,#FFB3DA,#F86BB4)', bg:'linear-gradient(180deg,#FFEFB0,#FFD976)', border:'#D97A08', fg:'#7A4A00', numColor:'#B87A04'},
+        {rank:'6', name:'HAEUN', score:'21,880', initial:'H', art:'linear-gradient(180deg,#8FE3FF,#3FB6F0)', bg:'#FCF8EC', border:'#3E4496', fg:'#2C2F73', numColor:'#8C90C0'},
+        {rank:'7', name:'TAEO', score:'19,340', initial:'T', art:'linear-gradient(180deg,#B7F5A8,#5FCB62)', bg:'#FCF8EC', border:'#3E4496', fg:'#2C2F73', numColor:'#8C90C0'}
+      ],
+      toggles: [
+        mkToggle('♪','Music','music'), mkToggle('🔊','Sound FX','sfx'),
+        mkToggle('📳','Vibration','haptic'), mkToggle('🔔','Push Alerts','push')
+      ],
+      tokens: [
+        {name:'sky/deep', hex:'#4A43C9'}, {name:'sky/mid', hex:'#6A5FD8'}, {name:'sky/light', hex:'#9B8DE7'},
+        {name:'ink/navy', hex:'#2C2F73'}, {name:'ink/outline', hex:'#3E4496'}, {name:'paper/cream', hex:'#FCF8EC'},
+        {name:'gold/base', hex:'#F5A21C'}, {name:'gold/hi', hex:'#FFDD65'}, {name:'teal/base', hex:'#10AC91'},
+        {name:'purple/base', hex:'#7B44EE'}, {name:'pink/accent', hex:'#FF7EB6'}, {name:'alert/red', hex:'#FF4D6D'}
+      ],
+      tileSpecs: PAL.map(p => ({bg:p.bg, shade:p.shade, id:p.id, face:p.face})),
+      typeScale: [
+        {token:'display/logo', px:40, sample:'CHROMA', spec:'Baloo2 ExtraBold 40/0.92'},
+        {token:'title/xl', px:30, sample:'STAGE CLEAR', spec:'Baloo2 ExtraBold 30'},
+        {token:'button/lg', px:24, sample:'PLAY', spec:'Baloo2 ExtraBold 24 · +4% LS'},
+        {token:'numeric/hud', px:22, sample:'91,419', spec:'Baloo2 Bold 22 tabular'},
+        {token:'label/caps', px:12, sample:'PERSONAL BEST', spec:'Baloo2 Bold 12 · +10% LS'}
+      ],
+      unityNotes: [
+        {t:'Canvas Scaler', d:'Scale With Screen Size · Reference 1170×2532 · Match Width or Height = 0.5 · Pixels Per Unit 100'},
+        {t:'Safe Area', d:'SafeAreaPanel 스크립트로 상단 HUD·하단 탭바 anchor 보정. iOS 노치 44dp, 홈 인디케이터 34dp 확보'},
+        {t:'9-Slice 버튼', d:'Sprite Border 40/40/40/48(하단 그림자 포함). Image Type = Sliced, Fill Center on. 눌림은 Y −5px + 그림자 −5px'},
+        {t:'폰트', d:'Baloo 2 (라틴/숫자) + Gothic A1 (한글). TMP SDF Atlas 2048, Outline 0.12 / Underlay Soft로 외곽선 표현'},
+        {t:'보드 레이아웃', d:'GridLayoutGroup 8×9, Cell 132×132, Spacing 12 (@3x). 타일 프리팹 Object Pool 96개 사전 생성'},
+        {t:'애니메이션', d:'팝: scale 1→1.15→0 (0.18s, OutBack) + 파티클. 낙하: ease OutBounce 0.28s, 열 단위 0.03s stagger'}
+      ],
+      stateCards: [
+        {id:'OV01_Loading', icon:'◌', title:'LOADING', body:'에셋 번들 로드 중 · 진행률 표시', cta:'68%', alt:'Tip: 같은 색을 크게 모아 터뜨리세요', art:'linear-gradient(180deg,#8FE3FF,#3FB6F0)'},
+        {id:'OV02_NoMoves', icon:'✖', title:'NO MOVES', body:'더 이상 터뜨릴 조합이 없습니다', cta:'SHUFFLE · 300', alt:'게임 종료', art:'linear-gradient(180deg,#FFB3DA,#F86BB4)'},
+        {id:'OV03_LevelUp', icon:'★', title:'LEVEL 13!', body:'보너스 부스터 ×2를 받았습니다', cta:'CLAIM', alt:'', art:'linear-gradient(180deg,#FFE070,#F0A11B)'},
+        {id:'OV04_NoCoins', icon:'♛', title:'코인이 부족해요', body:'2,400 코인이 더 필요합니다', cta:'GO TO SHOP', alt:'나중에', art:'linear-gradient(180deg,#CDB5FF,#8E5CF0)'},
+        {id:'OV05_Offline', icon:'⚠', title:'연결 실패', body:'랭킹을 불러올 수 없습니다', cta:'RETRY', alt:'오프라인으로 계속', art:'linear-gradient(180deg,#FF9AAE,#E8425F)'},
+        {id:'OV06_DailyBonus', icon:'🎁', title:'DAY 3 REWARD', body:'매일 접속하면 보상이 커집니다', cta:'+1,500 ♛', alt:'', art:'linear-gradient(180deg,#B7F5A8,#5FCB62)'}
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
