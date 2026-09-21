@@ -29,23 +29,30 @@ Color pop! — 칼라 매쳐 퍼즐. 조각을 단색으로 찍어(페인트) �
 
 ```
 Assets/
-  Scenes/Main.unity            # 메인 씬 (카메라 + GameManager 뿐 — 나머지는 런타임 생성)
-  Scripts/
-    ColorMatcherCore.cs        # 게임 규칙 (UnityEngine 비의존)
-    GameManager.cs             # 게임 흐름/입력, 연출 오케스트레이션
-    BoardView.cs               # 보드 렌더링·아이템 아이콘·고스트·파괴 파티클·낙하
-    GameUI.cs                  # 홈/HUD/결과/랭킹 (uGUI 런타임 생성, SafeArea 대응)
-    Palette.cs                 # 색상 팔레트 생성 (HSL→RGB, 순수 함수)
-    Sfx.cs                     # 효과음 (절차 생성 PCM)
-    Leaderboard.cs             # Firestore REST 랭킹 (SDK 미사용)
-    NationRanking.cs           # 랭킹 집계 (UnityEngine 비의존)
-    PlayerAccount.cs           # 게스트 계정·국가 판별·배지 색
-    Json.cs                    # 최소 JSON 파서
-  Editor/
-    ProjectBootstrap.cs        # 씬/빌드 설정 구성 (ChromaDrop > Setup Project)
-    AndroidBuild.cs            # APK/AAB 빌드 진입점
-    MacBuild.cs                # 맥 로컬 확인용 빌드 진입점
-  Tests/PlayMode/              # PlayMode 스모크 + 랭킹 CRUD 테스트
+  _Project/                    # 직접 만든 것
+    Scenes/Menu.unity          # 메인 메뉴 (시작 씬)
+    Scenes/Game.unity          # 게임 씬 (카메라 + GameManager — 나머지는 런타임 생성)
+    Scripts/
+      ColorMatcherCore.cs      # 게임 규칙 (UnityEngine 비의존)
+      GameManager.cs           # 게임 흐름/입력, 연출 오케스트레이션. 아트(테마·국기·이펙트)를 인스펙터로 연결받는다
+      BoardView.cs             # 보드 렌더링·아이템 아이콘·고스트·파괴 파티클·낙하
+      GameUI.cs                # HUD/결과/랭킹 (uGUI 런타임 생성, SafeArea 대응)
+      MainMenu.cs              # 메인 메뉴 버튼 → 게임 씬
+      BlockTheme.cs            # 블록 테마 데이터 (블록 그림·색·판 크기·배경)
+      CountryFlags.cs          # 국기 조회
+      Palette.cs               # 색상 팔레트 (HSL→RGB, 순수 함수)
+      Sfx.cs                   # 효과음 (절차 생성 PCM)
+      Leaderboard.cs           # Firestore REST 랭킹 (SDK 미사용)
+      NationRanking.cs         # 랭킹 집계 (UnityEngine 비의존)
+      PlayerAccount.cs         # 게스트 계정·국가 판별·배지 색
+      Json.cs                  # 최소 JSON 파서
+    Sprites/                   # Blocks/{Lego,Cats} · Boards · Flags · Icons · UI
+    Prefabs/Effects/           # 블록 파괴 파티클
+    Animations/                # 메뉴 버튼 애니메이션
+    Design/                    # 게임에 쓰지 않는 시안·원본
+  ThirdParty/MatthewGuz/       # 에셋 스토어 팩 (git 미추적)
+  Resources/leaderboard.json   # 랭킹 서버 설정 — 코드가 이름으로 읽는 생성물 (git 미추적)
+  StreamingAssets/stages.json  # 스테이지 기본값
 Tests/CoreTests.cs             # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
 Tools/                         # 빌드·키스토어·랭킹 설정·더미 시드 스크립트
 ```
@@ -55,7 +62,7 @@ Tools/                         # 빌드·키스토어·랭킹 설정·더미 시
 
 ## 실행
 
-Unity Hub → **Add project from disk** 로 저장소 루트 열기 → `Assets/Scenes/Main.unity` → Play.
+Unity Hub → **Add project from disk** 로 저장소 루트 열기 → `Assets/_Project/Scenes/Menu.unity` → Play.
 씬이 없으면 메뉴 **ChromaDrop > Setup Project** 를 먼저 실행한다.
 
 에디터를 열지 않고 확인하려면 맥 앱으로 빌드하는 쪽이 빠르다 (약 6초):
@@ -88,7 +95,7 @@ open Builds/Mac/ChromaDrop.app
 ```bash
 # 코어 규칙 테스트 (Unity 무관)
 MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
-"$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mcs" Assets/_Project/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
 "$MONO/mono" /tmp/core_tests.exe
 
 # PlayMode 스모크 (에디터가 닫혀 있어야 한다)

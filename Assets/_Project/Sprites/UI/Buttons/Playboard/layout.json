@@ -1,0 +1,69 @@
+{
+  "source_canvas": {
+    "width": 1024,
+    "height": 1536
+  },
+  "note": "x,y는 원본 이미지 기준 좌표, 1:1 배율. 상단 텍스트는 UI 요소가 아니라 제외함.",
+  "elements": {
+    "01_pill_cyan.png": {
+      "x": 52,
+      "y": 350,
+      "width": 446,
+      "height": 143
+    },
+    "02_pill_gold.png": {
+      "x": 530,
+      "y": 349,
+      "width": 443,
+      "height": 143
+    },
+    "03_pill_red_orange_blocks.png": {
+      "x": 51,
+      "y": 559,
+      "width": 446,
+      "height": 156
+    },
+    "04_cloud_bar_lavender.png": {
+      "x": 538,
+      "y": 555,
+      "width": 434,
+      "height": 166
+    },
+    "05_pill_rainbow_green_blob.png": {
+      "x": 49,
+      "y": 818,
+      "width": 449,
+      "height": 155
+    },
+    "06_cloud_bar_sparkle.png": {
+      "x": 536,
+      "y": 803,
+      "width": 435,
+      "height": 171
+    },
+    "07_pill_lavender_pink.png": {
+      "x": 52,
+      "y": 1058,
+      "width": 445,
+      "height": 154
+    },
+    "08_pill_rainbow_color_blocks.png": {
+      "x": 536,
+      "y": 1056,
+      "width": 436,
+      "height": 153
+    },
+    "09_pill_pastel_rainbow.png": {
+      "x": 53,
+      "y": 1311,
+      "width": 446,
+      "height": 147
+    },
+    "10_cloud_bar_sun.png": {
+      "x": 539,
+      "y": 1299,
+      "width": 437,
+      "height": 159
+    }
+  }
+}

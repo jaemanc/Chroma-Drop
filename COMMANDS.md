@@ -50,7 +50,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.certs/ptkroea.pem"   # §6 — 없으면 빌�
 ### 코어 규칙 테스트 (가장 빠름 — 코어를 건드렸으면 필수)
 
 ```bash
-"$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mcs" Assets/_Project/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
 "$MONO/mono" /tmp/core_tests.exe
 ```
 
@@ -238,7 +238,7 @@ cp -n "$JDK/lib/security/cacerts" "$JDK/lib/security/cacerts.backup"
 
 ## 8. 랭킹 서버 (Firebase Firestore)
 
-SDK 없이 REST 만 쓴다 (`Assets/Scripts/Leaderboard.cs`). 설정 파일이 없으면
+SDK 없이 REST 만 쓴다 (`Assets/_Project/Scripts/Leaderboard.cs`). 설정 파일이 없으면
 랭킹 기능만 꺼지고 게임은 정상 동작한다.
 
 ### 최초 1회 — Firebase 콘솔에서

@@ -74,3 +74,6 @@ GoogleService-Info.plist
 .env
 .env.*
 !.env.example
+
+# 국가 코드 이전 백업 (Tools/migrate-country-codes.py 가 만든다)
+/Tools/country-backup-*.json

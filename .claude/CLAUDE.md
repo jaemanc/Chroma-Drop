@@ -16,16 +16,17 @@ Unity **6000.5.2f1**, 최종 목표는 iOS/Android 배포.
 
 ```
 Assets/
-  Scripts/
-    ColorMatcherCore.cs   # 게임 규칙 — UnityEngine 비의존. 수정 금지 자산 (§2)
-    GameManager.cs        # 게임 흐름/입력
-    BoardView.cs          # 보드 렌더링/연출
-    GameUI.cs             # 홈/HUD/결과 (uGUI 런타임 생성)
-    Sfx.cs                # 절차 생성 PCM 효과음
-  Editor/
-    ProjectBootstrap.cs   # 씬/빌드 설정 구성 (멱등)
-    AndroidBuild.cs       # APK/AAB 빌드 진입점
-  Tests/PlayMode/         # PlayMode 스모크 테스트
+  _Project/               # 직접 만든 것 전부
+    Scenes/               # Menu.unity(시작) · Game.unity
+    Scripts/
+      ColorMatcherCore.cs # 게임 규칙 — UnityEngine 비의존. 수정 금지 자산 (§2)
+      GameManager.cs      # 게임 흐름/입력. 아트 참조(Themes/Flags/Pop Fx)를 인스펙터에 갖는다
+      BoardView.cs        # 보드 렌더링/연출
+      GameUI.cs           # HUD/결과/랭킹 (uGUI 런타임 생성)
+      Sfx.cs              # 절차 생성 PCM 효과음
+    Sprites/ Prefabs/ Animations/ Design/
+  ThirdParty/             # 에셋 스토어 팩
+  Resources/              # leaderboard.json 만 (코드가 이름으로 읽는 설정)
 Tests/CoreTests.cs        # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
 Tools/                    # 빌드/키스토어 스크립트
 ```
@@ -40,7 +41,7 @@ Tools/                    # 빌드/키스토어 스크립트
 
 | 대상 | 규칙 |
 |---|---|
-| `Assets/Scripts/ColorMatcherCore.cs` | **수정 금지 자산.** 테스트 23/23 로 검증된 규칙 엔진. 사용자가 명시적으로 요청할 때만 수정하고, 수정했으면 코어 테스트 전체를 다시 돌려 결과를 보고한다. |
+| `Assets/_Project/Scripts/ColorMatcherCore.cs` | **수정 금지 자산.** 테스트 23/23 로 검증된 규칙 엔진. 사용자가 명시적으로 요청할 때만 수정하고, 수정했으면 코어 테스트 전체를 다시 돌려 결과를 보고한다. |
 | `ProjectSettings/*.asset` | 손으로 편집하지 말 것. 플레이어 설정은 `ProjectBootstrap.cs` / `AndroidBuild.cs` 에 **코드로** 넣는다. |
 | `*.meta` 파일 | 직접 만들거나 지우지 말 것. Unity 가 임포트할 때 생성한다. 스크립트를 옮기면 `.meta` 도 같이 옮긴다. |
 | `Library/`, `Logs/`, `UserSettings/`, `Builds/` | 생성물. 커밋 대상 아님. |
@@ -48,11 +49,11 @@ Tools/                    # 빌드/키스토어 스크립트
 ### 외부 에셋
 
 **외부 에셋을 추가해도 된다.** (2026-09-11 부터 — 예전의 "외부 에셋 의존 0" 규칙은 폐기됐다.)
-개발 중에는 스프라이트·이미지 파일을 `Assets/Resources/` 아래에 직접 넣어 쓴다.
+직접 만든 그림·프리팹·씬은 `Assets/_Project/` 아래(Sprites/, Prefabs/, Scenes/ …), 에셋 스토어 팩은 `Assets/ThirdParty/` 아래에 둔다.
 
-- 런타임에 읽으므로 반드시 `Assets/Resources/` 안에 둔다. 그 밖에 두면 빌드에서 빠진다.
-- 코드에서는 `Resources.Load<Texture2D>("경로")` 로 읽고, **아트가 없으면 절차 생성으로
-  돌아가는 길을 남긴다** — 한 장 빠졌다고 판이 안 그려지면 안 된다.
+- 런타임에 쓰는 그림은 `Resources` 에 넣지 않는다 — `Resources` 는 참조 여부와 상관없이 통째로 빌드에 들어간다.
+  Game 씬 `GameManager` 인스펙터(Themes / Flags / Pop Fx)에 연결한다. `Resources` 에는 코드가 이름으로 읽는 설정 파일(`leaderboard.json`)만 둔다.
+- **아트가 연결되지 않았으면 절차 생성으로 돌아가는 길을 남긴다** — 한 장 빠졌다고 판이 안 그려지면 안 된다.
 - `.meta` 는 Unity 가 만든다. 손으로 만들거나 지우지 않는다 (§2 표와 동일).
 
 ---
@@ -82,7 +83,7 @@ Tools/                    # 빌드/키스토어 스크립트
 ```bash
 # (1) 코어 규칙 테스트 — 가장 빠른 확인. 코어를 건드렸으면 필수.
 MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
-"$MONO/mcs" Assets/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mcs" Assets/_Project/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
 "$MONO/mono" /tmp/core_tests.exe
 
 # (2) PlayMode 스모크 테스트 — 표현 계층을 건드렸으면 필수.

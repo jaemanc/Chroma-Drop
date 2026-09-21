@@ -11,8 +11,8 @@ HTTPS 는 curl 로 보낸다 (사내 TLS 프록시 때문에 python ssl 이 막�
 import argparse, base64, json, os, random, subprocess, sys, tempfile, time, urllib.parse
 
 BOARDS = ["score_easy", "score_normal", "score_hard", "ta"]
-COUNTRIES = ["KR", "JP", "US", "CN", "TW", "DE", "FR", "GB", "BR", "IN",
-             "VN", "TH", "ID", "CA", "AU", "ES", "IT", "MX", "PL", "SE"]
+COUNTRIES = ["KOR", "JPN", "USA", "CHN", "TWN", "DEU", "FRA", "GBR", "BRA", "IND",   # ISO 3166-1 alpha-3
+             "VNM", "THA", "IDN", "CAN", "AUS", "ESP", "ITA", "MEX", "POL", "SWE"]
 NAMES = ["Chroma", "Drop", "Neon", "Pixel", "Blitz", "Echo", "Vortex", "Prism",
          "Quartz", "Nova", "Zephyr", "Onyx", "Flux", "Rune", "Halo", "Cobalt"]
 
