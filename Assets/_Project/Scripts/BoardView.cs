@@ -36,7 +36,7 @@ public class BoardView : MonoBehaviour
     Sprite[] starArt;             // 목표 칸 — 같은 색의 별 모양 블록
     Sprite[] blinkArt, winkArt;   // 표정 변화 — 눈 감기 / 윙크
     int[,] cellColor;             // 칸마다 지금 무슨 색인지 (표정 스프라이트를 고를 때 쓴다)
-    Sprite[] brickArt;            // 표정 있는 벽돌 2종 — 칸마다 무작위로 하나
+    Sprite[] crackArt;            // 벽돌 블록 — 손상 단계마다 한 장 (GameManager 가 씬에서 연결한 것)
     Sprite[] arrowHArt, arrowVArt;  // 가로/세로 화살표 블록 — 팔레트 색마다 한 장
     bool useArt;
     float tileDraw = TileScale;   // 아트는 여백을 품고 있어 조금 크게 그린다
@@ -95,6 +95,7 @@ public class BoardView : MonoBehaviour
 
     // ---- 착지 충격파 링 ----
     public GameObject popFx;      // 블록이 터질 때 이펙트 (GameManager 가 씬에서 연결한 것을 넘긴다)
+    public Texture2D[] obstacleBlocks;   // 벽돌 블록 그림 (GameManager 가 씬에서 연결한 것을 넘긴다)
     const int MaxRings = 12;
     Sprite shock;                 // 원형 링
     Transform[] rTr;
@@ -461,8 +462,10 @@ public class BoardView : MonoBehaviour
             winkArt[i] = LoadArt("tiles/wink_" + i);
         }
 
-        brickArt = new Sprite[2];
-        for (int i = 0; i < 2; i++) brickArt[i] = LoadArt("tiles/brick_" + i);
+        // 벽돌 블록은 씬에서 연결한 그림을 손상 단계 순서대로 쓴다. 없으면 절차 생성으로 돌아간다
+        var bricks = obstacleBlocks != null ? System.Array.FindAll(obstacleBlocks, t => t != null) : new Texture2D[0];
+        crackArt = new Sprite[bricks.Length];
+        for (int i = 0; i < bricks.Length; i++) crackArt[i] = ToSprite(bricks[i]);
 
         // 화살표 블록도 칸의 색을 따른다 — 팔레트 색마다 한 장씩 구워 뒀다
         arrowHArt = LoadArtSet("tiles/arrow_h", n);
@@ -489,7 +492,6 @@ public class BoardView : MonoBehaviour
         if (useArt) return;
 
         useArt = true;
-        bandageStages = new Sprite[ObstacleStyle.Stages];
         whiteArt = MakeWhiteTileSprite();
     }
 
@@ -575,7 +577,6 @@ public class BoardView : MonoBehaviour
         return set != null && set.Length > 0 ? Variant(set, x, y) : jellyArt[c % jellyArt.Length];
     }
 
-    Sprite[] bandageStages;
     Sprite whiteArt;              // 아트 타일과 같은 실루엣의 흰 판 (파괴·타격 플래시용)
 
     /// <summary>아트 블록과 같은 방석 실루엣의 흰 판.</summary>
@@ -595,94 +596,6 @@ public class BoardView : MonoBehaviour
         tex.SetPixels(px);
         tex.Apply();
         return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
-    }
-
-    /// <summary>벽돌 위에 얹는 금. 아트 자체는 온전한 그림 한 장이라
-    /// 손상 단계는 이 금으로 보여준다 (0 단계면 아무것도 안 그린다).</summary>
-    void SetBandage(SpriteRenderer ov, int stage)
-    {
-        if (stage <= 0) { ov.enabled = false; return; }
-        if (bandageStages[stage] == null) bandageStages[stage] = MakeBandageSprite(stage);
-        ov.enabled = true;
-        ov.sprite = bandageStages[stage];
-        ov.color = Color.white;
-        ov.transform.localScale = Vector3.one * tileDraw;
-    }
-
-    /// <summary>손상 단계별 금. 단계가 오를수록 굵고 여러 갈래가 된다.</summary>
-    /// <summary>맞을수록 십자 밴드를 하나씩 더 붙인다. 처음 깨지면 하나, 더 깨지면 둘.
-    /// 금이 가는 것보다 이 게임의 말랑한 톤에 맞다. 젤리 블록과 따로 놀지 않게
-    /// 반투명 유백색 + 위쪽 광택으로 같은 재질처럼 보이게 그린다.</summary>
-    static Sprite MakeBandageSprite(int stage)
-    {
-        const int S = 128;
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-        var px = new Color[S * S];
-
-        // (중심x, 중심y, 각도, 긴 쪽 길이) — 십자의 짧은 쪽은 이 길이의 0.62배
-        float[,] cross = {
-            { 0.52f, 0.56f,  16f, 0.60f },
-            { 0.36f, 0.33f, -28f, 0.50f },
-        };
-        int n = stage <= (ObstacleStyle.Stages - 1) / 2 ? 1 : 2;
-        n = Mathf.Clamp(n, 1, cross.GetLength(0));
-
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-            {
-                float nx = (x + 0.5f) / S, ny = (y + 0.5f) / S;
-                float u = nx * 2f - 1f, v = ny * 2f - 1f;
-                if (JellyDist(u, v) > 0.94f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
-
-                Color acc = new Color(0, 0, 0, 0);
-                for (int k = 0; k < n; k++)
-                {
-                    float cx = cross[k, 0], cy = cross[k, 1];
-                    float rad = cross[k, 2] * Mathf.Deg2Rad, len = cross[k, 3];
-                    float dx = nx - cx, dy = ny - cy;
-                    float lx = dx * Mathf.Cos(rad) + dy * Mathf.Sin(rad);
-                    float ly = -dx * Mathf.Sin(rad) + dy * Mathf.Cos(rad);
-
-                    // 십자 — 긴 띠와 짧은 띠를 겹친다. 둘 중 더 안쪽인 쪽으로 음영을 잡는다
-                    var a1 = Strip(lx, ly, len, StripHalf);
-                    var a2 = Strip(ly, lx, len * 0.62f, StripHalf);
-                    float a = Mathf.Max(a1.x, a2.x);
-                    if (a <= 0f) continue;
-                    float across = a1.x >= a2.x ? ly : lx;      // 띠를 가로지르는 좌표 — 광택·그늘용
-
-                    // 젤리처럼: 위쪽은 흰 광택, 아래쪽은 살짝 그늘, 전체는 반투명
-                    float t = Mathf.Clamp01(across / StripHalf * 0.5f + 0.5f);
-                    Color c = Color.Lerp(BandGloss, BandShade, t);
-                    c.a = a * Mathf.Lerp(0.94f, 0.80f, t);
-                    acc = Over(c, acc);
-                }
-                px[y * S + x] = acc;
-            }
-        tex.SetPixels(px);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
-    }
-
-    const float StripHalf = 0.062f;                                   // 띠 두께의 절반
-    static readonly Color BandGloss = new Color(1.00f, 0.99f, 0.96f); // 위쪽 광택
-    static readonly Color BandShade = new Color(0.90f, 0.83f, 0.76f); // 아래쪽 그늘
-
-    /// <summary>끝이 둥근 띠. x 는 커버리지, y 는 안 쓴다 (Vector2 로 묶어 두 번 재지 않게).</summary>
-    static Vector2 Strip(float lx, float ly, float len, float halfW)
-    {
-        float ex = Mathf.Max(Mathf.Abs(lx) - (len * 0.5f - halfW), 0f);
-        float d = Mathf.Sqrt(ex * ex + ly * ly);
-        return new Vector2(Mathf.Clamp01((halfW - d) * 128f * 0.6f), 0f);
-    }
-
-    /// <summary>위에 얹기 — 반창고가 겹칠 때 쓴다.</summary>
-    static Color Over(Color top, Color bottom)
-    {
-        float a = top.a + bottom.a * (1f - top.a);
-        if (a <= 0f) return new Color(0, 0, 0, 0);
-        return new Color((top.r * top.a + bottom.r * bottom.a * (1f - top.a)) / a,
-                         (top.g * top.a + bottom.g * bottom.a * (1f - top.a)) / a,
-                         (top.b * top.a + bottom.b * bottom.a * (1f - top.a)) / a, a);
     }
 
     /// <summary>칸 하나를 그린다. 아이템 아이콘까지 여기서 함께 다룬다 —
@@ -706,12 +619,12 @@ public class BoardView : MonoBehaviour
             // 한 방에 사라지는 것처럼 보인다 — 이 판의 최대 내구도를 기준으로 환산한다.
             int stage = ObstacleStyle.StageFor(hp, obstacleMaxHp);
 
-            if (useArt && brickArt[0] != null)
+            if (crackArt.Length > 0)
             {
-                sr.sprite = Variant(brickArt, x, y);
+                sr.sprite = crackArt[Mathf.Min(stage, crackArt.Length - 1)];
                 sr.color = Color.white;
-                sr.transform.localScale = Vector3.one * tileDraw;
-                SetBandage(ov, stage);
+                sr.transform.localScale = Vector3.one * ObstacleStyle.Scale;
+                ov.enabled = false;
                 return;
             }
 
@@ -816,7 +729,6 @@ public class BoardView : MonoBehaviour
     public Sprite TileSpriteForTest(int x, int y) { return tiles[x, y].sprite; }
 
     /// <summary>벽돌 그림인가 (테스트용).</summary>
-    public bool IsBrickSprite(Sprite sp) { return Has(brickArt, sp); }
 
     static bool Has(Sprite[] set, Sprite sp)
     {

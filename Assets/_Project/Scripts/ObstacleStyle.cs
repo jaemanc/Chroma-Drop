@@ -19,8 +19,9 @@ public static class ObstacleStyle
     // ---- 형태 (스프라이트 한 변에 대한 비율) ----
     public const float Scale = 0.98f;   // 셀 대비 크기. 색 타일보다 꽉 차야 무겁게 보인다
 
-    /// <summary>손상 단계 수. 내구도가 몇이든 이 개수 안으로 눌러서 보여준다.</summary>
-    public const int Stages = 5;
+    /// <summary>손상 단계 수. 내구도가 몇이든 이 개수 안으로 눌러서 보여준다.
+    /// 씬에 연결한 벽돌 그림 장수(3장)와 같다 — 단계 하나가 그림 한 장이다.</summary>
+    public const int Stages = 3;
 
     /// <summary>남은 내구도를 손상 단계(0=온전 … Stages-1=곧 부서짐)로 바꾼다.
     /// 내구도가 2든 5든 한 대 맞을 때마다 겉모습이 반드시 달라져야 한다.</summary>

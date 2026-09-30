@@ -152,27 +152,19 @@ MonoBehaviour:
   seed: 0
   stageLevel: 1
   themes:
-  - Name: Lego
+  - Name: GemSea
     Blocks:
-    - {fileID: 2800000, guid: dc6c809f143224681aafa4a6082266b6, type: 3}
-    - {fileID: 2800000, guid: 46f1ecd2250a841ca8a83b3059933452, type: 3}
-    - {fileID: 2800000, guid: 43416e56bc9d64490892b3dde09f18b3, type: 3}
-    - {fileID: 2800000, guid: f54136d7da36a492eb62307e16da1c54, type: 3}
-    - {fileID: 2800000, guid: 326beeae0ef11456caf34a10c0352f40, type: 3}
-    - {fileID: 2800000, guid: a06f162b2ace540eca4e250b26d42d36, type: 3}
-    - {fileID: 2800000, guid: 2326c90ebcaa24282bcadad050bc163c, type: 3}
-    - {fileID: 2800000, guid: b329bd953860c4585b24c7ef81c416a5, type: 3}
+    - {fileID: 2800000, guid: 303f66d903e9f4240b0c30b7ed97dc6d, type: 3}
+    - {fileID: 2800000, guid: f55570251ee9c4e6c81f0d7fa782eeee, type: 3}
+    - {fileID: 2800000, guid: 490574e56a72c45549084d391a56410f, type: 3}
+    - {fileID: 2800000, guid: 49459b6e8ffe04c4b9a19bc8f2df39d4, type: 3}
     Colors:
-    - {r: 0.9254902, g: 0.227451, b: 0.3019608, a: 1}
-    - {r: 0.945098, g: 0.8039216, b: 0.1803922, a: 1}
-    - {r: 0.2196078, g: 0.6196078, b: 0.9411765, a: 1}
-    - {r: 0.372549, g: 0.7411765, b: 0.2862745, a: 1}
-    - {r: 0.6, g: 0.3568627, b: 0.8470588, a: 1}
-    - {r: 0.945098, g: 0.5686275, b: 0.7019608, a: 1}
-    - {r: 0.9411765, g: 0.5411765, b: 0.1647059, a: 1}
-    - {r: 0.2823529, g: 0.8039216, b: 0.8588235, a: 1}
+    - {r: 0.234, g: 0.566, b: 0.786, a: 1}
+    - {r: 0.473, g: 0.71, b: 0.213, a: 1}
+    - {r: 0.582, g: 0.389, b: 0.777, a: 1}
+    - {r: 0.897, g: 0.687, b: 0.18, a: 1}
     Size: 10
-    BlockScale: 1.1
+    BlockScale: 1
     Board: {fileID: 2800000, guid: bb646a297f1ee4da482365d7354d4dea, type: 3}
     Grid:
       serializedVersion: 2
@@ -180,26 +172,50 @@ MonoBehaviour:
       y: 392
       width: 558
       height: 558
-  - Name: Cats
+  - Name: GemForest
     Blocks:
-    - {fileID: 2800000, guid: 05bde486e7e3b4d76952b079347d255b, type: 3}
-    - {fileID: 2800000, guid: 63e75b841426f4f2598086e570380629, type: 3}
-    - {fileID: 2800000, guid: 927de6c1094ef4165a5ed4828d243ddb, type: 3}
-    - {fileID: 2800000, guid: 42d3704c3f1d04b3fb989ddcf1ab6e2c, type: 3}
+    - {fileID: 2800000, guid: 13af6fd4022dc4614bca9aecd799e10b, type: 3}
+    - {fileID: 2800000, guid: 3752c52a7a30349a9944e8c56abf7f05, type: 3}
+    - {fileID: 2800000, guid: 2f3054c19b8d94b24a9b165ad7432396, type: 3}
+    - {fileID: 2800000, guid: 168f5b7f4b15e47a4ad8b97f79c7f2a6, type: 3}
     Colors:
-    - {r: 0.2313725, g: 0.2156863, b: 0.2039216, a: 1}
-    - {r: 0.6196078, g: 0.5921569, b: 0.5803922, a: 1}
-    - {r: 0.9098039, g: 0.6156863, b: 0.3529412, a: 1}
-    - {r: 0.8980392, g: 0.8745098, b: 0.8627451, a: 1}
-    Size: 8
-    BlockScale: 0.94
-    Board: {fileID: 2800000, guid: 624da77721ed548f4b4557514335d0a1, type: 3}
+    - {r: 0.29, g: 0.686, b: 0.775, a: 1}
+    - {r: 0.255, g: 0.654, b: 0.501, a: 1}
+    - {r: 0.837, g: 0.391, b: 0.574, a: 1}
+    - {r: 0.872, g: 0.645, b: 0.153, a: 1}
+    Size: 10
+    BlockScale: 1
+    Board: {fileID: 2800000, guid: bb646a297f1ee4da482365d7354d4dea, type: 3}
     Grid:
       serializedVersion: 2
-      x: 210
-      y: 465
-      width: 619
-      height: 619
+      x: 232
+      y: 392
+      width: 558
+      height: 558
+  - Name: GemDusk
+    Blocks:
+    - {fileID: 2800000, guid: d665f0f6a32884e638bf5c6cddf98ede, type: 3}
+    - {fileID: 2800000, guid: c2d3bdd70f36449888eff48ab4ea3588, type: 3}
+    - {fileID: 2800000, guid: 746f83eb088c0477da0fc5464f77fcb2, type: 3}
+    - {fileID: 2800000, guid: 655d1effa71854b4ea59a496a9cb5f42, type: 3}
+    Colors:
+    - {r: 0.326, g: 0.578, b: 0.828, a: 1}
+    - {r: 0.862, g: 0.427, b: 0.225, a: 1}
+    - {r: 0.574, g: 0.38, b: 0.763, a: 1}
+    - {r: 0.873, g: 0.649, b: 0.163, a: 1}
+    Size: 10
+    BlockScale: 1
+    Board: {fileID: 2800000, guid: bb646a297f1ee4da482365d7354d4dea, type: 3}
+    Grid:
+      serializedVersion: 2
+      x: 232
+      y: 392
+      width: 558
+      height: 558
+  obstacleBlocks:
+  - {fileID: 2800000, guid: 66a0be2d058e243bba15886cc48f6c98, type: 3}
+  - {fileID: 2800000, guid: eed0ecc4b78ee441f886939f1cde5bdc, type: 3}
+  - {fileID: 2800000, guid: 055563bfaf5104df984882341e737b56, type: 3}
   flags:
   - {fileID: 2800000, guid: b8acde8a720c84904a085ec66e9a7e54, type: 3}
   - {fileID: 2800000, guid: fb2b92a6f9bff46b9ad5e5f02f2799e6, type: 3}

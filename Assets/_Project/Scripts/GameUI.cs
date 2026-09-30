@@ -214,7 +214,12 @@ public class GameUI : MonoBehaviour
         PlaceSlot(boardSlot, g.x, g.y, g.width, g.height);
     }
 
-    /// <summary>화면 비율과 무관하게 아트 전체가 보이도록(contain) 맞춘 자리. 남는 쪽은 여백이 된다.</summary>
+    /// <summary>아트 전체 폭 대비 HUD 카드가 쓰는 폭이 944/1024 이므로, 1.08 배까지는
+    /// 키워도 카드가 화면 밖으로 나가지 않는다. 위아래는 세로 여백이 남아 있어 안 잘린다.</summary>
+    const float PlayZoom = 1.08f;   // 블록이 너무 작아서 판·HUD 를 함께 살짝 키운다
+
+    /// <summary>화면 비율과 무관하게 아트 전체가 보이도록(contain) 맞춘 자리. 남는 쪽은 여백이 된다.
+    /// PlayZoom 만큼은 키워서 보드 칸이 조금 더 커 보이게 한다.</summary>
     static RectTransform ContainRoot(string name, Transform parent)
     {
         var go = new GameObject(name, typeof(RectTransform));
@@ -225,6 +230,7 @@ public class GameUI : MonoBehaviour
         var fit = go.AddComponent<AspectRatioFitter>();
         fit.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
         fit.aspectRatio = PlayW / PlayH;
+        rt.localScale = Vector3.one * PlayZoom;
         return rt;
     }
 
@@ -274,10 +280,10 @@ public class GameUI : MonoBehaviour
         gameEyebrow.overflowMode = TextOverflowModes.Truncate;
 
         // 점수 / 남은 수(시간) — 라벨은 위, 값은 아래. 둘 다 배경 버튼의 자식이다
-        var scoreBg = HudButton("scorecard", gm.hudScore, 40, 186, 460, 134);
+        var scoreBg = HudButton("scorecard", gm.hudScore, 70, 186, 400, 134);
         HudLabel(scoreBg, "scorelabel", Muted, 26, 0.10f, 0.44f, 30).text = "SCORE";
         scoreText = Outlined(HudLabel(scoreBg, "scoreval", ScoreInk, 54, 0.40f, 0.94f, 30));
-        var timeBg = HudButton("timecard", gm.hudMoves, 524, 186, 460, 134);
+        var timeBg = HudButton("timecard", gm.hudMoves, 554, 186, 400, 134);
         subText = HudLabel(timeBg, "timelabel", Muted, 26, 0.10f, 0.44f, 30);
         rightText = Outlined(HudLabel(timeBg, "timeval", TimeInk, 54, 0.40f, 0.94f, 30));
 

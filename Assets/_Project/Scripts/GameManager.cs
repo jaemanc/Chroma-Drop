@@ -33,6 +33,7 @@ public class GameManager : MonoBehaviour
     public BlockTheme[] themes;            // 판 테마. 판마다 이 중 하나를 무작위로 고른다
     public Texture2D[] flags;              // 국기 — 파일 이름이 ISO 3166-1 alpha-3 국가 코드다
     public GameObject popFx;               // 블록이 터질 때 이펙트
+    public Texture2D[] obstacleBlocks;     // 벽돌 블록 — 손상 단계 순서(온전 → 곧 부서짐)로 넣는다
 
     [Header("플레이보드 HUD 버튼 (Game 씬에서 연결)")]
     public Sprite hudPause;      // 일시정지 (원형, 그림에 표시가 들어 있다)
@@ -219,6 +220,7 @@ public class GameManager : MonoBehaviour
     {
         var v = new GameObject("BoardView").AddComponent<BoardView>();
         v.popFx = popFx;
+        v.obstacleBlocks = obstacleBlocks;
         return v;
     }
 
@@ -261,8 +263,11 @@ public class GameManager : MonoBehaviour
 
         int s = seedOverride == 0 ? System.Environment.TickCount : seedOverride;
         curSeed = s;
-        // 블록 테마를 판마다 무작위로 고른다. 판 크기가 테마를 따르므로 판을 만들기 전에 정한다
-        var theme = themes != null && themes.Length > 0 ? themes[new System.Random(s + 2).Next(themes.Length)] : NoArtTheme;
+        // 블록 테마를 스테이지 순서대로 하나씩 돌려 쓴다 (무작위 아님 — 같은 판은 늘 같은 테마).
+        // 판 크기가 테마를 따르므로 판을 만들기 전에 정한다
+        var theme = themes != null && themes.Length > 0
+            ? themes[((stageLevel - 1) % themes.Length + themes.Length) % themes.Length]
+            : NoArtTheme;
         ui.SetTheme(theme);
         if (Board.W != theme.Size || Board.H != theme.Size)
         {
