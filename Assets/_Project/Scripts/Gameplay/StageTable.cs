@@ -173,6 +173,7 @@ public static class StageTable
         if (stages != null) return;
         stages = new List<StageSetting>();
         Difficulty = BaseDifficulty;
+        timeAttack = new StageSetting();
 
         string path = File.Exists(OverridePath) ? OverridePath
                     : File.Exists(BuiltInPath) ? BuiltInPath : null;

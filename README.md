@@ -95,7 +95,7 @@ open Builds/Mac/ChromaDrop.app
 ```bash
 # 코어 규칙 테스트 (Unity 무관)
 MONO="/Applications/Unity/Hub/Editor/6000.5.2f1/Unity.app/Contents/Resources/Scripting/MonoBleedingEdge/bin"
-"$MONO/mcs" Assets/_Project/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mcs" Assets/_Project/Scripts/Core/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
 "$MONO/mono" /tmp/core_tests.exe
 
 # PlayMode 스모크 (에디터가 닫혀 있어야 한다)

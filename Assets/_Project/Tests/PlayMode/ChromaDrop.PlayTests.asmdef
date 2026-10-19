@@ -1,0 +1,5 @@
+{
+    "name": "ChromaDrop.PlayTests",
+    "references": ["ChromaDrop", "UnityEngine.UI", "Unity.TextMeshPro"],
+    "optionalUnityReferences": ["TestAssemblies"]
+}

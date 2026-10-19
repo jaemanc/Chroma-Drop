@@ -63,6 +63,8 @@ public class GameManager : MonoBehaviour
 
     public GamePhase Phase { get; private set; }
     public bool Busy { get { return busy; } }
+    public bool Paused { get; private set; }
+    float pausedAt;
     public int Score { get { return score; } }
     public int MovesLeft { get { return movesLeft; } }
 
@@ -140,7 +142,7 @@ public class GameManager : MonoBehaviour
     float pieceLeftAtFever, taLeftAtFever;   // 피버 동안 멈춰 둔 조각 제한시간·타임어택 남은 시간
 
     public bool FeverOn { get { return feverEnd > 0f; } }
-    public float FeverLeftSec { get { return FeverOn ? Mathf.Max(0f, feverEnd - Time.unscaledTime) : 0f; } }
+    public float FeverLeftSec { get { return FeverOn ? Mathf.Max(0f, feverEnd - (Paused ? pausedAt : Time.unscaledTime)) : 0f; } }
 
     void Awake()
     {
@@ -226,8 +228,31 @@ public class GameManager : MonoBehaviour
 
     // ---------- 화면 전환 ----------
 
+    public void PauseGame()
+    {
+        if (Phase != GamePhase.Playing || Paused) return;
+        Paused = true;
+        pausedAt = Time.unscaledTime;
+        Time.timeScale = 0f;
+        CancelDrag();
+        view.HideAim();
+        view.SetIdle(false);
+        ui.ShowPause(true);
+    }
+
+    public void ResumeGame()
+    {
+        if (!Paused) return;
+        // 피버는 실제 시간으로 재므로 일시정지한 시간만큼 종료를 늦춘다.
+        if (FeverOn) feverEnd += Time.unscaledTime - pausedAt;
+        Paused = false;
+        Time.timeScale = FeverOn ? FeverSpeed : 1f;
+        ui.ShowPause(false);
+    }
+
     public void GoHome()
     {
+        ResumeGame();
         StopAllCoroutines();
         shakeCo = null;
         if (cam != null) cam.transform.position = camBase;
@@ -251,6 +276,8 @@ public class GameManager : MonoBehaviour
 
     public void StartGame(string diff, bool ta, int seedOverride)
     {
+        ResumeGame();
+        CancelAim();
         StopAllCoroutines();
         shakeCo = null;
         if (cam != null) cam.transform.position = camBase;
@@ -428,7 +455,7 @@ public class GameManager : MonoBehaviour
     void Update()
     {
         if (Screen.width != lastW || Screen.height != lastH) FitCamera();
-        if (Phase != GamePhase.Playing) return;
+        if (Phase != GamePhase.Playing || Paused) return;
 
         // 타임어택은 전체 시간이 먼저다. 그 안에서 조각마다 놓을 시간이 따로 있다.
         if (FeverOn && Time.unscaledTime >= feverEnd) EndFever();
@@ -527,7 +554,7 @@ public class GameManager : MonoBehaviour
     /// <summary>상점 아이템을 쓴다. 보유량이 없거나 지금 쓸 수 없으면 false.</summary>
     public bool UseItem(ShopItem it)
     {
-        if (Phase != GamePhase.Playing || busy) return false;
+        if (Phase != GamePhase.Playing || Paused || busy) return false;
         if (Wallet.Count(it) <= 0) return false;
         if (!EnsureSelected()) return false;
 
@@ -690,7 +717,7 @@ public class GameManager : MonoBehaviour
     }
 
     /// <summary>칸들을 색과 상관없이 부수고 무너뜨린다. 무너진 뒤 생긴 매칭은 평소 연쇄로 이어진다 (해머·무지개·피버 공용).</summary>
-    IEnumerator SmashCells(List<Point> cells, bool bigHit)
+    IEnumerator SmashCells(List<Point> cells, bool bigHit, bool instant = false)
     {
         var colors = new List<Color>(cells.Count);
         foreach (var p in cells)
@@ -699,12 +726,12 @@ public class GameManager : MonoBehaviour
             colors.Add(ci >= 0 && ci < palette.Length ? palette[ci] : Color.white);
         }
 
-        var before = Snapshot();
+        var before = instant ? null : Snapshot();
         view.FlashCells(cells, DirectFlash);
         view.Burst(cells, colors, bigHit ? 1.9f : 1.2f, DirectFlash);
         sfx.PlayDestroy(1);
         Shake(bigHit ? 0.42f : 0.24f, 0.18f, true);
-        yield return new WaitForSeconds(destroyFlash);
+        if (!instant) yield return new WaitForSeconds(destroyFlash);
 
         int broke = 0;
         foreach (var p in cells)
@@ -720,14 +747,14 @@ public class GameManager : MonoBehaviour
         board.ApplyGravity();
         board.Refill();
         view.Refresh(board, palette);
-        yield return FallFromSnapshot(before, cells);
+        if (!instant) yield return FallFromSnapshot(before, cells);
 
         // 무너진 뒤 새로 생긴 매칭은 스탬프와 똑같이 연쇄로 처리한다
-        var v2 = Snapshot();
+        var v2 = instant ? null : Snapshot();
         var after = board.Resolve();
         if (after.Destroyed.Count > 0)
         {
-            yield return DestroyWaves(after, v2);
+            if (!instant) yield return DestroyWaves(after, v2);
             score += after.ScoreGained;
             broken += after.TilesDestroyed;
             ClearMarks(after.Destroyed);
@@ -771,7 +798,7 @@ public class GameManager : MonoBehaviour
     /// <summary>트레이에서 조각을 집는다. 지금 블록(0번)만 고를 수 있다.</summary>
     public bool SelectSlot(int i)
     {
-        if (Phase != GamePhase.Playing || busy) return false;
+        if (Phase != GamePhase.Playing || Paused || busy) return false;
         if (i != BoardView.CurrentSlot || tray[i] == null) return false;
         selectedSlot = i;
         current = tray[i];
@@ -795,7 +822,7 @@ public class GameManager : MonoBehaviour
 
     public bool TryStamp(int ax, int ay)
     {
-        if (Phase != GamePhase.Playing || busy || board == null) return false;
+        if (Phase != GamePhase.Playing || Paused || busy || board == null) return false;
         if (!EnsureSelected()) return false;
         if (!board.CanPlace(current, ax, ay)) return false;
         StartCoroutine(DoStamp(ax, ay));
@@ -822,7 +849,8 @@ public class GameManager : MonoBehaviour
 
         // 폭탄 조각은 매칭을 기다리지 않는다 — 심고 그 자리에서 바로 터뜨린다.
         // 피버 중에는 매칭을 기다리지 않는다 — 놓은 조각과 둘레 한 칸을 스탬프 뒤 색과 상관없이 부순다
-        bool fever = FeverOn && !pendingBomb;
+        bool instant = FeverOn;
+        bool fever = instant && !pendingBomb;
         ResolveResult result;
         if (pendingBomb)
         {
@@ -839,21 +867,34 @@ public class GameManager : MonoBehaviour
         if (!taRunning) movesLeft--;
 
         // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
-        yield return view.StampCells(stamped, palette[current.Color], current.Color, stampTime, () =>
+        if (instant)
         {
             sfx.PlayStamp();
             Shake(0.22f, 0.14f, true);
-        });
-        if (fever) yield return SmashCells(FeverCells(stamped), true);
+        }
+        else
+        {
+            yield return view.StampCells(stamped, palette[current.Color], current.Color, stampTime, () =>
+            {
+                sfx.PlayStamp();
+                Shake(0.22f, 0.14f, true);
+            });
+        }
+        // 피버는 판정만 즉시 끝내고 파편 효과를 남긴다. 낙하 연출로 다음 발사를 막지 않는다.
+        if (fever)
+        {
+            var smash = SmashCells(FeverCells(stamped), true, true);
+            while (smash.MoveNext()) { }
+        }
 
         // 2) 파괴 — 연쇄 단계별로 순차 폭발
         if (result.Destroyed.Count > 0)
         {
-            yield return DestroyWaves(result, visual);
+            if (!instant) yield return DestroyWaves(result, visual);
             if (result.MaxChain >= 2 || result.ScoreGained >= 500)
                 ui.ShowChainPopup(result.MaxChain, result.ScoreGained);
             if (result.MaxChain >= FeverChain) StartFever();
-            yield return new WaitForSeconds(destroyFlash);
+            if (!instant) yield return new WaitForSeconds(destroyFlash);
         }
         if (result.Spawns.Count > 0) sfx.PlayItem();
 
@@ -876,11 +917,7 @@ public class GameManager : MonoBehaviour
         }
 
         // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
-        movesUsed++;
-        {
-            int add = stage.ObstaclesAfterMove(movesUsed, totalMoves);
-            if (add > 0 && board.SpawnObstacles(add, stage.ObstacleHp) > 0) sfx.PlayItem();
-        }
+        CompleteMove();
         view.Refresh(board, palette);
 
         AdvanceTray();
@@ -983,12 +1020,20 @@ public class GameManager : MonoBehaviour
         pendingBomb = false;   // 폭탄은 그 조각에만 붙는다. 다음 조각으로 넘어가지 않는다.
         dragging = false;
 
-        movesUsed++;
+        CompleteMove();
+        view.Refresh(board, palette);
         AdvanceTray();
 
         busy = false;
         if (!taRunning && movesLeft <= 0) EndGame();
         else StartPieceTimer();
+    }
+
+    void CompleteMove()
+    {
+        movesUsed++;
+        int add = stage.ObstaclesAfterMove(movesUsed, totalMoves);
+        if (add > 0 && board.SpawnObstacles(add, stage.ObstacleHp) > 0) sfx.PlayItem();
     }
 
     void StartPieceTimer()

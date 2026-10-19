@@ -50,7 +50,7 @@ export NODE_EXTRA_CA_CERTS="$HOME/.certs/ptkroea.pem"   # §6 — 없으면 빌�
 ### 코어 규칙 테스트 (가장 빠름 — 코어를 건드렸으면 필수)
 
 ```bash
-"$MONO/mcs" Assets/_Project/Scripts/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
+"$MONO/mcs" Assets/_Project/Scripts/Core/ColorMatcherCore.cs Tests/CoreTests.cs -out:/tmp/core_tests.exe
 "$MONO/mono" /tmp/core_tests.exe
 ```
 
@@ -310,7 +310,7 @@ python3 Tools/seed-dummy-scores.py <서비스계정키.json> --delete    # 더�
 
 ```bash
 git status
-git add Assets/Editor/MacBuild.cs COMMANDS.md     # 파일을 명시적으로 지정한다
+git add Assets/_Project/Editor/Build.cs COMMANDS.md     # 파일을 명시적으로 지정한다
 git commit -m "메시지"
 ```
 

@@ -22,7 +22,7 @@ public class GameUI : MonoBehaviour
     readonly List<UiButton> buttons = new List<UiButton>();
     readonly Dictionary<UiButton, UiKind> buttonKinds = new Dictionary<UiButton, UiKind>();
 
-    GameObject gamePanel, resultPanel;
+    GameObject gamePanel, resultPanel, pausePanel;
     TMP_Text scoreText, subText, rightText;   // 플레이보드 HUD 는 TextMeshPro
     Text resultTitle, resultScore, resultBest;
     Image resultDim;
@@ -144,6 +144,7 @@ public class GameUI : MonoBehaviour
 
         BuildGamePanel();
         BuildResultPanel();
+        BuildPausePanel();
         BuildRankPanel();
         BuildCountryPanel();
         BuildAdPanel();
@@ -170,6 +171,7 @@ public class GameUI : MonoBehaviour
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
+        pausePanel.SetActive(false);
         if (playArtCanvas != null) playArtCanvas.SetActive(true);
         // 방금 켠 패널의 자리를 바로 잰다 — 안 재면 첫 프레임에 보드가 엉뚱한 곳에 한 번 그려진다
         Canvas.ForceUpdateCanvases();
@@ -267,7 +269,7 @@ public class GameUI : MonoBehaviour
 
         // ---- 상단: 테마 그림의 하늘 자리 ----
         HudButton("pausebtn", gm.hudPause, 40, 44, 120, 120);   // 일시정지 표시는 그림에 들어 있다
-        ArtButton("pause", 40, 44, 120, 120, () => gm.GoHome());
+        ArtButton("pause", 40, 44, 120, 120, () => gm.PauseGame());
 
         // 제목 자리: 스테이지는 목표 문구, 타임어택은 모드 이름.
         // 줄 수가 1~3 으로 달라지는 곳은 여기뿐이라, 자동 축소도 여기만 쓴다
@@ -935,6 +937,29 @@ public class GameUI : MonoBehaviour
     // ---------- 결과 ----------
 
     Text resultCoins;
+
+    void BuildPausePanel()
+    {
+        pausePanel = NewImage("pausedim", transform, new Color(0.106f, 0.129f, 0.255f, 0.65f)).gameObject;
+        Stretch((RectTransform)pausePanel.transform);
+        var card = Card(pausePanel.transform, "pausecard", 0, 0, 330, 230, Cream, 24);
+        var rt = (RectTransform)card.transform.parent;
+        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        var title = NewText("title", card.transform, "PAUSED", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
+        Anchor(title.transform, 0.5f, 1, 0, -24, 286, 40);
+        HookButton(Card(card.transform, "resume", 22, 82, 286, 52, Teal, 18),
+                   () => gm.ResumeGame(), "RESUME", 16);
+        HookButton(Card(card.transform, "pausehome", 22, 150, 286, 52, Color.white, 18),
+                   () => gm.GoHome(), "HOME", 16);
+        pausePanel.SetActive(false);
+    }
+
+    public void ShowPause(bool show)
+    {
+        pausePanel.SetActive(show);
+        if (show) pausePanel.transform.SetAsLastSibling();
+    }
 
     void BuildResultPanel()
     {
