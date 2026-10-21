@@ -29,15 +29,25 @@ public class GameManager : MonoBehaviour
     /// null 이면 메인 화면을 거치지 않고 열린 것이므로 메인 화면으로 돌아간다.</summary>
     public static bool? LaunchTimeAttack;
 
+    /// <summary>메인 화면의 피버 테스트 버튼이 켠다. 판이 시작하자마자 피버가 켜지고,
+    /// 꺼지면 바로 다시 켜진다 — 연쇄를 안 만들고도 피버 연출만 본다. 테스트용.</summary>
+    public static bool LaunchFeverTest;
+
     [Header("아트 (Game 씬에서 연결)")]
     public BlockTheme[] themes;            // 판 테마. 판마다 이 중 하나를 무작위로 고른다
     public Texture2D[] flags;              // 국기 — 파일 이름이 ISO 3166-1 alpha-3 국가 코드다
     public GameObject popFx;               // 블록이 터질 때 이펙트
     public Texture2D[] obstacleBlocks;     // 벽돌 블록 — 손상 단계 순서(온전 → 곧 부서짐)로 넣는다
+    public Texture2D[] arrowRowBlocks;     // 가로 폭탄 화살표 — 색마다 한 장 (파일 이름에서 색을 읽는다)
+    public Texture2D[] arrowColBlocks;     // 세로 폭탄 화살표
+    public Texture2D[] arrowDiagBlocks;    // 대각 폭탄 X
 
     [Header("플레이보드 HUD 버튼 (Game 씬에서 연결)")]
     public Sprite hudPause;      // 일시정지 (원형, 그림에 표시가 들어 있다)
     public Sprite hudTitle;      // 목표 문구 바탕
+    public Font objectiveFont;   // 목표 문구용 Inter SemiBold (씬에서 연결)
+    public Texture2D missionBanner;
+    public Texture2D[] missionWords; // 목표 칸, 피스 제한, 블록 수, 타임어택, 피버, 기본 문구
     public Sprite hudScore;      // 점수
     public Sprite hudMoves;      // 남은 수 / 남은 시간
     public Sprite hudGoal;       // 스테이지·진행도
@@ -110,7 +120,7 @@ public class GameManager : MonoBehaviour
     bool[,] marks;              // 표시된 칸 (좌표 목표). null 이면 이 스테이지엔 없다
     int marksTotal, marksLeft;
     bool cleared;               // 목표를 채웠는가
-    bool busy, taRunning, touchActive;
+    bool busy, taRunning;
     bool aiming;                // 해머·무지개가 쓸 칸을 고르는 중인가
     ShopItem aimItem;
     float pieceDeadline, pieceTimeTotal, taDeadline;
@@ -135,14 +145,18 @@ public class GameManager : MonoBehaviour
     // 한 번에 FeverChain 연쇄 이상을 터뜨리면 FeverSec 초 동안 놓은 조각과 둘레 한 칸이 색과 상관없이 터지고,
     // 모든 연출이 FeverSpeed 배로 빨라진다. 연출을 빠르게 하려고 timeScale 을 올리므로 피버 시간은 실제 초로 잰다.
     // 세 값은 밸런스 미검증 추정치다.
-    const int FeverChain = 5;
+    const int FeverChain = 3;
     const float FeverSec = 3f;
-    const float FeverSpeed = 2f;
+    const float FeverSpeed = 3f;   // 피버 중에는 낙하·파괴 연출이 이 배수만큼 짧아진다
     float feverEnd;                          // 끝나는 실제 시각 (Time.unscaledTime). 0 이면 피버가 아니다
     float pieceLeftAtFever, taLeftAtFever;   // 피버 동안 멈춰 둔 조각 제한시간·타임어택 남은 시간
+    bool feverTest;                          // 테스트 모드: 피버를 계속 켜 둔다
 
     public bool FeverOn { get { return feverEnd > 0f; } }
     public float FeverLeftSec { get { return FeverOn ? Mathf.Max(0f, feverEnd - (Paused ? pausedAt : Time.unscaledTime)) : 0f; } }
+
+    /// <summary>피버 남은 시간의 비율 (1 → 0). 진행바가 이걸 그린다.</summary>
+    public float FeverFrac { get { return FeverOn ? Mathf.Clamp01(FeverLeftSec / FeverSec) : 0f; } }
 
     void Awake()
     {
@@ -174,6 +188,8 @@ public class GameManager : MonoBehaviour
         {
             timeAttack = LaunchTimeAttack.Value;
             LaunchTimeAttack = null;
+            feverTest = LaunchFeverTest;
+            LaunchFeverTest = false;
             StartGame();
         }
         else GoHome();
@@ -223,6 +239,9 @@ public class GameManager : MonoBehaviour
         var v = new GameObject("BoardView").AddComponent<BoardView>();
         v.popFx = popFx;
         v.obstacleBlocks = obstacleBlocks;
+        v.arrowRowBlocks = arrowRowBlocks;
+        v.arrowColBlocks = arrowColBlocks;
+        v.arrowDiagBlocks = arrowDiagBlocks;
         return v;
     }
 
@@ -296,13 +315,13 @@ public class GameManager : MonoBehaviour
             ? themes[((stageLevel - 1) % themes.Length + themes.Length) % themes.Length]
             : NoArtTheme;
         ui.SetTheme(theme);
-        if (Board.W != theme.Size || Board.H != theme.Size)
+        if (Board.W != theme.PlaySize || Board.H != theme.PlaySize)
         {
-            Board.SetSize(theme.Size, theme.Size);
+            Board.SetSize(theme.PlaySize, theme.PlaySize);
             Destroy(view.gameObject);   // 칸 배열이 이전 판 크기로 지어져 있어 새로 짓는다
             view = NewView();
         }
-        view.SetFramePanels(!ui.HasPlayArt);   // 테마 그림이 없으면 코드로 그린 판을 쓴다
+        view.SetFramePanels(true);   // 배경에 그려진 옛 격자는 덮고 실제 칸 수에 맞는 판을 그린다.
         board = new Board(stage.ColorCount, s);
         pieceRng = new System.Random(s + 1);
         palette = Palette.Generate(stage.ColorCount, theme.Colors);
@@ -316,7 +335,6 @@ public class GameManager : MonoBehaviour
         broken = 0;
         cleared = false;
         busy = false;
-        touchActive = false;
 
         pendingBomb = false;
         selectedSlot = -1;
@@ -407,12 +425,14 @@ public class GameManager : MonoBehaviour
         bool newBest = score > best;
         if (newBest) { PlayerPrefs.SetInt(key, score); PlayerPrefs.Save(); best = score; }
 
+        // 코인을 먼저 확정해야 결과 화면에 이번 판 값이 뜬다 (뒤에 두면 직전 판 값이 보인다)
+        earnedCoins = Shop.CoinsFor(score, broken);
+        Wallet.AddCoins(earnedCoins);
+
         if (newBest) sfx.PlayWin(); else sfx.PlayLose();
         ui.ShowResult(taRunning, score, best, newBest, earnedCoins, stageLevel, cleared);
 
         // 순위 등록은 자동으로 하지 않는다 — 광고를 보고 사용자가 직접 올린다.
-        earnedCoins = Rules.CoinsFor(score);
-        Wallet.AddCoins(earnedCoins);
 
         pendingScore = score;
         pendingTa = taRunning;
@@ -442,6 +462,7 @@ public class GameManager : MonoBehaviour
         ui.SetSubmitState(GameUI.SubmitState.Sending);
         StartCoroutine(lb.Submit(pendingTa, Difficulty, pendingScore, pendingSeed, ok =>
         {
+            if (ok) pendingScore = 0;   // 올렸으면 다시 올릴 게 없다 (광고를 또 보게 두지 않는다)
             ui.SetSubmitState(ok ? GameUI.SubmitState.Done : GameUI.SubmitState.Failed);
             if (done != null) done(ok);
         }));
@@ -459,6 +480,7 @@ public class GameManager : MonoBehaviour
 
         // 타임어택은 전체 시간이 먼저다. 그 안에서 조각마다 놓을 시간이 따로 있다.
         if (FeverOn && Time.unscaledTime >= feverEnd) EndFever();
+        if (feverTest && !FeverOn && !busy) StartFever();   // 테스트 모드는 꺼지자마자 다시 켠다
         // 피버 동안은 두 시계를 멈춰 둔다 (EndFever 가 남은 시간을 되돌린다)
         if (taRunning && !busy && !FeverOn && Time.time >= taDeadline) { EndGame(); return; }
         if (!busy && !FeverOn && Time.time >= pieceDeadline)
@@ -851,6 +873,7 @@ public class GameManager : MonoBehaviour
         // 피버 중에는 매칭을 기다리지 않는다 — 놓은 조각과 둘레 한 칸을 스탬프 뒤 색과 상관없이 부순다
         bool instant = FeverOn;
         bool fever = instant && !pendingBomb;
+        List<Point> feverBroken = null;
         ResolveResult result;
         if (pendingBomb)
         {
@@ -869,8 +892,11 @@ public class GameManager : MonoBehaviour
         // 1) 스탬프 — 들어올렸다가 내려찍는다. 소리와 셰이크는 '꽂히는 순간'에 맞춘다.
         if (instant)
         {
-            sfx.PlayStamp();
-            Shake(0.22f, 0.14f, true);
+            view.PlayFeverThrow(stamped, palette[current.Color], current.Color, () =>
+                {
+                    sfx.PlaySlam();
+                    Shake(0.30f, 0.16f, true);
+                });
         }
         else
         {
@@ -883,7 +909,8 @@ public class GameManager : MonoBehaviour
         // 피버는 판정만 즉시 끝내고 파편 효과를 남긴다. 낙하 연출로 다음 발사를 막지 않는다.
         if (fever)
         {
-            var smash = SmashCells(FeverCells(stamped), true, true);
+            feverBroken = FeverCells(stamped);
+            var smash = SmashCells(feverBroken, true, true);
             while (smash.MoveNext()) { }
         }
 
@@ -919,6 +946,7 @@ public class GameManager : MonoBehaviour
         // 3) 콘크리트 추가 — 수가 진행될수록 많아진다. 그 뒤 최종 상태 확정.
         CompleteMove();
         view.Refresh(board, palette);
+        if (feverBroken != null) view.AnimateFeverFall(feverBroken);
 
         AdvanceTray();
         dragging = false;

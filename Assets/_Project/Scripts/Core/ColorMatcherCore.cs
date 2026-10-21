@@ -738,12 +738,6 @@ namespace ColorMatcher.Core
             return (int)t;
         }
 
-        // 1000점당 10코인
-        public const int ScorePerCoin = 100;
-
-        /// <summary>점수를 코인으로 환산한다. 버림.</summary>
-        public static int CoinsFor(int score) { return score <= 0 ? 0 : score / ScorePerCoin; }
-
         public const int ObstacleHp = 2;               // 콘크리트는 2번 금이 가야 부서진다
 
         /// <summary>이번 수가 끝난 뒤 새로 놓을 콘크리트 수. 진행할수록 늘어난다.</summary>

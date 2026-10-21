@@ -20,6 +20,21 @@ public static class Shop
     /// <summary>광고 한 번 보고 받는 코인.</summary>
     public const int AdReward = 50;
 
+    // ---- 판이 끝날 때 주는 코인 ----
+    // 아이템이 60~180, 스킨이 300 코인이다. 한 판에 아이템 하나를 바로 살 만큼 주면
+    // 상점이 의미가 없어지므로 몇 판 모아야 하나를 사는 정도로 잡았다. 미검증 추정치.
+    public const int ScorePerCoin = 400;    // 점수 400 당 1코인
+    public const int BlocksPerCoin = 60;    // 부순 블록 60개당 1코인
+    public const int MaxCoinsPerGame = 40;  // 한 판 상한
+
+    /// <summary>판이 끝날 때 주는 코인. 점수와 부순 블록 수를 함께 본다 (버림, 상한 있음).</summary>
+    public static int CoinsFor(int score, int blocksBroken)
+    {
+        if (score <= 0 && blocksBroken <= 0) return 0;
+        int n = Mathf.Max(0, score) / ScorePerCoin + Mathf.Max(0, blocksBroken) / BlocksPerCoin;
+        return Mathf.Clamp(n, 0, MaxCoinsPerGame);
+    }
+
     public static readonly ShopEntry[] Items =
     {
         new ShopEntry {

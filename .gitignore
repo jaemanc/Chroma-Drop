@@ -60,6 +60,9 @@ compile_check.dll
 keystore.env
 keystore.credentials*
 # 랭킹 서버 설정 (Tools/make-leaderboard-config.sh 로 생성)
+/Assets/Resources/backend-config.json
+/Assets/Resources/backend-config.json.meta
+# 이전 이름의 로컬 설정도 계속 보호한다.
 /Assets/Resources/leaderboard.json
 /Assets/Resources/leaderboard.json.meta
 

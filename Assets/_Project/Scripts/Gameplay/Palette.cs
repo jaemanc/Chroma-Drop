@@ -19,20 +19,6 @@ public static class Palette
 
     static float Lum(Color c) { return 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b; }
 
-    static Color Mute(Color c)
-    {
-        float l = Lum(c);
-        c = Color.Lerp(c, new Color(l, l, l), Desaturate);
-        c = Color.Lerp(c, Color.white, WhiteMix);
-
-        // 명도를 정해진 띠 안으로 밀어 넣는다. 흰/검 쪽으로 섞으므로 색상은 유지된다.
-        l = Lum(c);
-        float target = Mathf.Clamp(l, TileLumMin, TileLumMax);
-        if (target > l && l < 1f) c = Color.Lerp(c, Color.white, (target - l) / (1f - l));
-        else if (target < l && l > 0f) c = Color.Lerp(c, Color.black, (l - target) / l);
-        return c;
-    }
-
     /// <summary>테마 그림이 연결되지 않았을 때 쓰는 네 색 — 초록·파랑·핑크·노랑.</summary>
     public static readonly Color[] NoArtColors = { Hex(0x4FD541), Hex(0x17B8FD), Hex(0xFE62AA), Hex(0xD7B736) };
 

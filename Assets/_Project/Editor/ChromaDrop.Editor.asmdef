@@ -1,7 +1,7 @@
 {
     "name": "ChromaDrop.Editor",
     "rootNamespace": "",
-    "references": [],
+    "references": ["ChromaDrop"],
     "includePlatforms": [
         "Editor"
     ],

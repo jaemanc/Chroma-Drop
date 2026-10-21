@@ -1,0 +1,9 @@
+{
+  "name": "chromadrop-payments",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test fulfill-purchase.test.mjs",
+    "test:emulator": "firebase emulators:exec --only firestore --project demo-chromadrop-payments 'node --test emulator.test.mjs'"
+  }
+}

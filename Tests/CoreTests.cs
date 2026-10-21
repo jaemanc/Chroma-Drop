@@ -154,12 +154,6 @@ class CoreTests
         for (int m = totalMv; m >= 1; m--) { int t = Rules.PieceTimeMs(m, totalMv); if (t > prev) mono = false; prev = t; }
         Assert(mono, "타이머 단조 감소");
 
-        // 코인 환산
-        Assert(Rules.CoinsFor(1000) == 10, "1000점 = 10코인");
-        Assert(Rules.CoinsFor(0) == 0 && Rules.CoinsFor(-5) == 0, "0점 이하는 0코인");
-        Assert(Rules.CoinsFor(99) == 0 && Rules.CoinsFor(100) == 1, "100점 미만은 버린다");
-        Assert(Rules.CoinsFor(4045) == 40, "4045점 = 40코인 (버림)");
-
         PreviewTests();
         InitialDistributionTest();
         ObstacleTests();

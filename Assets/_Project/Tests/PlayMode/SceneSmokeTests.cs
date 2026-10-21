@@ -20,6 +20,52 @@ public class SceneSmokeTests
     }
 
     [UnityTest]
+    public IEnumerator ClassicButtonStartsPlayableBoard()
+    {
+        yield return Launch("Btn_Classic", false);
+    }
+
+    [Test]
+    public void TypographyUsesBundledRoleFontsAndKoreanFallback()
+    {
+        Assert.That(UiTypography.FontFor(UiFontRole.Title).name, Is.EqualTo("Fredoka-Bold"));
+        Assert.That(UiTypography.FontFor(UiFontRole.Menu).name, Is.EqualTo("Nunito-ExtraBold"));
+        Assert.That(UiTypography.FontFor(UiFontRole.Body).name, Is.EqualTo("Pretendard-Regular"));
+        Assert.That(UiTypography.FontFor(UiFontRole.Numbers).name, Is.EqualTo("Fredoka-SemiBold"));
+        Assert.That(UiTypography.FontFor(UiFontRole.Effects).name, Is.EqualTo("Baloo2-ExtraBold"));
+        Assert.That(UiTypography.FontFor(UiFontRole.KoreanAccent).name, Is.EqualTo("Jua-Regular"));
+        Assert.That(UiTypography.Assets.pausePanel, Is.Not.Null);
+        foreach (UiFontRole role in System.Enum.GetValues(typeof(UiFontRole)))
+        {
+            var font = UiTypography.TmpFor(role);
+            Assert.That(font.sourceFontFile, Is.SameAs(UiTypography.FontFor(role)));
+            if (role != UiFontRole.Body)
+                Assert.That(font.fallbackFontAssetTable, Does.Contain(UiTypography.TmpFor(UiFontRole.Body)));
+        }
+        Object.DestroyImmediate(UiTypography.TmpFor(UiFontRole.Body));
+        Assert.That(UiTypography.TmpFor(UiFontRole.Menu).fallbackFontAssetTable,
+            Does.Contain(UiTypography.TmpFor(UiFontRole.Body)));
+        var label = new GameObject("FontProbe").AddComponent<Text>();
+        try
+        {
+            label.text = "RESUME";
+            UiTypography.Apply(label, UiFontRole.Menu);
+            Assert.That(label.font, Is.SameAs(UiTypography.FontFor(UiFontRole.Menu)));
+            Assert.That(label.fontStyle, Is.EqualTo(FontStyle.Normal));
+            label.text = "설정";
+            UiTypography.Apply(label, UiFontRole.Menu);
+            Assert.That(label.font, Is.SameAs(UiTypography.FontFor(UiFontRole.KoreanAccent)));
+        }
+        finally { Object.DestroyImmediate(label.gameObject); }
+    }
+
+    [UnityTest]
+    public IEnumerator RushButtonStartsTimedBoard()
+    {
+        yield return Launch("Btn_Rush", true);
+    }
+
+    [UnityTest]
     public IEnumerator FeverAcceptsRepeatedStampsWithoutWaitingForAnimations()
     {
         GameManager.LaunchTimeAttack = true;
@@ -55,6 +101,18 @@ public class SceneSmokeTests
         var ui = Object.FindAnyObjectByType<GameUI>();
         var pause = ui.GetComponentsInChildren<Button>().Single(b => b.name == "pause");
         pause.onClick.Invoke();
+        Canvas.ForceUpdateCanvases();
+        var card = (RectTransform)ui.transform.Find("pausedim/pausesafe/pausecard/fill");
+        foreach (var name in new[] { "resume", "pausehome" })
+        {
+            var button = (RectTransform)card.Find(name);
+            var corners = new Vector3[4];
+            button.GetWorldCorners(corners);
+            foreach (var corner in corners)
+                Assert.That(card.rect.Contains(card.InverseTransformPoint(corner)), Is.True, name + "이 카드 밖으로 벗어남");
+            Assert.That(card.InverseTransformPoint(button.TransformPoint(button.rect.center)).x,
+                Is.EqualTo(card.rect.center.x).Within(0.01f));
+        }
         float timeLeft = game.TimeLeftSec;
         float pieceLeft = game.PieceTimerFrac;
         yield return new WaitForSecondsRealtime(0.08f);
@@ -69,14 +127,13 @@ public class SceneSmokeTests
         Assert.That(Time.timeScale, Is.EqualTo(1f));
 
         typeof(GameManager).GetMethod("StartFever", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(game, null);
-        float feverScale = Time.timeScale;
         pause.onClick.Invoke();
         float feverLeft = game.FeverLeftSec;
         yield return new WaitForSecondsRealtime(0.08f);
         game.ResumeGame();
         Assert.That(game.FeverOn, Is.True);
         Assert.That(game.FeverLeftSec, Is.EqualTo(feverLeft).Within(0.04f));
-        Assert.That(Time.timeScale, Is.EqualTo(feverScale));
+        Assert.That(Time.timeScale, Is.EqualTo(3f));
         game.PauseGame();
         ui.GetComponentsInChildren<Button>().Single(b => b.name == "pausehome").onClick.Invoke();
         yield return null;
@@ -120,12 +177,55 @@ public class SceneSmokeTests
         }
     }
 
+    static IEnumerator Launch(string buttonName, bool timeAttack)
+    {
+        yield return SceneManager.LoadSceneAsync("Menu");
+        yield return null;
+        var button = Object.FindObjectsByType<Button>()
+            .Single(b => b.name == buttonName);
+        button.onClick.Invoke();
+        yield return null;
+        yield return null;
+        var game = Object.FindAnyObjectByType<GameManager>();
+        Assert.That(game, Is.Not.Null);
+        Assert.That(game.Phase, Is.EqualTo(GamePhase.Playing));
+        Assert.That(game.TimeAttackMode, Is.EqualTo(timeAttack));
+        Assert.That(game.BoardRef, Is.Not.Null);
+        var theme = game.themes[0];
+        Assert.That(ColorMatcher.Core.Board.W, Is.EqualTo(theme.Size + 1));
+        Assert.That(ColorMatcher.Core.Board.H, Is.EqualTo(theme.Size + 1));
+        var ui = Object.FindAnyObjectByType<GameUI>();
+        Canvas.ForceUpdateCanvases();
+        Rect boardRect;
+        Assert.That(ui.BoardSlotRect(out boardRect), Is.True);
+        var slot = GameObject.Find("boardslot").GetComponent<RectTransform>();
+        // 슬롯은 부모 아트의 비율로 배치된다. 화면 배율과 무관하게 원본 대비 크기를 검사한다.
+        Assert.That(slot.anchorMax.x - slot.anchorMin.x,
+            Is.EqualTo(theme.Grid.width * 1.10f / 1024f).Within(0.00001f));
+        Assert.That(slot.anchorMax.y - slot.anchorMin.y,
+            Is.EqualTo(theme.Grid.height * 1.10f / 1536f).Within(0.00001f));
+        var tile = GameObject.Find("t_0_0");
+        // 숨쉬기 애니메이션을 기본 자세로 돌린 같은 프레임에서 표시 크기를 검사한다.
+        Object.FindAnyObjectByType<BoardView>().SetIdle(false);
+        Assert.That(tile.transform.localScale.x, Is.EqualTo(theme.BlockScale * (theme.Size + 1f) / theme.Size).Within(0.001f));
+        var timer = GameObject.Find("timerbar").GetComponent<RectTransform>();
+        Assert.That(timer.anchorMin.y - slot.anchorMax.y, Is.GreaterThan(0.02f));
+        Assert.That(game.objectiveFont, Is.Not.Null);
+        Assert.That(game.missionWords, Has.Length.EqualTo(6));
+        Assert.That(Object.FindAnyObjectByType<MissionBanner>(), Is.Not.Null);
+        Assert.That(game.CurrentPiece, Is.Not.Null);
+        Assert.That(game.MovesLeft, Is.GreaterThan(0));
+        if (timeAttack) Assert.That(game.TimeLeftSec, Is.GreaterThan(0));
+        LogAssert.NoUnexpectedReceived();
+    }
+
     [UnityTearDown]
     public IEnumerator Cleanup()
     {
         yield return SceneManager.LoadSceneAsync("Menu");
         if (Leaderboard.I != null) Object.Destroy(Leaderboard.I.gameObject);
         GameManager.LaunchTimeAttack = null;
+        GameManager.LaunchFeverTest = false;
         yield return null;
     }
 }

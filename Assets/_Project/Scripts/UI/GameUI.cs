@@ -17,7 +17,8 @@ public class GameUI : MonoBehaviour
     static readonly Color Accent = new Color(0.28f, 0.72f, 0.52f);
 
     GameManager gm;
-    Font font;
+    TMP_FontAsset objectiveFont;
+    MissionBanner missionBanner;
     Sprite roundBig, roundSmall;                                   // 버튼 9슬라이스
     readonly List<UiButton> buttons = new List<UiButton>();
     readonly Dictionary<UiButton, UiKind> buttonKinds = new Dictionary<UiButton, UiKind>();
@@ -40,7 +41,6 @@ public class GameUI : MonoBehaviour
     Coroutine feverCo;
     bool feverOn;
     Image timerFill;
-    GameObject timerBar;      // 타임어택=남은 시간 / 횟수 모드=조각 제한시간
 
     // 랭킹
     public enum SubmitState { Off, Pending, Sending, Done, Failed }
@@ -59,7 +59,8 @@ public class GameUI : MonoBehaviour
     Text myRowLabel;
     Button adBtn;
     Text adBtnLabel;
-    GameObject adPanel, shopPanel;
+    GameObject adPanel, shopPanel, coinPanel;
+    Text coinPanelNote;
     Text shopCoins;
     Image[] shopBuyFill;
     Text[] shopBuyLabel, shopOwned;
@@ -86,8 +87,6 @@ public class GameUI : MonoBehaviour
     GameObject playArtCanvas;
     RectTransform rankBtn, nextBtn, retryBtn, homeBtn;
     bool rankAllowed;   // 결과 화면에서 리더보드를 열어도 되는가 — 스테이지를 깼으면 열지 않는다
-    readonly List<Image> nextCells = new List<Image>();
-    readonly List<Image> holdCells = new List<Image>();
 
     public static GameUI Create(GameManager gm)
     {
@@ -98,32 +97,8 @@ public class GameUI : MonoBehaviour
         return ui;
     }
 
-    void LoadFont()
-    {
-        // 캐주얼 퍼즐에 어울리는 둥근/기하 계열을 먼저 찾는다.
-        // 기본 내장 폰트(LegacyRuntime)는 사무용 산세리프라 게임에 안 어울린다.
-        string[] prefer = {
-            "Arial Rounded MT Bold", "Trebuchet MS",                  // example.html 과 같은 순서
-            "SF Pro Rounded", "SFProRounded", "SF Compact Rounded",   // iOS/macOS
-            "Avenir Next", "AvenirNext-DemiBold", "Avenir",
-            "Nunito", "Poppins", "Quicksand",                         // 있으면 더 좋다
-            "SF Pro Display", "Helvetica Neue",
-            "Noto Sans", "Roboto", "Droid Sans"                       // Android 폴백
-        };
-        var installed = new HashSet<string>(Font.GetOSInstalledFontNames() ?? new string[0]);
-        foreach (var n in prefer)
-            if (installed.Contains(n))
-            {
-                font = Font.CreateDynamicFontFromOSFont(n, 64);
-                if (font != null) break;
-            }
-        if (font == null) font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-    }
-
     void Build()
     {
-        LoadFont();
-
         var canvas = gameObject.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         var scaler = gameObject.AddComponent<CanvasScaler>();
@@ -149,6 +124,7 @@ public class GameUI : MonoBehaviour
         BuildCountryPanel();
         BuildAdPanel();
         BuildShopPanel();
+        BuildCoinPanel();
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
@@ -171,6 +147,7 @@ public class GameUI : MonoBehaviour
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
+        coinPanel.SetActive(false);
         pausePanel.SetActive(false);
         if (playArtCanvas != null) playArtCanvas.SetActive(true);
         // 방금 켠 패널의 자리를 바로 잰다 — 안 재면 첫 프레임에 보드가 엉뚱한 곳에 한 번 그려진다
@@ -180,23 +157,18 @@ public class GameUI : MonoBehaviour
     void OnDestroy()
     {
         if (playArtCanvas != null) Destroy(playArtCanvas);
+        if (objectiveFont != null) Destroy(objectiveFont);
     }
 
     // ---------- 게임 HUD (chroma-drop.html) ----------
-    static readonly Color Lilac     = Palette.Hex(0x9B8FE0);
-    static readonly Color StatLabel = Palette.Hex(0x5F6A90);
-    static readonly Color MintInk   = Palette.Hex(0x2B5148);
-    static readonly Color Mint      = Palette.Hex(0x8FD6C4);
-    static readonly Color ScoreFill   = Palette.Hex(0xFFF5B8);
-    static readonly Color ScoreBorder = Palette.Hex(0xE4BD52);
-    static readonly Color MovesFill   = Palette.Hex(0x42DC91);
-    static readonly Color MovesBorder = Palette.Hex(0x2DBB7C);
 
     static readonly Color TimeInk   = Palette.Hex(0x1A4430);   // 시간 카드 글자 (아트의 진초록)
     static readonly Color ScoreInk  = Palette.Hex(0x3C2D23);   // 점수 카드 글자 (아트의 진갈색)
     static readonly Color BarOrange = Palette.Hex(0xECA175);   // 진행바 채움 (아트에서 뽑음)
+    static readonly Color FeverBar  = Palette.Hex(0xFF4A22);   // 피버 남은 시간 (붉게)
     static readonly Color GoalInk   = Palette.Hex(0x7A4E2A);   // GOAL 팻말 글자
-    static readonly Color TitleInk  = Palette.Hex(0x2F6FD6);   // 스테이지 목표 문구 (제목 자리)
+    static readonly Color TitleInk  = Palette.Hex(0xF4F1FF);   // 밤하늘 카드 위의 밝은 목표 문구
+    const float BoardDrop = 125f;
 
     Image playArtImage;
 
@@ -213,7 +185,17 @@ public class GameUI : MonoBehaviour
         playArtImage.sprite = tex != null ? Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f) : null;
         playArtImage.enabled = tex != null;
         var g = tex != null ? theme.Grid : DefaultGrid;
+        var size = g.size * BlockTheme.BoardZoom;
+        g = new Rect(g.center - size * 0.5f, size);
+        g.y += BoardDrop;
         PlaceSlot(boardSlot, g.x, g.y, g.width, g.height);
+        // 배경에 그려진 판도 함께 이동한다. 하늘 여백은 확대해 빈 가장자리를 막는다.
+        const float backgroundZoom = 1.14f;
+        var art = playArtImage.rectTransform;
+        art.localScale = Vector3.one * backgroundZoom;
+        float down = BoardDrop + ((tex != null ? theme.Grid.center.y : DefaultGrid.center.y) - PlayH * 0.5f) * (1f - backgroundZoom);
+        art.anchorMin = new Vector2(0, -down / PlayH);
+        art.anchorMax = new Vector2(1, 1f - down / PlayH);
     }
 
     /// <summary>아트 전체 폭 대비 HUD 카드가 쓰는 폭이 944/1024 이므로, 1.08 배까지는
@@ -254,6 +236,9 @@ public class GameUI : MonoBehaviour
         var artSafe = NewRT("safe", playArtCanvas.transform);
         Stretch(artSafe);
         artSafe.gameObject.AddComponent<SafeAreaFitter>();
+        var sky = NewImage("sky", artSafe, Palette.Hex(0x101C58));
+        sky.raycastTarget = false;
+        Stretch(sky.rectTransform);
         playArtImage = NewImage("art", ContainRoot("fit", artSafe), Color.white);
         playArtImage.raycastTarget = false;
         playArtImage.enabled = false;
@@ -265,34 +250,46 @@ public class GameUI : MonoBehaviour
 
         playRoot = ContainRoot("playroot", safe);
         curRoot = playRoot; curW = PlayW; curH = PlayH;
-        var clear = new Color(0, 0, 0, 0);
 
         // ---- 상단: 테마 그림의 하늘 자리 ----
         HudButton("pausebtn", gm.hudPause, 40, 44, 120, 120);   // 일시정지 표시는 그림에 들어 있다
         ArtButton("pause", 40, 44, 120, 120, () => gm.PauseGame());
 
-        // 제목 자리: 스테이지는 목표 문구, 타임어택은 모드 이름.
-        // 줄 수가 1~3 으로 달라지는 곳은 여기뿐이라, 자동 축소도 여기만 쓴다
-        var titleBg = HudButton("eyebrowcard", gm.hudTitle, 180, 26, 814, 156);
-        gameEyebrow = HudLabel(titleBg, "eyebrow", TitleInk, 58, 0.12f, 0.88f, 60);
+        // 목표는 작은 분류 라벨과 본문으로 나눠 읽는다. 복수 조건만 여러 줄로 배치한다.
+        var titleBg = HudCard("eyebrowcard", 190, 44, 784, 138);
+        titleBg.color = new Color(0.075f, 0.09f, 0.22f, 0.88f);
+        objectiveFont = UiTypography.TmpFor(UiFontRole.Body);
+        var kicker = HudLabel(titleBg, "objectivecaption", new Color(0.73f, 0.76f, 0.96f), 16, 0.13f, 0.34f, 28);
+        kicker.text = "CHROMA DROP  /  CHALLENGE";
+        kicker.characterSpacing = 3f;
+        gameEyebrow = HudLabel(titleBg, "eyebrow", TitleInk, 42, 0.36f, 0.88f, 28);
+        gameEyebrow.font = objectiveFont;
+        gameEyebrow.fontStyle = FontStyles.Normal;
+        kicker.fontStyle = FontStyles.Normal;
         gameEyebrow.enableAutoSizing = true;
-        gameEyebrow.fontSizeMin = 24;
-        gameEyebrow.fontSizeMax = 58;
+        gameEyebrow.fontSizeMin = 20;
+        gameEyebrow.fontSizeMax = 42;
         gameEyebrow.textWrappingMode = TextWrappingModes.Normal;
         gameEyebrow.overflowMode = TextOverflowModes.Truncate;
 
+        if (gm.missionBanner != null)
+        {
+            titleBg.gameObject.SetActive(false);
+            missionBanner = ArtSlot("missionbanner", 170, -24, 814, 325.6f).gameObject.AddComponent<MissionBanner>();
+            missionBanner.Build(gm.missionBanner);
+        }
+
         // 점수 / 남은 수(시간) — 라벨은 위, 값은 아래. 둘 다 배경 버튼의 자식이다
-        var scoreBg = HudButton("scorecard", gm.hudScore, 70, 186, 400, 134);
+        var scoreBg = HudButton("scorecard", gm.hudScore, 70, 282, 400, 110);
         HudLabel(scoreBg, "scorelabel", Muted, 26, 0.10f, 0.44f, 30).text = "SCORE";
-        scoreText = Outlined(HudLabel(scoreBg, "scoreval", ScoreInk, 54, 0.40f, 0.94f, 30));
-        var timeBg = HudButton("timecard", gm.hudMoves, 554, 186, 400, 134);
+        scoreText = Outlined(HudLabel(scoreBg, "scoreval", ScoreInk, 54, 0.40f, 0.94f, 30, UiFontRole.Numbers));
+        var timeBg = HudButton("timecard", gm.hudMoves, 554, 282, 400, 110);
         subText = HudLabel(timeBg, "timelabel", Muted, 26, 0.10f, 0.44f, 30);
-        rightText = Outlined(HudLabel(timeBg, "timeval", TimeInk, 54, 0.40f, 0.94f, 30));
+        rightText = Outlined(HudLabel(timeBg, "timeval", TimeInk, 54, 0.40f, 0.94f, 30, UiFontRole.Numbers));
 
         // 진행바 — 이 조각을 놓을 남은 시간
-        HudCard("timertrack", 40, 330, 944, 24).color = new Color(1, 1, 1, 0.45f);
-        var bar = ArtSlot("timerbar", 40, 330, 944, 24);
-        timerBar = bar.gameObject;
+        HudCard("timertrack", 144, 414, 736, 14).color = new Color(1, 1, 1, 0.30f);
+        var bar = ArtSlot("timerbar", 144, 414, 736, 14);
         timerFill = NewImage("fill", bar, BarOrange);
         timerFill.sprite = UiTheme.RoundedSprite(10); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
         Stretch(timerFill.rectTransform);
@@ -300,7 +297,7 @@ public class GameUI : MonoBehaviour
 
         // ---- 보드 / 트레이 자리 (그리는 건 월드 쪽, 여기선 자리만 잰다). 보드 자리는 SetTheme 이 격자에 맞춘다 ----
         boardSlot = ArtSlot("boardslot", DefaultGrid.x, DefaultGrid.y, DefaultGrid.width, DefaultGrid.height);
-        traySlot = ArtSlot("trayslot", 624, 1275, 360, 200);
+        traySlot = ArtSlot("trayslot", 624, 1310, 360, 180);
 
         // ---- 아이템 4종: 판 아래 ----
         int ni = Shop.Items.Length;
@@ -310,20 +307,20 @@ public class GameUI : MonoBehaviour
         {
             var e = Shop.Items[i];
             float px = 40f + i * 244.3f;
-            var itemBg = HudButton("itemcard" + i, gm.hudItems != null && i < gm.hudItems.Length ? gm.hudItems[i] : null, px, 1118, 211, 134);
-            var btn = ArtButton("item" + i, px, 1118, 211, 134, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
+            var itemBg = HudButton("itemcard" + i, gm.hudItems != null && i < gm.hudItems.Length ? gm.hudItems[i] : null, px, 1150, 211, 134);
+            var btn = ArtButton("item" + i, px, 1150, 211, 134, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
             // 못 쓰는 상태면 흰 반투명 판으로 흐리게
             var dim = NewImage("dim", btn, new Color(1, 1, 1, 0));
             dim.sprite = UiTheme.RoundedSprite(40); dim.type = Image.Type.Sliced; dim.raycastTarget = false;
             Stretch(dim.rectTransform);
             itemBtnFill[i] = dim;
             HudLabel(itemBg, "itemname" + i, Ink, 26, 0.08f, 0.46f, 14).text = e.Name;
-            itemBtnLabel[i] = Outlined(HudLabel(itemBg, "itemcnt" + i, Ink, 44, 0.42f, 0.94f, 14));
+            itemBtnLabel[i] = Outlined(HudLabel(itemBg, "itemcnt" + i, Ink, 44, 0.42f, 0.94f, 14, UiFontRole.Numbers));
         }
 
         // ---- GOAL 카드 ----
-        var goalBg = HudButton("goalcard", gm.hudGoal, 40, 1268, 560, 124);
-        goalSub = Outlined(HudLabel(goalBg, "goalsub", GoalInk, 30, 0.14f, 0.86f, 40));
+        var goalBg = HudButton("goalcard", gm.hudGoal, 40, 1316, 560, 124);
+        goalSub = Outlined(HudLabel(goalBg, "goalsub", GoalInk, 30, 0.14f, 0.86f, 40, UiFontRole.Numbers));
 
         // 연쇄 팝업 — 위에서 쾅 떨어지는 두 줄 글자에 반짝이가 사방으로 퍼진다
         chainRoot = NewRT("chainpop", safe);
@@ -338,8 +335,8 @@ public class GameUI : MonoBehaviour
             sp.rectTransform.sizeDelta = new Vector2(150, 150);
             chainSparks[i] = sp;
         }
-        chainTop = ChainText("chaintop", 150, new Color(0.62f, 0.76f, 1f), new Color(0.16f, 0.24f, 0.72f), 120);
-        chainBig = ChainText("chainbig", 230, new Color(1f, 0.90f, 0.45f), new Color(0.88f, 0.28f, 0.10f), -96);
+        chainTop = ChainText("chaintop", 150, new Color(0.62f, 0.76f, 1f), new Color(0.16f, 0.24f, 0.72f), 120, UiFontRole.Effects);
+        chainBig = ChainText("chainbig", 230, new Color(1f, 0.90f, 0.45f), new Color(0.88f, 0.28f, 0.10f), -96, UiFontRole.Effects);
         // 숫자는 알록달록한 판 위에 그냥 얹힌다 — 글자 그림과 같은 짙은 테두리와 그림자가 있어야 읽힌다
         chainBig.outlineColor = new Color32(16, 23, 63, 255);
         // 테두리와 그림자를 더 키우면 SDF 여백을 넘겨 글자가 덩어리로 뭉갠다. 여기까지가 한계다.
@@ -363,7 +360,7 @@ public class GameUI : MonoBehaviour
         chainWord.enabled = false;
         chainRoot.gameObject.SetActive(false);
 
-        feverPopup = NewText("feverpop", safe, "FEVER TIME!", 150, TextAnchor.MiddleCenter, new Color(1f, 0.32f, 0.18f));
+        feverPopup = NewText("feverpop", safe, "FEVER TIME!", 150, TextAnchor.MiddleCenter, new Color(1f, 0.32f, 0.18f), UiFontRole.Effects);
         Place(feverPopup.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1000, 220));
         var feverOutline = feverPopup.gameObject.AddComponent<Outline>();
         feverOutline.effectColor = Color.white;
@@ -386,7 +383,7 @@ public class GameUI : MonoBehaviour
     /// <summary>버튼 그림 안에 얹는 HUD 글자. 배경의 자식이라 배경만 옮기면 글자가 따라온다.
     /// top·bottom 은 배경 높이에서 차지할 구간(0 = 위, 1 = 아래), pad 는 좌우 여백(둥근 끝을 피한다).
     /// 값이 바뀔 때 크기가 흔들리지 않게 글자 크기는 고정한다.</summary>
-    TMP_Text HudLabel(Image bg, string name, Color ink, float size, float top, float bottom, float pad)
+    TMP_Text HudLabel(Image bg, string name, Color ink, float size, float top, float bottom, float pad, UiFontRole role = UiFontRole.Menu)
     {
         var rt = NewRT(name, bg.transform);
         rt.anchorMin = new Vector2(0, 1f - bottom);
@@ -397,7 +394,7 @@ public class GameUI : MonoBehaviour
         var t = rt.gameObject.AddComponent<TextMeshProUGUI>();
         t.fontSize = size;
         t.enableAutoSizing = false;
-        t.fontStyle = FontStyles.Bold;
+        UiTypography.Apply(t, role);
         t.alignment = TextAlignmentOptions.Center;
         t.color = ink;
         t.raycastTarget = false;
@@ -414,7 +411,7 @@ public class GameUI : MonoBehaviour
     }
 
     /// <summary>연쇄 팝업 글자 — 위아래 그라디언트에 두꺼운 테두리. 배경 없이 글자만으로 읽혀야 한다.</summary>
-    TMP_Text ChainText(string name, float size, Color top, Color bottom, float y)
+    TMP_Text ChainText(string name, float size, Color top, Color bottom, float y, UiFontRole role)
     {
         var rt = NewRT(name, chainRoot);
         rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
@@ -423,27 +420,12 @@ public class GameUI : MonoBehaviour
 
         var t = rt.gameObject.AddComponent<TextMeshProUGUI>();
         t.fontSize = size;
-        t.fontStyle = FontStyles.Bold | FontStyles.Italic;
+        UiTypography.Apply(t, role);
         t.alignment = TextAlignmentOptions.Center;
         t.enableVertexGradient = true;
         t.colorGradient = new VertexGradient(top, top, bottom, bottom);
         t.outlineColor = new Color32(255, 255, 255, 255);
         t.outlineWidth = 0.28f;
-        t.raycastTarget = false;
-        return t;
-    }
-
-    /// <summary>HUD 글자 (TextMeshPro). 칸을 넘치면 스스로 작아진다.</summary>
-    TMP_Text HudText(string name, float x, float y, float w, float h, Color ink, float maxSize)
-    {
-        var t = ArtSlot(name, x, y, w, h).gameObject.AddComponent<TextMeshProUGUI>();
-        t.fontSize = maxSize;
-        t.enableAutoSizing = true;
-        t.fontSizeMin = 8;
-        t.fontSizeMax = maxSize;
-        t.fontStyle = FontStyles.Bold;
-        t.alignment = TextAlignmentOptions.Center;
-        t.color = ink;
         t.raycastTarget = false;
         return t;
     }
@@ -498,65 +480,13 @@ public class GameUI : MonoBehaviour
         b.onClick.AddListener(onClick);
         outer.AddComponent<UiPressImage>().target = (RectTransform)outer.transform;
 
-        var t = NewText("l", cardFill.transform, text, Mathf.RoundToInt(size * PS), TextAnchor.MiddleCenter, Ink);
-        t.fontStyle = FontStyle.Bold;
+        var t = NewText("l", cardFill.transform, text, Mathf.RoundToInt(size * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Menu);
         Stretch(t.rectTransform);
-    }
-
-    /// <summary>Card 에 아래 두께(lip)를 붙인 입체 버튼 — 홈 화면 시작 버튼과 같은 구조다.
-    /// 평소엔 두께가 드러나 보이고 누르면 face 가 그 속으로 가라앉는다.
-    /// 반환한 fill 이미지는 HookButton 에 그대로 넘길 수 있다 (2단 구조라 부모가 하나 더 있을 뿐).</summary>
-    Image LipCard(Transform parent, string name, float x, float y, float w, float h,
-                  Color fill, Color lipColor, float radius, float lipPx, Color? borderColor = null)
-    {
-        var root = NewRT(name, parent);
-        Place(root, Top, Top, new Vector2(0, 1), P(x, y), Sz(w, h));
-
-        var lip = NewImage("lip", root, lipColor);
-        lip.sprite = Rounded(radius); lip.type = Image.Type.Sliced; lip.raycastTarget = false;
-        var lrt = lip.rectTransform;
-        lrt.anchorMin = Vector2.zero; lrt.anchorMax = Vector2.one;
-        lrt.offsetMin = new Vector2(0, -lipPx * PS); lrt.offsetMax = Vector2.zero;
-
-        var faceRt = NewRT("face", root);
-        faceRt.anchorMin = Vector2.zero; faceRt.anchorMax = Vector2.one;
-        faceRt.offsetMin = faceRt.offsetMax = Vector2.zero;
-        var faceOuter = faceRt.gameObject.AddComponent<Image>();
-        faceOuter.sprite = Rounded(radius); faceOuter.type = Image.Type.Sliced;
-        faceOuter.color = borderColor ?? Ink;
-
-        var faceIn = NewImage("fill", faceRt, fill);
-        faceIn.sprite = Rounded(Mathf.Max(2f, radius - Bd)); faceIn.type = Image.Type.Sliced;
-        faceIn.raycastTarget = false;
-        var fir = faceIn.rectTransform;
-        fir.anchorMin = Vector2.zero; fir.anchorMax = Vector2.one;
-        fir.offsetMin = new Vector2(Bd * PS, Bd * PS); fir.offsetMax = new Vector2(-Bd * PS, -Bd * PS);
-
-        return faceIn;
     }
 
     /// <summary>lip 두께용 그림자 색 — 원래 색을 그대로 어둡게 낮춘다.</summary>
     static Color Shade(Color c) { return new Color(c.r * 0.78f, c.g * 0.78f, c.b * 0.78f, c.a); }
 
-    Dictionary<ShopItem, Sprite> itemIcons;
-
-    /// <summary>아이템 그림 — 참고 아트(Resources/items)를 그대로 쓰고, 없으면 폭탄만 절차 생성으로 돌아간다.</summary>
-    Sprite ItemIconSprite(ShopItem it)
-    {
-        if (itemIcons == null) itemIcons = new Dictionary<ShopItem, Sprite>();
-        Sprite got;
-        if (itemIcons.TryGetValue(it, out got)) return got;
-
-        string name = it == ShopItem.BombPiece ? "bomb"
-                    : it == ShopItem.Hammer ? "hammer"
-                    : it == ShopItem.Rainbow ? "rainbow" : "shuffle";
-        var t = Resources.Load<Texture2D>("items/" + name);
-        got = t != null
-            ? Sprite.Create(t, new Rect(0, 0, t.width, t.height), new Vector2(0.5f, 0.5f), Mathf.Max(t.width, t.height))
-            : (it == ShopItem.BombPiece ? BoardView.MakeBombSprite() : null);
-        itemIcons[it] = got;
-        return got;
-    }
 
     /// <summary>아이템 버튼의 보유량 표시. 0 이면 흐리게.</summary>
     void RefreshItemButtons()
@@ -587,11 +517,11 @@ public class GameUI : MonoBehaviour
         coin.sprite = Rounded(d * 0.5f); coin.type = Image.Type.Sliced; coin.raycastTarget = false;
         Anchor(coin.transform, 0, 0.5f, 6, 0, d, d);
         var dollar = NewText("$", coin.transform, "$", Mathf.RoundToInt(d * 0.62f * PS), TextAnchor.MiddleCenter, Ink);
-        dollar.fontStyle = FontStyle.Bold;
+
         Stretch(dollar.rectTransform);
 
-        var amt = NewText("amt", chip.transform, "0", Mathf.RoundToInt(h * 0.46f * PS), TextAnchor.MiddleRight, Ink);
-        amt.fontStyle = FontStyle.Bold;
+        var amt = NewText("amt", chip.transform, "0", Mathf.RoundToInt(h * 0.46f * PS), TextAnchor.MiddleRight, Ink, UiFontRole.Numbers);
+
         Anchor(amt.transform, 1, 0.5f, -10, 0, w - d - 20, h - 10);
         return amt;
     }
@@ -622,7 +552,7 @@ public class GameUI : MonoBehaviour
         if (chainRoot == null) return;
         bool isChain = chain >= 2;
 
-        // 연쇄일 때는 CHAIN 글자 그림을 한 장씩 돌아가며 쓴다. 그림이 없으면 예전 글자 그대로.
+        // 기존 연쇄 색 순서는 유지하고 문구는 공통 타이틀 폰트로 표시한다.
         var words = gm.chainWords;
         Sprite word = isChain && words != null && words.Length > 0 ? words[chainWordNext % words.Length] : null;
         if (word != null)
@@ -633,8 +563,8 @@ public class GameUI : MonoBehaviour
         else chainBig.colorGradient = ChainGold;
         if (words != null && words.Length > 0) chainWordNext = (chainWordNext + 1) % words.Length;
 
-        chainWord.enabled = word != null;
-        chainTop.enabled = word == null;
+        chainWord.enabled = false;
+        chainTop.enabled = true;
         chainTop.text = isChain ? "CHAIN" : "BONUS";
         chainBig.text = isChain ? ("x" + chain + "!!") : ("+" + scoreGained.ToString("N0"));
         chainAngle = Random.Range(0f, 360f);   // 반짝이가 매번 같은 자리로 튀지 않게
@@ -738,12 +668,13 @@ public class GameUI : MonoBehaviour
     public void UpdateHud(GameManager g)
     {
         scoreText.text = g.Score.ToString("N0");
+        if (missionBanner != null) missionBanner.Refresh(g);
 
         // 제목 자리: 피버 중에는 남은 초, 스테이지는 목표 문구, 타임어택은 모드 이름
         bool ta = g.TimeAttackMode;
         if (g.FeverOn)
         {
-            gameEyebrow.text = "FEVER TIME!  " + Mathf.CeilToInt(g.FeverLeftSec);
+            gameEyebrow.text = "Fever time  " + g.FeverLeftSec.ToString("0.0");
             gameEyebrow.color = Coral;
         }
         else if (!ta)
@@ -753,7 +684,7 @@ public class GameUI : MonoBehaviour
         }
         else
         {
-            gameEyebrow.text = "TIME ATTACK!";
+            gameEyebrow.text = "Time attack";
             gameEyebrow.color = TitleInk;
         }
         goalSub.text = ta ? "SCORE " + g.Score.ToString("N0") : ProgressLine(g);
@@ -773,6 +704,9 @@ public class GameUI : MonoBehaviour
             rightText.text = g.MovesLeft.ToString();
             frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
         }
+        // 피버 중에는 이 막대가 피버 남은 시간을 그린다 — 조각 제한시간은 어차피 멈춰 있다
+        if (g.FeverOn) frac = g.FeverFrac;
+        timerFill.color = g.FeverOn ? FeverBar : BarOrange;
         timerFill.rectTransform.localScale = new Vector3(Mathf.Clamp01(frac), 1, 1);
     }
 
@@ -784,10 +718,10 @@ public class GameUI : MonoBehaviour
     {
         var st = g.Stage;
         var lines = new List<string>();
-        if (g.MarksTotal > 0) lines.Add("POP TARGET BLOCKS!");
-        if (g.PieceLimited) lines.Add("JUST " + st.PieceLimit + " PIECES!!");
-        if (st.ClearBlocks > 0) lines.Add("POP " + st.ClearBlocks + " BLOCKS!");
-        return lines.Count > 0 ? string.Join("\n", lines.ToArray()) : "KEEP POPPING!";
+        if (g.MarksTotal > 0) lines.Add("Pop target blocks");
+        if (g.PieceLimited) lines.Add("Only " + st.PieceLimit + " pieces");
+        if (st.ClearBlocks > 0) lines.Add("Clear " + st.ClearBlocks + " blocks");
+        return lines.Count > 0 ? string.Join("\n", lines.ToArray()) : "Keep popping";
     }
 
     /// <summary>지금 얼마나 왔는지. 조건 이름은 제목이 모두 보여 주므로 여기선 수치만 쓴다.</summary>
@@ -825,18 +759,12 @@ public class GameUI : MonoBehaviour
 
     static readonly Color Ink        = Palette.Hex(0x14162B);
     static readonly Color ScreenBg   = Palette.Hex(0xE4EEF2);
-    static readonly Color BlobYellow = Palette.Hex(0xF0D97A);
-    static readonly Color BlobPurple = Palette.Hex(0xC9BFEC);
     static readonly Color Coral      = Palette.Hex(0xE4795A);
-    static readonly Color CoralLip   = Palette.Hex(0xB5573B);
-    static readonly Color Purple     = Palette.Hex(0x8B84D6);
     static readonly Color Teal       = Palette.Hex(0x7FCFC0);
     static readonly Color Yellow     = Palette.Hex(0xF0C64D);
     static readonly Color Cream      = Palette.Hex(0xFBF8EE);
-    static readonly Color SwatchBg   = Palette.Hex(0xE7EEF0);
     static readonly Color Muted      = Palette.Hex(0x6B7094);
     static readonly Color Body       = Palette.Hex(0x5B6088);
-    static readonly Color TealInk    = Palette.Hex(0x0E4A3E);
 
     readonly Dictionary<int, Sprite> roundCache = new Dictionary<int, Sprite>();
 
@@ -904,26 +832,6 @@ public class GameUI : MonoBehaviour
         return rt;
     }
 
-    /// <summary>아트에 그려진 숫자를 같은 색 판으로 덮고 그 위에 실제 값을 쓴다.
-    /// 판을 안 깔면 밑에 그려진 숫자가 비쳐서 두 개로 겹쳐 보인다.</summary>
-    Text ArtValue(string name, float x, float y, float w, float h,
-                  Color patch, Color ink, TextAnchor anchor, int maxSize)
-    {
-        var rt = ArtSlot(name, x, y, w, h);
-        var bg = rt.gameObject.AddComponent<Image>();
-        bg.color = patch;
-        bg.raycastTarget = false;
-
-        var t = NewText("v", rt, "", maxSize, anchor, ink);
-        t.fontStyle = FontStyle.Bold;
-        t.raycastTarget = false;
-        t.resizeTextForBestFit = true;      // 아트가 화면 크기에 맞춰 늘어나므로 글자도 따라간다
-        t.resizeTextMinSize = 8;
-        t.resizeTextMaxSize = maxSize;
-        Stretch(t.rectTransform);
-        return t;
-    }
-
     static readonly Vector2 Top = new Vector2(0.5f, 1f);
 
     /// <summary>글자 사이에 공백을 끼워 자간을 넓힌다 (uGUI 에는 letter-spacing 이 없다).</summary>
@@ -940,18 +848,37 @@ public class GameUI : MonoBehaviour
 
     void BuildPausePanel()
     {
-        pausePanel = NewImage("pausedim", transform, new Color(0.106f, 0.129f, 0.255f, 0.65f)).gameObject;
+        pausePanel = NewImage("pausedim", transform, new Color(0.055f, 0.075f, 0.19f, 0.72f)).gameObject;
         Stretch((RectTransform)pausePanel.transform);
-        var card = Card(pausePanel.transform, "pausecard", 0, 0, 330, 230, Cream, 24);
+        var safe = NewRT("pausesafe", pausePanel.transform);
+        Stretch(safe);
+        safe.gameObject.AddComponent<SafeAreaFitter>();
+        var card = Card(safe, "pausecard", 0, 0, 330, 360, Cream, 24);
         var rt = (RectTransform)card.transform.parent;
         rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
-        var title = NewText("title", card.transform, "PAUSED", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
-        Anchor(title.transform, 0.5f, 1, 0, -24, 286, 40);
-        HookButton(Card(card.transform, "resume", 22, 82, 286, 52, Teal, 18),
-                   () => gm.ResumeGame(), "RESUME", 16);
-        HookButton(Card(card.transform, "pausehome", 22, 150, 286, 52, Color.white, 18),
-                   () => gm.GoHome(), "HOME", 16);
+        var frame = UiTypography.Assets != null ? UiTypography.Assets.pausePanel : null;
+        SkinCard(card, frame, true, false);
+        Color heading = frame != null ? Color.white : Ink;
+        Color caption = frame != null ? Palette.Hex(0xC5E6FF) : Body;
+
+        var kicker = NewText("caption", card.transform, "CHROMA DROP", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, caption, UiFontRole.Title);
+        Anchor(kicker.transform, 0.5f, 1, 0, -40, 260, 18);
+        var title = NewText("title", card.transform, "PAUSED", Mathf.RoundToInt(27 * PS), TextAnchor.MiddleCenter, heading, UiFontRole.Title);
+        Anchor(title.transform, 0.5f, 1, 0, -66, 260, 44);
+        var note = NewText("note", card.transform, "Ready when you are.", Mathf.RoundToInt(11 * PS), TextAnchor.MiddleCenter, caption);
+        note.fontStyle = FontStyle.Normal;
+        Anchor(note.transform, 0.5f, 1, 0, -116, 260, 22);
+
+        // 카드 자식은 카드 중앙을 기준으로 둔다. 화면용 P 좌표를 쓰면 왼쪽으로 밀린다.
+        var resume = Card(card.transform, "resume", 0, 0, 260, 62, Yellow, 22);
+        Anchor(resume.transform.parent, 0.5f, 1, 0, -166, 260, 62);
+        HookButton(resume, () => gm.ResumeGame(), "RESUME", 18);
+        SkinCard(resume, gm.hudMoves, true, false);
+        var home = Card(card.transform, "pausehome", 0, 0, 260, 56, ScreenBg, 22);
+        Anchor(home.transform.parent, 0.5f, 1, 0, -242, 260, 56);
+        HookButton(home, () => gm.GoHome(), "HOME", 15);
+        SkinCard(home, gm.hudScore, true, false);
         pausePanel.SetActive(false);
     }
 
@@ -967,32 +894,36 @@ public class GameUI : MonoBehaviour
         resultPanel = resultDim.gameObject;
         Stretch((RectTransform)resultPanel.transform);
 
-        var card = Card(resultPanel.transform, "rcard", 0, 0, 330, 380, Cream, 24);
+        var card = Card(resultPanel.transform, "rcard", 0, 0, 330, 410, Cream, 24);
         var cr = (RectTransform)card.transform.parent;
         cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
         cr.anchoredPosition = Vector2.zero;
         resultCardRt = cr;
+        SkinCard(card, UiTypography.Assets != null ? UiTypography.Assets.pausePanel : null, true, false);
 
-        resultTitle = NewText("t", card.transform, "", Mathf.RoundToInt(24 * PS), TextAnchor.UpperCenter, Ink);
-        resultTitle.fontStyle = FontStyle.Bold;
-        Anchor(resultTitle.transform, 0.5f, 1, 0, -22, 300, 34);
+        resultTitle = NewText("t", card.transform, "", Mathf.RoundToInt(21 * PS), TextAnchor.UpperCenter, Color.white, UiFontRole.Title);
+
+        Anchor(resultTitle.transform, 0.5f, 1, 0, -50, 286, 32);
 
         var scoreLabel = NewText("sl", card.transform, Spaced("SCORE"), Mathf.RoundToInt(10 * PS),
                                  TextAnchor.UpperCenter, Muted);
-        Anchor(scoreLabel.transform, 0.5f, 1, 0, -66, 300, 16);
+        scoreLabel.color = Palette.Hex(0xC5E6FF);
+        Anchor(scoreLabel.transform, 0.5f, 1, 0, -87, 270, 16);
 
-        resultScore = NewText("s", card.transform, "", Mathf.RoundToInt(46 * PS), TextAnchor.UpperCenter, Ink);
-        resultScore.fontStyle = FontStyle.Bold;
-        Anchor(resultScore.transform, 0.5f, 1, 0, -84, 300, 58);
+        resultScore = NewText("s", card.transform, "", Mathf.RoundToInt(42 * PS), TextAnchor.UpperCenter, Color.white, UiFontRole.Numbers);
 
-        resultBest = NewText("b", card.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.UpperCenter, Body);
-        Anchor(resultBest.transform, 0.5f, 1, 0, -146, 300, 20);
+        Anchor(resultScore.transform, 0.5f, 1, 0, -108, 270, 58);
+
+        resultBest = NewText("b", card.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.UpperCenter, Body, UiFontRole.Numbers);
+        Anchor(resultBest.transform, 0.5f, 1, 0, -165, 270, 20);
 
         // 이번 판에 번 코인
-        resultCoins = CoinChip(card.transform, "earned", 0.5f, 1, 0, -174, 130, 38);
+        resultCoins = CoinChip(card.transform, "earned", 0.5f, 1, 0, -192, 130, 34);
+        SkinCard(resultCoins.transform.parent.GetComponent<Image>(), gm.hudMoves, true, false);
 
         submitText = NewText("sub", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.UpperCenter, Muted);
-        Anchor(submitText.transform, 0.5f, 1, 0, -220, 300, 16);
+        submitText.color = Palette.Hex(0xC5E6FF);
+        Anchor(submitText.transform, 0.5f, 1, 0, -235, 270, 24);
 
         HookButton(Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16),
                    () => ShowRanking(false), "LEADERBOARD", 14);
@@ -1004,10 +935,15 @@ public class GameUI : MonoBehaviour
         HookButton(Card(card.transform, "rhome", 172, 302, 136, 52, Color.white, 18),
                    () => gm.GoHome(), "HOME", 16);
 
+        SkinCard(card.transform.Find("rrank/fill").GetComponent<Image>(), gm.hudScore, true, false);
+        SkinCard(card.transform.Find("retry/fill").GetComponent<Image>(), gm.hudMoves, true, false);
+        SkinCard(card.transform.Find("rnext/fill").GetComponent<Image>(), gm.hudMoves, true, false);
+        SkinCard(card.transform.Find("rhome/fill").GetComponent<Image>(), gm.hudScore, true, false);
         rankBtn = (RectTransform)card.transform.Find("rrank");
         nextBtn = (RectTransform)card.transform.Find("rnext");
         retryBtn = (RectTransform)card.transform.Find("retry");
         homeBtn = (RectTransform)card.transform.Find("rhome");
+        Anchor(rankBtn, 0.5f, 1, 0, -268, 270, 40);
     }
 
     public void ShowResult(bool ta, int score, int best, bool newBest, int coins)
@@ -1020,10 +956,10 @@ public class GameUI : MonoBehaviour
         // 타임어택은 성공/실패가 없다. 스테이지는 목표를 채웠는지로 갈린다.
         if (ta) resultTitle.text = "TIME'S UP!";
         else resultTitle.text = cleared ? "STAGE " + level + " CLEAR!" : "STAGE " + level + " FAILED";
-        resultTitle.color = (cleared || newBest) ? Coral : Ink;
+        resultTitle.color = (cleared || newBest) ? Palette.Hex(0xFFE08A) : Color.white;
         resultScore.text = score.ToString("N0");
         resultBest.text = newBest ? "NEW BEST!" : "BEST  " + best.ToString("N0");
-        resultBest.color = newBest ? Coral : Body;
+        resultBest.color = newBest ? Palette.Hex(0xFFE08A) : Palette.Hex(0xC5E6FF);
         resultCoins.text = "+" + coins.ToString("N0");
 
         // 버튼 줄: 클리어면 NEXT / RETRY / HOME 셋, 아니면 RETRY / HOME 둘
@@ -1031,20 +967,21 @@ public class GameUI : MonoBehaviour
         if (nextBtn != null) nextBtn.gameObject.SetActive(showNext);
         if (showNext)
         {
-            const float w = 88f, gap = 11f;
-            PlaceButton(nextBtn, 22, w);
-            PlaceButton(retryBtn, 22 + w + gap, w);
-            PlaceButton(homeBtn, 22 + (w + gap) * 2, w);
+            const float w = 82f, gap = 12f;
+            PlaceButton(nextBtn, 30, w);
+            PlaceButton(retryBtn, 30 + w + gap, w);
+            PlaceButton(homeBtn, 30 + (w + gap) * 2, w);
         }
         else
         {
-            PlaceButton(retryBtn, 22, 136);
-            PlaceButton(homeBtn, 172, 136);
+            PlaceButton(retryBtn, 30, 128);
+            PlaceButton(homeBtn, 172, 128);
         }
 
-        // 리더보드: 스테이지를 깼으면 버튼도 감추고 저절로 열리지도 않는다. 실패·타임업만 연다
+        // 리더보드: 저절로 열리는 건 실패·타임업일 때만이다. 버튼은 클리어해도 남겨 둔다 —
+        // 점수 등록이 이 버튼 뒤에 있어서, 감추면 깬 판의 점수를 올릴 길이 없어진다.
         rankAllowed = ta || !cleared;
-        if (rankBtn != null) rankBtn.gameObject.SetActive(rankAllowed);
+        if (rankBtn != null) rankBtn.gameObject.SetActive(true);
 
         if (resultDropCo != null) StopCoroutine(resultDropCo);
         resultCardRt.localScale = Vector3.one;   // 이전 연출이 중간에 끊겼을 수 있으니 초기화
@@ -1173,8 +1110,8 @@ public class GameUI : MonoBehaviour
         SkinCard(card, sk.Panel, true, false);
         bool skin = sk.Panel != null;
 
-        rankTitle = NewText("t", card.transform, "LEADERBOARD", Mathf.RoundToInt(20 * PS), TextAnchor.UpperLeft, Ink);
-        rankTitle.fontStyle = FontStyle.Bold;
+        rankTitle = NewText("t", card.transform, "LEADERBOARD", Mathf.RoundToInt(20 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Title);
+
         Anchor(rankTitle.transform, 0, 1, 20, -18, 240, 30);
 
         rankSubTitle = NewText("st", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.UpperLeft, Muted);
@@ -1183,13 +1120,16 @@ public class GameUI : MonoBehaviour
         // 제목 배너는 판 위 테두리에 걸터앉는다 — 테두리 가운데 보석이 가려져 늘어난 티가 안 난다
         if (sk.Title != null)
         {
-            rankTitle.enabled = false;
+            rankTitle.enabled = true;
             var banner = NewImage("tart", card.transform, Color.white);
-            banner.sprite = sk.Title; banner.raycastTarget = false; banner.preserveAspect = true;
-            Anchor(banner.transform, 0.5f, 1, 0, 12, 250, 104);
+            banner.sprite = gm.hudMoves; banner.type = Image.Type.Sliced; banner.raycastTarget = false;
+            banner.transform.SetAsFirstSibling();
+            Anchor(banner.transform, 0.5f, 1, -18, 8, 246, 62);
+            rankTitle.alignment = TextAnchor.MiddleCenter;
+            Anchor(rankTitle.transform, 0.5f, 1, -18, -3, 224, 34);
             rankSubTitle.alignment = TextAnchor.UpperCenter;
             rankSubTitle.color = DeepInk;
-            Anchor(rankSubTitle.transform, 0.5f, 1, 0, -46, 240, 16);
+            Anchor(rankSubTitle.transform, 0.5f, 1, 0, -51, 260, 14);
         }
 
         var closeFill = Card(card.transform, "rkclose", 0, 0, 62, 34, Color.white, 12);
@@ -1197,15 +1137,15 @@ public class GameUI : MonoBehaviour
         SkinCard(closeFill, sk.Close, false, true);
         var clr = (RectTransform)card.transform.Find("rkclose");
         clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(1, 1);
-        clr.sizeDelta = sk.Close != null ? Sz(38, 39) : Sz(62, 34);
-        clr.anchoredPosition = new Vector2(-14 * PS, -14 * PS);
+        clr.sizeDelta = Sz(34, 34);
+        clr.anchoredPosition = new Vector2(-14 * PS, -8 * PS);
 
         var meBtn = Card(card.transform, "tabme", 20, 72, 152, 40, Teal, 14);
         HookButton(meBtn, () => { rankNationTab = false; RefreshRank(); }, "PLAYERS", 13);
-        rankTabMe = SkinCard(meBtn, sk.TabPlayers, false, true);
+        rankTabMe = SkinCard(meBtn, gm.hudScore, true, false);
         var natBtn = Card(card.transform, "tabnat", 182, 72, 148, 40, Color.white, 14);
         HookButton(natBtn, () => { rankNationTab = true; RefreshRank(); }, "NATIONS", 13);
-        rankTabNation = SkinCard(natBtn, sk.TabNations, false, true);
+        rankTabNation = SkinCard(natBtn, gm.hudScore, true, false);
 
         rankRows = new RankRow[RankRowCount];
         for (int i = 0; i < RankRowCount; i++)
@@ -1219,19 +1159,19 @@ public class GameUI : MonoBehaviour
         // 내 줄은 그림을 쓰지 않는다 — 내 순위 바 그림에는 숫자(26)가 그려져 있어 순위가 바뀌면 맞지 않는다
         myRowLabel = NewText("ml", card.transform, "YOU", Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft,
                              skin ? DeepInk : Muted);
-        Anchor(myRowLabel.transform, 0, 0, 22, 138, 200, 14);
+        Anchor(myRowLabel.transform, 0, 0, 22, 144, 260, 14);
         myRow = MakeRankRow(card.transform, "myrow", 0, true, null);
         var mrt = (RectTransform)myRow.Bg.transform.parent;
         mrt.anchorMin = mrt.anchorMax = mrt.pivot = new Vector2(0.5f, 0);
-        mrt.anchoredPosition = new Vector2(0, 92 * PS);
+        mrt.anchoredPosition = new Vector2(0, 100 * PS);
 
         var adFill = Card(card.transform, "adbtn", 20, 0, 310, 48, Coral, 16);
         var art = (RectTransform)adFill.transform.parent;
         art.anchorMin = art.anchorMax = art.pivot = new Vector2(0.5f, 0);
         HookButton(adFill, OnAdButton, "WATCH AD", 14);
-        SkinCard(adFill, sk.AdButton, false, true);
-        art.sizeDelta = sk.AdButton != null ? Sz(300, 60) : Sz(310, 48);
-        art.anchoredPosition = new Vector2(0, (sk.AdButton != null ? 34 : 30) * PS);
+        SkinCard(adFill, gm.hudMoves, true, false);
+        art.sizeDelta = Sz(300, 48);
+        art.anchoredPosition = new Vector2(0, 30 * PS);
         adBtn = art.GetComponent<Button>();
         adBtnLabel = adFill.transform.Find("l").GetComponent<Text>();
     }
@@ -1250,15 +1190,15 @@ public class GameUI : MonoBehaviour
         bool skin = art != null;
         float badgeX = skin ? 66.5f : 40f;   // 그림 속 동그라미 칸 한가운데
 
-        r.Rank = NewText("rk", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink);
-        r.Rank.fontStyle = FontStyle.Bold;
+        r.Rank = NewText("rk", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Numbers);
         Anchor(r.Rank.transform, 0, 0.5f, 8, 0, 30, 22);
         r.Rank.enabled = !skin;   // 줄 그림에 순위 숫자가 이미 박혀 있다
 
         // 국기 — 둥근 판(Badge)이 마스크가 되어 모서리를 잘라낸다. 국기가 없는 나라는 판 색으로 대신한다
         r.Badge = NewImage("badge", r.Bg.transform, Color.white);
         r.Badge.sprite = Rounded(6); r.Badge.type = Image.Type.Sliced; r.Badge.raycastTarget = false;
-        Anchor(r.Badge.transform, 0, 0.5f, badgeX, 4.5f, 27, 18);   // 줄 안쪽은 반높이 14 정도 — 국기와 코드가 둘 다 그 안에 들어가야 한다
+        Anchor(r.Badge.transform, 0, 0.5f, badgeX, 3, 24, 14);
+        r.Badge.rectTransform.pivot = new Vector2(0.5f, 0.5f);   // 줄 안쪽은 반높이 14 정도 — 국기와 코드가 둘 다 그 안에 들어가야 한다
         r.Badge.gameObject.AddComponent<Mask>().showMaskGraphic = true;
         r.Flag = NewImage("flag", r.Badge.transform, Color.white);
         r.Flag.raycastTarget = false;
@@ -1266,15 +1206,14 @@ public class GameUI : MonoBehaviour
         Stretch(r.Flag.rectTransform);
 
         // 국기 밑에 작은 코드 글자
-        r.Code = NewText("c", r.Bg.transform, "", Mathf.RoundToInt(6 * PS), TextAnchor.MiddleCenter, Muted);
-        r.Code.fontStyle = FontStyle.Bold;
-        Anchor(r.Code.transform, 0, 0.5f, badgeX, -9, 27, 7);   // 국기와 같은 폭 — 가운데가 맞는다
+        r.Code = NewText("c", r.Bg.transform, "", Mathf.RoundToInt(6 * PS), TextAnchor.MiddleCenter, Muted, UiFontRole.Menu);
+        Anchor(r.Code.transform, 0, 0.5f, badgeX, -8, 24, 6);
+        r.Code.rectTransform.pivot = new Vector2(0.5f, 0.5f);   // 국기와 같은 폭 — 가운데가 맞는다
 
         r.Name = NewText("n", r.Bg.transform, "", Mathf.RoundToInt(12 * PS), TextAnchor.MiddleLeft, Ink);
         Anchor(r.Name.transform, 0, 0.5f, skin ? 98 : 82, 0, skin ? 148 : 100, 22);   // 점수 칸(190~)을 침범하지 않는다
 
-        r.Score = NewText("s", r.Bg.transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleRight, Ink);
-        r.Score.fontStyle = FontStyle.Bold;
+        r.Score = NewText("s", r.Bg.transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleRight, Ink, UiFontRole.Numbers);
         Anchor(r.Score.transform, 1, 0.5f, -10, 0, 110, 22);
         return r;
     }
@@ -1308,9 +1247,9 @@ public class GameUI : MonoBehaviour
         bool skin = gm.leaderboard.TabPlayers != null;
         rankTabMe.color = skin ? (rankNationTab ? TabOff : Color.white) : (rankNationTab ? Color.white : Teal);
         rankTabNation.color = skin ? (rankNationTab ? Color.white : TabOff) : (rankNationTab ? Teal : Color.white);
-        rankSubTitle.text = gm.timeAttack ? "TIME ATTACK" : "MOVES";
+        rankSubTitle.text = (TestServices.Enabled ? "TEST · " : "") + (gm.timeAttack ? "TIME ATTACK" : "MOVES");
         // 제목 배너에 MOVES 띠가 이미 그려져 있다 — 타임어택일 때만 따로 적는다
-        rankSubTitle.enabled = gm.leaderboard.Title == null || gm.timeAttack;
+        rankSubTitle.enabled = TestServices.Enabled || gm.leaderboard.Title == null || gm.timeAttack;
         foreach (var r in rankRows) r.SetActive(false);
         RefreshMyRow(0);
         RefreshAdButton();
@@ -1373,7 +1312,7 @@ public class GameUI : MonoBehaviour
     void RefreshAdButton()
     {
         bool canSubmit = gm.CanSubmit;
-        adBtnLabel.text = canSubmit ? "WATCH AD  ·  SUBMIT SCORE" : "WATCH AD  ·  REFRESH";
+        adBtnLabel.text = canSubmit ? "SUBMIT MY SCORE  ·  AD" : "WATCH AD  ·  REFRESH";
         adBtn.gameObject.SetActive(Leaderboard.I != null && Leaderboard.I.Configured);
     }
 
@@ -1382,7 +1321,9 @@ public class GameUI : MonoBehaviour
     {
         if (rt == null) return;
         rt.sizeDelta = Sz(w, 52);
-        rt.anchoredPosition = P(x, 302);
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 1);
+        rt.pivot = new Vector2(0, 1);
+        rt.anchoredPosition = new Vector2((x - 165f) * PS, -318f * PS);
     }
 
     /// <summary>광고를 보고 나면 점수를 올리거나 목록을 새로고침한다.</summary>
@@ -1427,8 +1368,8 @@ public class GameUI : MonoBehaviour
         cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
         cr.anchoredPosition = Vector2.zero;
 
-        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(24 * PS), TextAnchor.UpperLeft, Ink);
-        title.fontStyle = FontStyle.Bold;
+        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(24 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Title);
+
         Anchor(title.transform, 0, 1, 20, -18, 200, 36);
 
         // 코인 칩 — 카드 오른쪽 위
@@ -1440,7 +1381,7 @@ public class GameUI : MonoBehaviour
         cb.onClick.AddListener(TapCoins);
 
         var itemsLabel = NewText("il", card.transform, Spaced("ITEMS"), Mathf.RoundToInt(10 * PS),
-                                 TextAnchor.UpperLeft, Muted);
+                                 TextAnchor.UpperLeft, Muted, UiFontRole.Menu);
         Anchor(itemsLabel.transform, 0, 1, 20, -88, 200, 16);
 
         int n = Shop.Items.Length;
@@ -1460,14 +1401,14 @@ public class GameUI : MonoBehaviour
             swatch.sprite = Rounded(10); swatch.type = Image.Type.Sliced; swatch.raycastTarget = false;
             Anchor(swatch.transform, 0, 1, 12, -10, 48, 48);
 
-            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink);
-            nm.fontStyle = FontStyle.Bold;
+            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Menu);
+
             Anchor(nm.transform, 0, 1, 70, -11, 150, 20);
 
             var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
             Anchor(ds.transform, 0, 1, 70, -32, 165, 30);
 
-            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted);
+            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted, UiFontRole.Numbers);
             Anchor(shopOwned[i].transform, 1, 0, -12, 8, 120, 16);
 
             shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 78, 36, Teal, 12);
@@ -1479,15 +1420,15 @@ public class GameUI : MonoBehaviour
             bb.transition = Selectable.Transition.None;
             bb.onClick.AddListener(() => Buy(idx));
             br.gameObject.AddComponent<UiPressImage>().target = br;
-            shopBuyLabel[i] = NewText("l", shopBuyFill[i].transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleCenter, Ink);
-            shopBuyLabel[i].fontStyle = FontStyle.Bold;
+            shopBuyLabel[i] = NewText("l", shopBuyFill[i].transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Menu);
+
             Stretch(shopBuyLabel[i].rectTransform);
         }
 
         // ---- 타일 스킨 ----
         float skinTop = 108 + n * 78 + 14;
         var skinLabel = NewText("sl", card.transform, Spaced("TILE SKINS"), Mathf.RoundToInt(10 * PS),
-                                TextAnchor.UpperLeft, Muted);
+                                TextAnchor.UpperLeft, Muted, UiFontRole.Menu);
         Anchor(skinLabel.transform, 0, 1, 20, -skinTop, 200, 16);
 
         int m = Shop.Skins.Length;
@@ -1518,8 +1459,8 @@ public class GameUI : MonoBehaviour
                 if (k == 0) skinSwatch[i] = sw;
             }
 
-            var nm = NewText("n", row.transform, sk.Name, Mathf.RoundToInt(13 * PS), TextAnchor.MiddleLeft, Ink);
-            nm.fontStyle = FontStyle.Bold;
+            var nm = NewText("n", row.transform, sk.Name, Mathf.RoundToInt(13 * PS), TextAnchor.MiddleLeft, Ink, UiFontRole.Menu);
+
             Anchor(nm.transform, 0, 0.5f, 136, 0, 90, 22);
 
             skinBuyFill[i] = Card(row.transform, "buy", 0, 0, 82, 34, Teal, 12);
@@ -1532,8 +1473,8 @@ public class GameUI : MonoBehaviour
             bb.onClick.AddListener(() => SkinTap(idx));
             br.gameObject.AddComponent<UiPressImage>().target = br;
             skinBuyLabel[i] = NewText("l", skinBuyFill[i].transform, "", Mathf.RoundToInt(12 * PS),
-                                      TextAnchor.MiddleCenter, Ink);
-            skinBuyLabel[i].fontStyle = FontStyle.Bold;
+                                      TextAnchor.MiddleCenter, Ink, UiFontRole.Menu);
+
             Stretch(skinBuyLabel[i].rectTransform);
         }
 
@@ -1544,6 +1485,13 @@ public class GameUI : MonoBehaviour
         ar.sizeDelta = Sz(314, 62); ar.anchoredPosition = new Vector2(0, -adY * PS);
         HookButton(adRow, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }),
                    "WATCH AD  ·  +" + Shop.AdReward, 15);
+
+        // 코인이 모자랄 때 바로 살 수 있는 길. 실제 결제는 Services/Iap.cs 가 맡는다
+        var buyCoins = Card(card.transform, "shopbuycoins", 0, 0, 314, 54, Yellow, 18);
+        var bcr = (RectTransform)buyCoins.transform.parent;
+        bcr.anchorMin = bcr.anchorMax = bcr.pivot = new Vector2(0.5f, 0);
+        bcr.sizeDelta = Sz(314, 54); bcr.anchoredPosition = new Vector2(0, 80 * PS);
+        HookButton(buyCoins, ShowCoinShop, "BUY COINS", 15);
 
         var close = Card(card.transform, "shopclose", 0, 0, 314, 54, Cream, 18);
         var clr = (RectTransform)close.transform.parent;
@@ -1562,7 +1510,7 @@ public class GameUI : MonoBehaviour
     void Buy(int i)
     {
         var e = Shop.Items[i];
-        if (Wallet.SpendCoins(e.Price)) Wallet.Add(e.Item, 1);
+        Wallet.BuyItem(e.Item);
         RefreshShop();
     }
 
@@ -1572,8 +1520,7 @@ public class GameUI : MonoBehaviour
         var sk = Shop.Skins[i];
         if (!Wallet.OwnsSkin(sk.Skin))
         {
-            if (!Wallet.SpendCoins(sk.Price)) { RefreshShop(); return; }
-            Wallet.UnlockSkin(sk.Skin);
+            if (!Wallet.BuySkin(sk.Skin)) { RefreshShop(); return; }
         }
         Wallet.Skin = sk.Skin;
         RefreshShop();
@@ -1618,11 +1565,100 @@ public class GameUI : MonoBehaviour
         RefreshItemButtons();
     }
 
+    // ---------- 코인 구매 (인앱 결제) ----------
+    //
+    // 테스트 모드는 기기에서도 더미 구매·취소·지급 재시도를 확인할 수 있다.
+
+    void BuildCoinPanel()
+    {
+        coinPanel = NewImage("coindim", transform, new Color(0.06f, 0.08f, 0.10f, 0.86f)).gameObject;
+        Stretch((RectTransform)coinPanel.transform);
+
+        var card = Card(coinPanel.transform, "coincard", 20, 50, 350, 500, ScreenBg, 24);
+        var cr = (RectTransform)card.transform.parent;
+        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
+        cr.anchoredPosition = Vector2.zero;
+
+        var title = NewText("t", card.transform, TestServices.Enabled ? "TEST COINS" : "BUY COINS", Mathf.RoundToInt(22 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Title);
+
+        Anchor(title.transform, 0, 1, 20, -18, 240, 34);
+
+        for (int i = 0; i < Iap.Packs.Length; i++)
+        {
+            var pack = Iap.Packs[i];
+            var row = Card(card.transform, "pack" + i, 0, 0, 314, 70, Color.white, 18);
+            var rr = (RectTransform)row.transform.parent;
+            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
+            rr.sizeDelta = Sz(314, 70); rr.anchoredPosition = new Vector2(0, -(72 + i * 78) * PS);
+
+            var amount = NewText("n", row.transform, "+" + pack.Coins.ToString("N0") + " COINS",
+                                 Mathf.RoundToInt(15 * PS), TextAnchor.MiddleLeft, Ink, UiFontRole.Numbers);
+
+            Anchor(amount.transform, 0, 0.5f, 20, 0, 180, 24);
+
+            var price = Card(row.transform, "price", 0, 0, 96, 38, Teal, 12);
+            var pr = (RectTransform)price.transform.parent;
+            pr.anchorMin = pr.anchorMax = pr.pivot = new Vector2(1, 0.5f);
+            pr.sizeDelta = Sz(96, 38); pr.anchoredPosition = new Vector2(-12 * PS, 0);
+            HookButton(price, () => BuyCoins(pack), "\u20A9" + pack.Won.ToString("N0"), 13);
+        }
+
+        coinPanelNote = NewText("note", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Muted);
+        Anchor(coinPanelNote.transform, 0.5f, 0, 0, 144, 300, 50);
+
+        if (TestServices.Enabled)
+        {
+            string[] labels = { "취소 테스트", "실패 테스트", "주문 재시도" };
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int action = i;
+                var control = Card(card.transform, "testpurchase" + i, 0, 0, 98, 38, Cream, 12);
+                var rt = (RectTransform)control.transform.parent;
+                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0);
+                rt.sizeDelta = Sz(98, 38); rt.anchoredPosition = new Vector2((i - 1) * 106 * PS, 86 * PS);
+                HookButton(control, () => {
+                    if (action == 2) { TestPayments.Retry(); coinPanelNote.text = TestPayments.Message; RefreshShop(); }
+                    else {
+                        TestPayments.NextResult = action == 0 ? TestPurchaseResult.Cancelled : TestPurchaseResult.Failed;
+                        coinPanelNote.text = "다음 상품 구매에 " + (action == 0 ? "취소" : "지급 실패") + " 적용";
+                    }
+                }, labels[i], 10);
+            }
+        }
+
+        var close = Card(card.transform, "coinclose", 0, 0, 314, 54, Cream, 18);
+        var clr = (RectTransform)close.transform.parent;
+        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(0.5f, 0);
+        clr.sizeDelta = Sz(314, 54); clr.anchoredPosition = new Vector2(0, 18 * PS);
+        HookButton(close, () => coinPanel.SetActive(false), "CLOSE", 15);
+
+        coinPanel.SetActive(false);
+    }
+
+    void ShowCoinShop()
+    {
+        coinPanel.SetActive(true);
+        coinPanel.transform.SetAsLastSibling();
+        coinPanelNote.text = TestServices.Enabled
+            ? "테스트 구매 · 실제 청구 없음\n결제 기록 " + TestPayments.RecordCount + "건"
+            : "store not connected yet";
+    }
+
+    void BuyCoins(CoinPack pack)
+    {
+        Iap.Buy(pack, ok =>
+        {
+            coinPanelNote.text = TestServices.Enabled ? TestPayments.Message
+                : ok ? "+" + pack.Coins.ToString("N0") + " coins added" : "purchase failed";
+            RefreshShop();
+        });
+    }
+
     // ---------- 광고 (자리표시) ----------
     //
     // ⚠ 실제 광고 SDK 는 붙어 있지 않다. 보상형 광고의 '흐름'만 만들어 둔 것이다.
-    //   AdMob/Unity Ads 를 붙일 때 ShowAd 안쪽만 실제 호출로 갈아끼우면 된다.
-    //   지금은 카운트다운 뒤 바로 보상을 준다.
+    //   광고 ID 와 실제 호출은 Services/Ads.cs 한 곳에 있다 (지금은 구글 테스트 ID).
+    //   SDK 를 붙이고 Define Symbols 에 ChromaDrop_AdMob 을 넣으면 이 패널 대신 진짜 광고가 나간다.
 
     const float AdSeconds = 3f;
 
@@ -1634,16 +1670,23 @@ public class GameUI : MonoBehaviour
         var tag = NewText("adtag", adPanel.transform, "AD", 46, TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.35f));
         Place(tag.rectTransform, new Vector2(0.5f, 0.72f), new Vector2(0.5f, 0.72f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(600, 70));
 
-        var note = NewText("adnote", adPanel.transform, "AD PLACEHOLDER\nno ad SDK integrated yet", 40,
+        var note = NewText("adnote", adPanel.transform, "TEST AD\nComplete to receive your reward", 40,
                            TextAnchor.MiddleCenter, new Color(1, 1, 1, 0.75f));
         Place(note.rectTransform, new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.55f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(820, 160));
 
-        adCountdown = NewText("adcount", adPanel.transform, "", 72, TextAnchor.MiddleCenter, Accent);
+        adCountdown = NewText("adcount", adPanel.transform, "", 72, TextAnchor.MiddleCenter, Accent, UiFontRole.Numbers);
         Place(adCountdown.rectTransform, new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.40f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(600, 110));
     }
 
+    /// <summary>보상형 광고를 보여주고 끝나면 보상을 준다.
+    /// 구글 AdMob 이 붙어 있으면(Ads.Ready) 그쪽으로 가고, 없으면 아래 자리표시 패널로 때운다.</summary>
     void ShowAd(System.Action onReward)
     {
+        if (Ads.Ready)
+        {
+            Ads.ShowRewarded(ok => { if (ok && onReward != null) onReward(); });
+            return;
+        }
         adPanel.SetActive(true);
         adPanel.transform.SetAsLastSibling();
         StartCoroutine(AdCo(onReward));
@@ -1672,7 +1715,7 @@ public class GameUI : MonoBehaviour
         var card = NewImage("ccard", countryPanel.transform, new Color(0.10f, 0.10f, 0.15f, 0.98f));
         Place(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(940, 1320));
 
-        var t = NewText("ctitle", card.transform, "COUNTRY", 52, TextAnchor.MiddleCenter, Color.white);
+        var t = NewText("ctitle", card.transform, "COUNTRY", 52, TextAnchor.MiddleCenter, Color.white, UiFontRole.Title);
         Place(t.rectTransform, new Vector2(0.5f, 0.95f), new Vector2(0.5f, 0.95f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(880, 70));
 
         // 국기가 있는 나라를 전부 담는다 — 목록이 길어 스크롤로 넘긴다
@@ -1723,12 +1766,6 @@ public class GameUI : MonoBehaviour
         Place((RectTransform)close.transform, new Vector2(0.5f, 0.04f), new Vector2(0.5f, 0.04f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(420, 110));
     }
 
-    void ShowCountryPicker()
-    {
-        countryPanel.SetActive(true);
-        countryPanel.transform.SetAsLastSibling();
-    }
-
     // ---------- UI 조립 헬퍼 ----------
 
     RectTransform NewRT(string name, Transform parent)
@@ -1748,14 +1785,13 @@ public class GameUI : MonoBehaviour
     }
 
 
-    Text NewText(string name, Transform parent, string s, int size, TextAnchor anchor, Color c)
+    Text NewText(string name, Transform parent, string s, int size, TextAnchor anchor, Color c, UiFontRole role = UiFontRole.Body)
     {
         var rt = NewRT(name, parent);
         var t = rt.gameObject.AddComponent<Text>();
-        t.font = font;
         t.text = s;
+        UiTypography.Apply(t, role);
         t.fontSize = size;
-        t.fontStyle = FontStyle.Bold;
         t.alignment = anchor;
         t.color = c;
         t.horizontalOverflow = HorizontalWrapMode.Overflow;
@@ -1813,7 +1849,7 @@ public class GameUI : MonoBehaviour
         hr.sizeDelta = new Vector2(-UiTheme.HiInset * 2, UiTheme.HiBar);
         hr.anchoredPosition = new Vector2(0, -UiTheme.HiInset * 0.6f);
 
-        var t = NewText("label", face.transform, label, 40, TextAnchor.MiddleCenter, Color.white);
+        var t = NewText("label", face.transform, label, 40, TextAnchor.MiddleCenter, Color.white, UiFontRole.Menu);
         t.fontStyle = FontStyle.Normal;              // 700 은 캐주얼 게임에서 무겁다
         Stretch(t.rectTransform);
 
@@ -1872,4 +1908,3 @@ public class SafeAreaFitter : MonoBehaviour
         rt.offsetMin = rt.offsetMax = Vector2.zero;
     }
 }
-

@@ -3,12 +3,12 @@
 //
 // 설정 (앞쪽이 우선):
 //   1) 환경변수 CHROMADROP_FIREBASE_PROJECT / _APIKEY / _BASE / _AUTHBASE
-//   2) Resources/leaderboard.json (Tools/make-leaderboard-config.sh 로 생성, 커밋 안 함)
+//   2) Resources/backend-config.json (Tools/make-leaderboard-config.sh 로 생성, 커밋 안 함)
 //      { "projectId": "<프로젝트 ID>", "apiKey": "<웹 API 키>" }
 // 둘 다 없으면 Configured=false 가 되어 랭킹 기능만 꺼지고 게임은 그대로 동작한다.
 // _BASE / _AUTHBASE 는 에뮬레이터나 테스트용 목 서버를 가리킬 때만 준다 (평소 비움).
 //
-// 데이터 모델 (Firestore):
+// 이전 데이터 모델 (원격 랭킹 중지, 컬렉션 삭제 대상):
 //   컬렉션 boards_{boardId} / 문서 {uid} = { name, country, score, diff, seed, updated }
 //   boardId = "ta" | "score_easy" | "score_normal" | "score_hard"
 //   score 단일 필드 정렬이라 복합 색인은 필요 없다.
@@ -23,6 +23,8 @@ using UnityEngine.Networking;
 
 public class Leaderboard : MonoBehaviour
 {
+    // Firestore는 pay와 user만 유지한다. 이전 랭킹 컬렉션을 재생성하지 않는다.
+    static readonly bool RemoteRankingEnabled = false;
     const string PrefRefresh = "lb_refresh";
     const string PrefUid = "lb_uid";
     const int TopN = 100;          // 국가 집계를 하려면 상위 한 줌으로는 부족하다
@@ -56,6 +58,17 @@ public class Leaderboard : MonoBehaviour
 
     void LoadConfig()
     {
+        if (TestServices.Enabled)
+        {
+            Configured = true;
+            Uid = "dummy-local-player";
+            return;
+        }
+        if (!RemoteRankingEnabled)
+        {
+            LastError = "원격 랭킹 저장 중지";
+            return;
+        }
         projectId = Env("CHROMADROP_FIREBASE_PROJECT");
         apiKey = Env("CHROMADROP_FIREBASE_APIKEY");
         string baseOverride = Env("CHROMADROP_FIREBASE_BASE");
@@ -63,10 +76,10 @@ public class Leaderboard : MonoBehaviour
 
         if (projectId.Length == 0 || apiKey.Length == 0)
         {
-            var ta = Resources.Load<TextAsset>("leaderboard");
+            var ta = Resources.Load<TextAsset>("backend-config");
             if (ta == null)
             {
-                LastError = "설정 없음 (환경변수도 Resources/leaderboard.json 도 없음)";
+                LastError = "설정 없음 (환경변수도 Resources/backend-config.json 도 없음)";
                 return;
             }
             var m = Json.AsMap(Json.Parse(ta.text));
@@ -94,7 +107,15 @@ public class Leaderboard : MonoBehaviour
     /// <summary>저장된 refresh token 이 있으면 갱신하고, 없으면 새 게스트 계정을 만든다.</summary>
     public IEnumerator SignInAnonymously(Action<bool> done)
     {
-        if (!Configured) { if (done != null) done(false); yield break; }
+        if (TestServices.Enabled)
+        {
+            Uid = "dummy-local-player";
+            idToken = "dummy-offline";
+            tokenExpiry = float.MaxValue;
+            if (done != null) done(true);
+            yield break;
+        }
+        if (!RemoteRankingEnabled || !Configured) { if (done != null) done(false); yield break; }
         idToken = null;   // 갱신에 실패했는데 낡은 토큰이 남아 성공으로 보이면 안 된다
 
         var refresh = PlayerPrefs.GetString(PrefRefresh, "");
@@ -157,7 +178,21 @@ public class Leaderboard : MonoBehaviour
     /// <summary>내 기록을 올린다. 서버에 이미 더 높은 점수가 있으면 덮어쓰지 않는다.</summary>
     public IEnumerator Submit(bool timeAttack, string difficulty, int score, int seed, Action<bool> done)
     {
-        if (!Configured) { if (done != null) done(false); yield break; }
+        if (TestServices.Enabled)
+        {
+            string key = "dummy_rank_" + BoardId(timeAttack, difficulty);
+            var previous = JsonUtility.FromJson<LocalScore>(PlayerPrefs.GetString(key, "{}"));
+            if (!PlayerPrefs.HasKey(key) || previous == null || score > previous.score)
+            {
+                var local = new LocalScore { name = PlayerAccount.Name, country = PlayerAccount.Country,
+                    score = score, updated = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond - 62135596800000L };
+                PlayerPrefs.SetString(key, JsonUtility.ToJson(local));
+                PlayerPrefs.Save();
+            }
+            if (done != null) done(true);
+            yield break;
+        }
+        if (!RemoteRankingEnabled || !Configured) { if (done != null) done(false); yield break; }
         yield return EnsureToken();
         if (!SignedIn) { if (done != null) done(false); yield break; }
 
@@ -196,7 +231,25 @@ public class Leaderboard : MonoBehaviour
     /// <summary>상위 TopN 을 점수 내림차순으로 받아온다.</summary>
     public IEnumerator FetchTop(bool timeAttack, string difficulty, Action<List<ScoreEntry>> done)
     {
-        if (!Configured) { if (done != null) done(null); yield break; }
+        if (TestServices.Enabled)
+        {
+            var demoRows = new List<ScoreEntry>();
+            string[] countries = { "KOR", "USA", "JPN", "FRA" };
+            for (int i = 0; i < 12; i++) demoRows.Add(new ScoreEntry {
+                Uid = "dummy-player-" + i, Name = "Test Player " + (i + 1),
+                Country = countries[i % countries.Length], Score = 12000 - i * 700
+            });
+            string saved = PlayerPrefs.GetString("dummy_rank_" + BoardId(timeAttack, difficulty), "");
+            if (saved.Length > 0)
+            {
+                var local = JsonUtility.FromJson<LocalScore>(saved);
+                demoRows.Add(new ScoreEntry { Uid = "dummy-local-player", Name = local.name,
+                    Country = local.country, Score = local.score, UpdatedMs = local.updated });
+            }
+            if (done != null) done(NationRanking.DedupeBest(demoRows));
+            yield break;
+        }
+        if (!RemoteRankingEnabled || !Configured) { if (done != null) done(null); yield break; }
         yield return EnsureToken();
 
         string col = DocPath(BoardId(timeAttack, difficulty));
@@ -234,6 +287,14 @@ public class Leaderboard : MonoBehaviour
         });
 
         if (done != null) done(rows == null ? null : NationRanking.DedupeBest(rows));
+    }
+
+    [Serializable]
+    class LocalScore
+    {
+        public string name, country;
+        public int score;
+        public long updated;
     }
 
     // ---------- Firestore 값 표기 (모든 값이 {타입:값} 으로 한 겹 싸여 있다) ----------

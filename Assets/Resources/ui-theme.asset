@@ -1,0 +1,24 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 692cc0c34779f4c349a64cc6cfbe8dfd, type: 3}
+  m_Name: ui-theme
+  m_EditorClassIdentifier: ChromaDrop::UiThemeAssets
+  titleFont: {fileID: 12800000, guid: cd414e933591647dab8f98bb4fc97ddc, type: 3}
+  menuFont: {fileID: 12800000, guid: 2e1d342d338dc4b70b2c9bd454f7e177, type: 3}
+  bodyFont: {fileID: 12800000, guid: d9c096dfda6474c4eb9a4bb1c33fa3f1, type: 3}
+  numberFont: {fileID: 12800000, guid: 0cd8bb34a9b1a424d84e53de526926f8, type: 3}
+  effectFont: {fileID: 12800000, guid: 24dc07974809c477cba783f3731a021b, type: 3}
+  koreanAccentFont: {fileID: 12800000, guid: fe38c86c79b784c28a206c80f8663d36, type: 3}
+  pausePanel: {fileID: 21300000, guid: 04bd1523a22674f9babafcc19c133da3, type: 3}
+  menuBackground: {fileID: 21300000, guid: f15c6daf9a5c94a01a5e2bb083fd0646, type: 3}
+  primaryButton: {fileID: 21300000, guid: a77102faaa06d481c80b1e53d055a9e8, type: 3}
+  secondaryButton: {fileID: 21300000, guid: b1eb413e8c4e449b296ad3263fa750ca, type: 3}

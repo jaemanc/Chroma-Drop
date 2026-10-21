@@ -11,7 +11,6 @@ public enum TileSkin { Glossy, Gem, Crayon, Crystal, Jewel }
 
 public static class Wallet
 {
-    const string KeyCoins = "wallet_coins";
     const string KeySeeded = "dev_seeded";
 
     // ⚠ 개발용. 처음 한 번 코인을 넉넉히 넣어 사면서 테스트할 수 있게 한다.
@@ -20,14 +19,17 @@ public static class Wallet
     {
         if (PlayerPrefs.GetInt(KeySeeded, 0) != 0) return;
         PlayerPrefs.SetInt(KeySeeded, 1);
-        PlayerPrefs.SetInt(KeyCoins, PlayerPrefs.GetInt(KeyCoins, 0) + DevGrant);
+        Coins = checked(Coins + DevGrant);
         PlayerPrefs.Save();
     }
 
     public static int Coins
     {
-        get { return PlayerPrefs.GetInt(KeyCoins, 0); }
-        private set { PlayerPrefs.SetInt(KeyCoins, Mathf.Max(0, value)); PlayerPrefs.Save(); }
+        get { return TestPayments.Balance; }
+        private set
+        {
+            TestPayments.Balance = value;
+        }
     }
 
     /// <summary>⚠ 개발용. 상점 코인 칩을 5번 두드리면 호출된다.
@@ -38,7 +40,7 @@ public static class Wallet
     public static void AddCoins(int n)
     {
         if (n <= 0) return;
-        Coins = Coins + n;
+        Coins = checked(Coins + n);
     }
 
     /// <summary>코인이 모자라면 아무것도 하지 않고 false.</summary>
@@ -55,13 +57,12 @@ public static class Wallet
     /// <summary>기본 스킨은 처음부터 갖고 있다.</summary>
     public static bool OwnsSkin(TileSkin s)
     {
-        return s == TileSkin.Glossy || PlayerPrefs.GetInt("skin_" + (int)s, 0) == 1;
+        return TestPayments.OwnsSkin(s);
     }
 
     public static void UnlockSkin(TileSkin s)
     {
-        PlayerPrefs.SetInt("skin_" + (int)s, 1);
-        PlayerPrefs.Save();
+        TestPayments.UnlockSkin(s);
     }
 
     /// <summary>착용 중인 스킨. 갖고 있지 않으면 기본으로 돌아간다.</summary>
@@ -80,23 +81,19 @@ public static class Wallet
         }
     }
 
-    static string Key(ShopItem it) { return "inv_" + (int)it; }
+    public static int Count(ShopItem it) { return TestPayments.Count(it); }
 
-    public static int Count(ShopItem it) { return PlayerPrefs.GetInt(Key(it), 0); }
+    public static bool BuyItem(ShopItem it) { return TestPayments.BuyItem(it); }
+    public static bool BuySkin(TileSkin skin) { return TestPayments.BuySkin(skin); }
 
     public static void Add(ShopItem it, int n)
     {
-        PlayerPrefs.SetInt(Key(it), Mathf.Max(0, Count(it) + n));
-        PlayerPrefs.Save();
+        TestPayments.AddItem(it, n);
     }
 
     /// <summary>하나 써서 소모한다. 없으면 false.</summary>
     public static bool Use(ShopItem it)
     {
-        int n = Count(it);
-        if (n <= 0) return false;
-        PlayerPrefs.SetInt(Key(it), n - 1);
-        PlayerPrefs.Save();
-        return true;
+        return TestPayments.UseItem(it);
     }
 }

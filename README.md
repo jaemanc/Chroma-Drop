@@ -1,7 +1,8 @@
 # Chroma Drop
 
 Color pop! — 칼라 매쳐 퍼즐. 조각을 단색으로 찍어(페인트) 같은 색 정사각형을 만들어 터뜨린다.
-**로직/표현이 분리**돼 있고 **외부 에셋 의존이 0**이다 — 스프라이트·폰트·사운드·UI를 전부 런타임에 생성한다.
+**로직/표현이 분리**돼 있다 — 규칙 엔진은 `UnityEngine` 에 의존하지 않는다.
+블록·판 그림은 에셋으로 넣고, 아트가 빠진 자리는 런타임 절차 생성으로 메운다.
 
 명령 모음은 [COMMANDS.md](COMMANDS.md), 작업 규칙은 [CLAUDE.md](CLAUDE.md) 참고.
 
@@ -27,38 +28,52 @@ Color pop! — 칼라 매쳐 퍼즐. 조각을 단색으로 찍어(페인트) �
 
 ## 프로젝트 구조
 
+역할별로 나눈다. `Assets/_Project/` 아래가 직접 만든 것 전부고, 그 밖은 생성물이거나 외부 것이다.
+
 ```
 Assets/
-  _Project/                    # 직접 만든 것
-    Scenes/Menu.unity          # 메인 메뉴 (시작 씬)
-    Scenes/Game.unity          # 게임 씬 (카메라 + GameManager — 나머지는 런타임 생성)
+  _Project/
+    Scenes/                    # Menu.unity(시작) · Game.unity
     Scripts/
-      ColorMatcherCore.cs      # 게임 규칙 (UnityEngine 비의존)
-      GameManager.cs           # 게임 흐름/입력, 연출 오케스트레이션. 아트(테마·국기·이펙트)를 인스펙터로 연결받는다
-      BoardView.cs             # 보드 렌더링·아이템 아이콘·고스트·파괴 파티클·낙하
-      GameUI.cs                # HUD/결과/랭킹 (uGUI 런타임 생성, SafeArea 대응)
-      MainMenu.cs              # 메인 메뉴 버튼 → 게임 씬
-      BlockTheme.cs            # 블록 테마 데이터 (블록 그림·색·판 크기·배경)
-      CountryFlags.cs          # 국기 조회
-      Palette.cs               # 색상 팔레트 (HSL→RGB, 순수 함수)
-      Sfx.cs                   # 효과음 (절차 생성 PCM)
-      Leaderboard.cs           # Firestore REST 랭킹 (SDK 미사용)
-      NationRanking.cs         # 랭킹 집계 (UnityEngine 비의존)
-      PlayerAccount.cs         # 게스트 계정·국가 판별·배지 색
-      Json.cs                  # 최소 JSON 파서
-    Sprites/                   # Blocks/{Lego,Cats} · Boards · Flags · Icons · UI
+      ChromaDrop.asmdef        # 런타임 어셈블리 (하위 폴더가 전부 여기 들어간다)
+      Core/                    # UnityEngine 비의존 — 서버 검증·리플레이·엔진 교체에 재사용
+        ColorMatcherCore.cs    #   게임 규칙 엔진 (수정 금지 자산)
+        NationRanking.cs       #   국가 랭킹 집계
+        Json.cs                #   최소 JSON 파서
+      Gameplay/                # 판 진행과 보드 표현
+        GameManager.cs         #   흐름·입력·연출 지휘. 아트를 인스펙터로 받는다
+        BoardView.cs           #   보드 렌더링·파티클·낙하
+        BlockTheme.cs          #   블록 테마 데이터 (그림·색·판 크기·배경)
+        ObstacleStyle.cs  StageTable.cs  StageTargets.cs
+        Progress.cs  Shop.cs  Wallet.cs  Sfx.cs  Palette.cs
+      UI/                      # 화면
+        GameUI.cs              #   HUD/결과/랭킹 (uGUI 런타임 생성, SafeArea 대응)
+        MainMenu.cs  UiTheme.cs  LeaderboardSkin.cs
+      Services/                # 바깥과 통신하는 것
+        Leaderboard.cs         #   Firestore REST (SDK 미사용)
+        PlayerAccount.cs  CountryFlags.cs
+    Editor/                    # 에디터 전용 — 플레이어 빌드에 안 들어간다
+      Build.cs                 #   MacBuild.App · IosBuild.Xcode (배치모드 진입점)
+      ChromaDrop.Editor.asmdef
+    Sprites/                   # Blocks/{gem_blocks,Obstacle} · Boards · Flags · Icons · UI · arrows_x
     Prefabs/Effects/           # 블록 파괴 파티클
     Animations/                # 메뉴 버튼 애니메이션
-    Design/                    # 게임에 쓰지 않는 시안·원본
-  ThirdParty/MatthewGuz/       # 에셋 스토어 팩 (git 미추적)
-  Resources/leaderboard.json   # 랭킹 서버 설정 — 코드가 이름으로 읽는 생성물 (git 미추적)
-  StreamingAssets/stages.json  # 스테이지 기본값
+    Design/                    # 게임에 안 쓰는 시안·원본
+  ThirdParty/                  # 에셋 스토어 팩 (git 미추적)
+  Resources/backend-config.json   # 코드가 이름으로 읽는 설정만 둔다 (git 미추적)
+  StreamingAssets/stages.json  # 스테이지 100개 + 타임어택 설정
 Tests/CoreTests.cs             # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
 Tools/                         # 빌드·키스토어·랭킹 설정·더미 시드 스크립트
+docs/                          # 설계 메모
+Builds/ Library/ Logs/         # 생성물. 커밋 대상 아님
 ```
 
-**`ColorMatcherCore` 와 `NationRanking` 은 엔진에 의존하지 않는다.** 서버 검증·리플레이·엔진 교체에
-그대로 재사용할 수 있고, 이 경계를 지키는 것이 이 구조의 핵심이다.
+경계 규칙 두 가지:
+
+- **`Core/` 는 `UnityEngine` 을 쓰지 않는다.** 규칙 엔진을 엔진 밖에서 그대로 돌릴 수 있어야
+  서버 검증·리플레이가 가능하다. 이 폴더에 `using UnityEngine` 이 들어가면 설계가 깨진 것이다.
+- **런타임 아트는 `Resources` 에 두지 않는다.** `Resources` 는 참조 여부와 상관없이 통째로
+  빌드에 들어간다. 그림은 Game 씬 `GameManager` 인스펙터로 연결한다.
 
 ## 실행
 
@@ -81,9 +96,9 @@ open Builds/Mac/ChromaDrop.app
 ## 구현 상태
 
 - **홈 → 플레이 → 결과** 전체 사이클 동작
-- **랭킹** — Firebase Firestore REST(SDK 미사용). 익명 로그인으로 게스트 계정을 만들고,
-  게임이 끝나면 자동 제출한다. 개인 순위와 국가별 순위(상위 3명 합산)를 보여준다.
-  설정이 없으면 랭킹만 꺼지고 게임은 정상 동작한다
+- **랭킹** — 현재 오프라인 더미 기록과 국가별 순위(상위 3명 합산)를 보여준다.
+  기존 Firebase Firestore REST 경로는 중지했으며, 삭제 대상인 이전 난이도별
+  `boards_*` 컬렉션을 다시 생성하지 않는다.
 - **최고 점수** — 모드별로 `PlayerPrefs` 에 로컬 저장
 - **연출** — 둥근 모서리 타일, 스탬프 팝, 연쇄 단계별 순차 폭발(직접 파괴는 흰색,
   연계는 황금색), 단계마다 낙하 재생 + 새로 채워진 칸 반짝임, 색 파편 버스트,
@@ -113,19 +128,30 @@ Unity -batchmode -runTests -testPlatform PlayMode -projectPath . -testResults re
 ./Tools/build-android.sh aab              # Play Console 업로드용
 ```
 
-빌드 설정은 `AndroidBuild.Configure()` 안에 코드로 들어 있다 — 에디터 GUI 로 바꾼 값은 덮어쓰이므로
-**코드가 유일한 출처**다.
+```bash
+./Tools/build-mac.sh --run                # 맥 .app (로컬 확인용, 서명 없음)
+./Tools/build-ios.sh                      # Builds/iOS 에 Xcode 프로젝트 생성
+```
+
+빌드 진입점은 `Assets/_Project/Editor/Build.cs` 다 (`MacBuild.App`, `IosBuild.Xcode`).
+에디터 GUI 로 바꾼 값은 코드가 덮어쓰므로 **코드가 유일한 출처**다.
+배치모드는 Unity 에디터가 열려 있으면 실패한다.
 
 릴리즈 서명 키스토어 생성과 자격증명 주입은 [COMMANDS.md](COMMANDS.md) §4 를 따른다.
 키스토어와 비밀번호는 저장소에 넣지 않는다.
 
-iOS 는 아직 스크립트화되지 않았다. Build Settings 에서 플랫폼을 전환해 Xcode 프로젝트를 생성한 뒤
-Xcode 에서 아카이브한다.
+**iOS** — Unity 는 Xcode 프로젝트까지만 만든다. `.app`/`.ipa` 는 그 프로젝트를 Xcode 로
+빌드·아카이브해야 나오고, 실기기용은 Apple 개발자 서명이 필요하다. 필요한 것:
+Unity iOS Build Support 모듈, 전체 Xcode(Command Line Tools 만으로는 안 된다).
+
+**Android** — `Tools/build-android.sh` 가 부르는 `AndroidBuild` 진입점이 아직 없다.
+스크립트만 있고 코드가 비어 있는 상태다.
 
 ## 미구현
 
 - 서버측 점수 검증. 지금은 클라이언트가 점수를 직접 올리므로 조작이 가능하다.
   제출 시 `seed` 를 함께 저장해 두었으니, 입력 로그를 붙이면 서버에서 `ColorMatcherCore` 를
   재실행해 검증할 수 있다
-- iOS 빌드 파이프라인
+- iOS 빌드 파이프라인 — Unity 쪽(Xcode 프로젝트 생성)만 있고, Xcode 아카이브·서명은 수동
+- Android 빌드 진입점(`AndroidBuild`) 복구
 - 밸런스 실측 조정

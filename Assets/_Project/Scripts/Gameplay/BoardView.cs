@@ -24,7 +24,6 @@ public class BoardView : MonoBehaviour
     static readonly Color MarkWhite = new Color(1f, 1f, 1f, 0.95f);               // 별빛 가루의 밝은 쪽
     static readonly Color MarkGold = new Color(1f, 0.85f, 0.30f, 0.95f);          // 별빛 가루의 노란 쪽
 
-    static readonly Color MarkDim = new Color(0.07f, 0.09f, 0.18f);               // 빛이 잦아든 쪽 (판 네이비)
     static readonly Color MarkDoneColor = new Color(0.72f, 0.76f, 0.80f, 0.16f);  // 깬 칸 — 흔적만 남긴다
 
     SpriteRenderer[,] tiles;
@@ -37,7 +36,8 @@ public class BoardView : MonoBehaviour
     Sprite[] blinkArt, winkArt;   // 표정 변화 — 눈 감기 / 윙크
     int[,] cellColor;             // 칸마다 지금 무슨 색인지 (표정 스프라이트를 고를 때 쓴다)
     Sprite[] crackArt;            // 벽돌 블록 — 손상 단계마다 한 장 (GameManager 가 씬에서 연결한 것)
-    Sprite[] arrowHArt, arrowVArt;  // 가로/세로 화살표 블록 — 팔레트 색마다 한 장
+    Sprite[] arrowHArt, arrowVArt, arrowXArt;   // 가로/세로/대각 화살표 글리프 — 색마다 한 장
+    Color[] arrowHCol, arrowVCol, arrowXCol;    // 위 그림들의 색 (파일 이름에서 읽는다)
     bool useArt;
     float tileDraw = TileScale;   // 아트는 여백을 품고 있어 조금 크게 그린다
 
@@ -96,6 +96,9 @@ public class BoardView : MonoBehaviour
     // ---- 착지 충격파 링 ----
     public GameObject popFx;      // 블록이 터질 때 이펙트 (GameManager 가 씬에서 연결한 것을 넘긴다)
     public Texture2D[] obstacleBlocks;   // 벽돌 블록 그림 (GameManager 가 씬에서 연결한 것을 넘긴다)
+    public Texture2D[] arrowRowBlocks;   // 가로 폭탄 화살표 (색마다 한 장)
+    public Texture2D[] arrowColBlocks;   // 세로 폭탄 화살표
+    public Texture2D[] arrowDiagBlocks;  // 대각 폭탄 X
     const int MaxRings = 12;
     Sprite shock;                 // 원형 링
     Transform[] rTr;
@@ -125,9 +128,9 @@ public class BoardView : MonoBehaviour
         obstacle = new Sprite[ObstacleStyle.Stages];
         for (int i = 0; i < obstacle.Length; i++) obstacle[i] = MakeObstacleSprite(i);
         // 가로·세로 아이템은 참고 아트의 화살표 그림을 그대로 쓴다
-        icons[ItemType.Row] = arrowHArt != null ? arrowHArt[0] : MakeIcon(ItemType.Row);
-        icons[ItemType.Col] = arrowVArt != null ? arrowVArt[0] : MakeIcon(ItemType.Col);
-        icons[ItemType.Diag] = MakeIcon(ItemType.Diag);
+        icons[ItemType.Row] = arrowHArt.Length > 0 ? arrowHArt[0] : MakeIcon(ItemType.Row);
+        icons[ItemType.Col] = arrowVArt.Length > 0 ? arrowVArt[0] : MakeIcon(ItemType.Col);
+        icons[ItemType.Diag] = arrowXArt.Length > 0 ? arrowXArt[0] : MakeIcon(ItemType.Diag);
         // 폭탄도 참고 아트를 그대로 쓴다 (없으면 절차 생성으로 돌아간다)
         var bombArt = LoadArt("items/bomb");
         bomb = bombArt != null ? bombArt : MakeBombSprite();
@@ -182,6 +185,14 @@ public class BoardView : MonoBehaviour
                 marks[x, y] = msr;
 
                 var go = new GameObject("t_" + x + "_" + y);
+                var cell = new GameObject("cell_" + x + "_" + y);
+                cell.transform.SetParent(transform, false);
+                cell.transform.localPosition = new Vector3(x, y, 0.5f);
+                cell.transform.localScale = Vector3.one * 0.95f;
+                var cellRenderer = cell.AddComponent<SpriteRenderer>();
+                cellRenderer.sprite = ring;
+                cellRenderer.color = new Color(0.50f, 0.65f, 0.72f, 0.35f);
+                cellRenderer.sortingOrder = -3;
                 go.transform.SetParent(transform, false);
                 go.transform.localPosition = new Vector3(x, y, TileZ(y));
                 go.transform.localScale = Vector3.one * tileDraw;
@@ -467,9 +478,10 @@ public class BoardView : MonoBehaviour
         crackArt = new Sprite[bricks.Length];
         for (int i = 0; i < bricks.Length; i++) crackArt[i] = ToSprite(bricks[i]);
 
-        // 화살표 블록도 칸의 색을 따른다 — 팔레트 색마다 한 장씩 구워 뒀다
-        arrowHArt = LoadArtSet("tiles/arrow_h", n);
-        arrowVArt = LoadArtSet("tiles/arrow_v", n);
+        // 화살표 글리프는 씬에서 연결한 그림을 쓴다. 칸 색과 가장 가까운 색의 장을 골라 얹는다
+        arrowHArt = ArrowSet(arrowRowBlocks, out arrowHCol);
+        arrowVArt = ArrowSet(arrowColBlocks, out arrowVCol);
+        arrowXArt = ArrowSet(arrowDiagBlocks, out arrowXCol);
     }
 
     /// <summary>테마를 적용한다: 테마의 블록 그림 한 벌을 판의 색 블록 그림으로 쓴다.
@@ -477,6 +489,8 @@ public class BoardView : MonoBehaviour
     /// 그림이 연결되지 않았으면 지금 그림을 그대로 둔다 — 한 벌 빠졌다고 판이 안 그려지면 안 된다.</summary>
     public void UseTheme(BlockTheme theme)
     {
+        tileDraw = (theme.Blocks != null && System.Array.Exists(theme.Blocks, t => t != null)
+            ? theme.BlockScale : TileScale) * theme.DrawScale;
         var texs = theme.Blocks != null ? System.Array.FindAll(theme.Blocks, t => t != null) : new Texture2D[0];
         if (texs.Length == 0) return;
         System.Array.Sort(texs, (a, b) => string.CompareOrdinal(a.name, b.name));
@@ -488,32 +502,36 @@ public class BoardView : MonoBehaviour
             jellyArt[i] = ToSprite(texs[i]);
             faceArt[i] = new[] { jellyArt[i] };
         }
-        tileDraw = theme.BlockScale;      // 칸 대비 그림 크기 — 그림 여백이 세트마다 달라 BlockTheme 이 정한다
         if (useArt) return;
 
         useArt = true;
         whiteArt = MakeWhiteTileSprite();
     }
 
-    /// <summary>색마다 한 장씩인 그림 묶음. 색깔별 파일이 없으면 색 없는 한 장으로 전부 채운다.</summary>
-    static Sprite[] LoadArtSet(string path, int n)
+    /// <summary>씬에서 연결한 화살표 그림 묶음. 색은 파일 이름(arrow_green_h 처럼)에서 읽는다.</summary>
+    static Sprite[] ArrowSet(Texture2D[] texs, out Color[] colors)
     {
-        var set = new Sprite[n];
-        bool any = false;
-        for (int i = 0; i < n; i++)
+        var use = texs != null ? System.Array.FindAll(texs, t => t != null) : new Texture2D[0];
+        System.Array.Sort(use, (a, b) => string.CompareOrdinal(a.name, b.name));
+        var set = new Sprite[use.Length];
+        colors = new Color[use.Length];
+        for (int i = 0; i < use.Length; i++)
         {
-            set[i] = LoadArt(path + "_" + i);
-            if (set[i] != null) any = true;
+            set[i] = ToSprite(use[i]);
+            colors[i] = NameColor(use[i].name);
         }
-        if (any)
-        {
-            for (int i = 0; i < n; i++) if (set[i] == null) set[i] = set[0];
-            return set;
-        }
-        var one = LoadArt(path);
-        if (one == null) return null;
-        for (int i = 0; i < n; i++) set[i] = one;
         return set;
+    }
+
+    /// <summary>파일 이름에 든 색 이름의 대표색. 칸 색과 견줘 가장 가까운 그림을 고르는 데만 쓴다.</summary>
+    static Color NameColor(string name)
+    {
+        if (name.Contains("green")) return Palette.Hex(0x4CAF50);
+        if (name.Contains("pink")) return Palette.Hex(0xE8409A);
+        if (name.Contains("purple")) return Palette.Hex(0x9B51E0);
+        if (name.Contains("yellow")) return Palette.Hex(0xF5C518);
+        if (name.Contains("cyan")) return Palette.Hex(0x35C6E0);
+        return Color.gray;
     }
 
     static Sprite LoadArt(string path)
@@ -644,21 +662,6 @@ public class BoardView : MonoBehaviour
             return;
         }
 
-        // 가로·세로 폭탄은 참고 아트의 화살표 블록을 통째로 쓴다 (글리프를 얹지 않는다)
-        Sprite[] arrowSet = null;
-        if (useArt && item == ItemType.Row) arrowSet = arrowHArt;
-        else if (useArt && item == ItemType.Col) arrowSet = arrowVArt;
-        Sprite arrowTile = arrowSet != null && c >= 0 ? arrowSet[c % arrowSet.Length] : null;
-        if (arrowTile != null)
-        {
-            sr.sprite = arrowTile;
-            sr.color = Color.white;
-            sr.transform.localScale = Vector3.one * tileDraw;
-            fc.enabled = false;
-            ov.enabled = false;
-            return;
-        }
-
         sr.sprite = TileArtFor(c, marks[x, y].enabled, x, y);
         // 아트에는 색이 이미 들어 있다. 절차 생성 타일일 때만 팔레트 색을 곱한다.
         sr.color = useArt ? Color.white : (c == Board.Empty ? EmptyColor : palette[c]);
@@ -677,10 +680,35 @@ public class BoardView : MonoBehaviour
         ov.enabled = item != ItemType.None;
         if (item != ItemType.None)
         {
-            ov.sprite = icons[item];
-            bool artArrow = useArt && (item == ItemType.Row || item == ItemType.Col);
-            ov.transform.localScale = Vector3.one * (artArrow ? tileDraw : 0.8f);
+            var arrow = ArrowArt(item, c, palette);
+            ov.sprite = arrow != null ? arrow : icons[item];
+            ov.color = Color.white;
+            ov.transform.localScale = Vector3.one * (arrow != null ? ArrowDraw : 0.8f);
         }
+    }
+
+    const float ArrowDraw = 0.92f;   // 칸 대비 화살표 글리프 크기
+
+    /// <summary>칸에 얹을 화살표 그림. 씬에 연결한 장 중 칸 색과 가장 가까운 색을 고른다.
+    /// 연결된 그림이 없으면 null — 절차 생성 글리프로 돌아간다.</summary>
+    Sprite ArrowArt(ItemType it, int c, Color[] palette)
+    {
+        Sprite[] set = it == ItemType.Row ? arrowHArt : it == ItemType.Col ? arrowVArt
+                     : it == ItemType.Diag ? arrowXArt : null;
+        Color[] cols = it == ItemType.Row ? arrowHCol : it == ItemType.Col ? arrowVCol
+                     : it == ItemType.Diag ? arrowXCol : null;
+        if (set == null || set.Length == 0 || c < 0 || palette == null || palette.Length == 0) return null;
+
+        Color want = palette[c % palette.Length];
+        int best = 0;
+        float bestD = float.MaxValue;
+        for (int i = 0; i < cols.Length; i++)
+        {
+            float dr = cols[i].r - want.r, dg = cols[i].g - want.g, db = cols[i].b - want.b;
+            float d = dr * dr + dg * dg + db * db;
+            if (d < bestD) { bestD = d; best = i; }
+        }
+        return set[best];
     }
 
     /// <summary>콘크리트 아래 깔린 색. 좌표 해시라 판이 바뀌어도 같은 칸은 같은 색으로 남는다.
@@ -694,6 +722,7 @@ public class BoardView : MonoBehaviour
     /// <summary>보드 최종 상태를 즉시 반영 (색/아이템/위치·스케일 리셋)</summary>
     public void Refresh(Board b, Color[] palette)
     {
+        ClearFeverFall();
         for (int x = 0; x < Board.W; x++)
             for (int y = 0; y < Board.H; y++)
             {
@@ -740,11 +769,10 @@ public class BoardView : MonoBehaviour
     /// <summary>아트 타일을 쓰고 있는가 (테스트용).</summary>
     public bool UsingArt { get { return useArt; } }
 
-    /// <summary>그 색의 화살표 블록 그림 (테스트용).</summary>
-    public Sprite ArrowArtForTest(ItemType it, int color)
+    /// <summary>그 색 칸에 얹히는 화살표 그림 (테스트용).</summary>
+    public Sprite ArrowArtForTest(ItemType it, int color, Color[] palette)
     {
-        var set = it == ItemType.Row ? arrowHArt : arrowVArt;
-        return set == null || color < 0 ? null : set[color % set.Length];
+        return ArrowArt(it, color, palette);
     }
 
     /// <summary>목표 칸 하나를 깼다. 지우지 않고 흐리게 남긴다 — 어디를 깼는지 보이게.</summary>
@@ -1116,6 +1144,47 @@ public class BoardView : MonoBehaviour
         tr.localPosition = new Vector3(p.X, p.Y + dy, MovingZ(p.Y));   // 들어올린 동안도 앞으로
     }
 
+    public void PlayFeverThrow(List<Point> cells, Color color, int colorIndex, System.Action onImpact)
+    {
+        StartCoroutine(FeverThrowCo(new List<Point>(cells), color, colorIndex, onImpact));
+    }
+
+    // 투척용 복사본만 움직여 연속 발사와 보드의 즉시 판정을 방해하지 않는다.
+    IEnumerator FeverThrowCo(List<Point> cells, Color color, int colorIndex, System.Action onImpact)
+    {
+        var root = new GameObject("FeverThrow");
+        root.transform.SetParent(transform, false);
+        var bodies = new Transform[cells.Count];
+        for (int i = 0; i < cells.Count; i++)
+        {
+            var body = new GameObject("block").AddComponent<SpriteRenderer>();
+            body.transform.SetParent(root.transform, false);
+            body.sprite = useArt ? TileArtFor(colorIndex) : tile;
+            body.color = useArt ? Color.white : color;
+            body.sortingOrder = 7;
+            bodies[i] = body.transform;
+        }
+        const float duration = 0.16f;
+        for (float t = 0; t < duration;)
+        {
+            if (Time.timeScale > 0) t += Time.unscaledDeltaTime;
+            float k = Mathf.Clamp01(t / duration);
+            float height = 1.8f * (1 - k * k);
+            for (int i = 0; i < cells.Count; i++)
+            {
+                var p = cells[i];
+                bodies[i].localPosition = new Vector3(p.X - 0.45f * (1 - k), p.Y + height, -2);
+                bodies[i].localScale = new Vector3(tileDraw * (1.18f - 0.08f * k), tileDraw * (1.25f - 0.35f * k), 1);
+                bodies[i].localRotation = Quaternion.Euler(0, 0, -12 * (1 - k));
+            }
+            yield return null;
+        }
+        SpawnStampImpact(cells, color);
+        if (cells.Count > 0) SpawnShockwave(cells[0].X, cells[0].Y, new Color(1f, 0.85f, 0.35f), 1.8f);
+        Destroy(root);
+        if (onImpact != null) onImpact();
+    }
+
     /// <summary>내려찍은 자리의 먼지와 충격파. 조각의 아래쪽 테두리에서만 터뜨린다.</summary>
     void SpawnStampImpact(List<Point> cells, Color c)
     {
@@ -1393,6 +1462,47 @@ public class BoardView : MonoBehaviour
     }
 
     /// <summary>바뀐 칸들이 위에서 떨어져 들어오는 낙하 연출. 색은 이미 Refresh로 최종 상태.</summary>
+    readonly List<Point> feverFallCells = new List<Point>();
+    readonly List<float> feverFallDrops = new List<float>();
+    readonly List<Color> feverFallColors = new List<Color>();
+    float feverFallClock;
+
+    // 피버의 판정은 즉시 끝내고, 다음 입력을 막지 않는 짧은 시각 낙하만 덧붙인다.
+    public void AnimateFeverFall(List<Point> removed)
+    {
+        ClearFeverFall();
+        for (int x = 0; x < Board.W; x++)
+        {
+            int bottom = Board.H, count = 0;
+            foreach (var p in removed) if (p.X == x) { bottom = Mathf.Min(bottom, p.Y); count++; }
+            for (int y = bottom; y < Board.H; y++)
+            {
+                if (cellColor[x, y] < 0) continue;
+                var p = new Point(x, y);
+                float drop = Mathf.Min(count, 3);
+                feverFallCells.Add(p); feverFallDrops.Add(drop); feverFallColors.Add(tiles[x, y].color);
+                Place(p, drop, tiles[x, y].color);
+            }
+        }
+        feverFallClock = 0;
+    }
+
+    void ClearFeverFall()
+    {
+        for (int i = 0; i < feverFallCells.Count; i++) Place(feverFallCells[i], 0, feverFallColors[i]);
+        feverFallCells.Clear(); feverFallDrops.Clear(); feverFallColors.Clear();
+    }
+
+    void LateUpdate()
+    {
+        if (feverFallCells.Count == 0 || Time.timeScale == 0) return;
+        feverFallClock += Time.unscaledDeltaTime;
+        float k = Mathf.Clamp01(feverFallClock / 0.24f);
+        for (int i = 0; i < feverFallCells.Count; i++)
+            Place(feverFallCells[i], feverFallDrops[i] * (1 - k * k), feverFallColors[i]);
+        if (k >= 1) ClearFeverFall();
+    }
+
     /// <summary>이번 낙하에서 칸마다 떨어진 거리. 착지 연출의 세기로 쓴다.</summary>
     public readonly Dictionary<int, float> LastDrop = new Dictionary<int, float>();
     /// <summary>이번 낙하에서 가장 멀리 떨어진 거리.</summary>
@@ -2081,34 +2191,6 @@ public class BoardView : MonoBehaviour
                 float dy = Mathf.Max(r - fy, fy - (S - r), 0f);
                 float a = Mathf.Clamp01(r - Mathf.Sqrt(dx * dx + dy * dy) + 0.5f);
                 px[y * S + x] = new Color(1, 1, 1, a);
-            }
-        tex.SetPixels(px);
-        tex.Apply();
-        return Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), S);
-    }
-
-    /// <summary>블록 안에 차 있는 빛. 가운데가 가장 밝고 가장자리로 갈수록 옅어져
-    /// 블록 색이 비친다 — 블록이 스스로 빛나는 것처럼 보이게 하는 층이다.</summary>
-    static Sprite MakeMarkFillSprite()
-    {
-        const int S = 64;
-        const float R = 12f;   // 모서리 반경(px) — 블록의 둥근 정도에 맞춘다
-        var tex = new Texture2D(S, S) { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp };
-        var px = new Color[S * S];
-        for (int y = 0; y < S; y++)
-            for (int x = 0; x < S; x++)
-            {
-                float fx = x + 0.5f, fy = y + 0.5f;
-                float dx = Mathf.Max(R - fx, fx - (S - R), 0f);
-                float dy = Mathf.Max(R - fy, fy - (S - R), 0f);
-                float inside = R - Mathf.Sqrt(dx * dx + dy * dy);
-                if (inside <= 0f) { px[y * S + x] = new Color(0, 0, 0, 0); continue; }
-
-                float nx = (fx - S * 0.5f) / (S * 0.5f);
-                float ny = (fy - S * 0.5f) / (S * 0.5f);
-                float a = Mathf.Clamp01(1f - Mathf.Sqrt(nx * nx + ny * ny) * 0.85f);
-
-                px[y * S + x] = new Color(1, 1, 1, a * a * Mathf.Clamp01(inside));
             }
         tex.SetPixels(px);
         tex.Apply();

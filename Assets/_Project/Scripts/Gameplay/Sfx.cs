@@ -7,13 +7,14 @@ public class Sfx : MonoBehaviour
     const int SR = 22050;
 
     AudioSource src;
-    AudioClip stamp, boom, item, expire, win, lose;
+    AudioClip stamp, slam, boom, item, expire, win, lose;
 
     void Awake()
     {
         src = gameObject.AddComponent<AudioSource>();
         src.playOnAwake = false;
         stamp = Tone("sfx_stamp", 380, 0.07f, 0.55f);
+        slam = Slam();
         boom = NoiseBurst("sfx_boom", 0.22f, 0.7f);
         expire = Slide("sfx_expire", 340, 150, 0.20f, 0.5f);
         item = Arp("sfx_item", new[] { 780f, 1240f }, 0.07f, 0.45f);
@@ -24,6 +25,7 @@ public class Sfx : MonoBehaviour
     public void PlayStamp() { Play(stamp, Random.Range(0.95f, 1.05f)); }
     /// <summary>연쇄 단계가 높을수록 피치 상승</summary>
     public void PlayDestroy(int chain) { Play(boom, 1f + 0.14f * Mathf.Clamp(chain - 1, 0, 6)); }
+    public void PlaySlam() { Play(slam, Random.Range(0.96f, 1.04f)); }
     public void PlayItem() { Play(item, 1f); }
     public void PlayExpire() { Play(expire, 1f); }
     public void PlayWin() { Play(win, 1f); }
@@ -41,6 +43,22 @@ public class Sfx : MonoBehaviour
         var c = AudioClip.Create(name, d.Length, 1, SR, false);
         c.SetData(d, 0);
         return c;
+    }
+
+    // 저음 충돌과 짧은 잡음을 섞어 피버 착지 순간의 무게감을 낸다.
+    static AudioClip Slam()
+    {
+        var samples = new float[(int)(SR * 0.20f)];
+        var noise = new System.Random(19);
+        float phase = 0;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            float t = (float)i / SR;
+            phase += 2 * Mathf.PI * Mathf.Lerp(140, 45, i / (float)samples.Length) / SR;
+            samples[i] = 0.65f * Mathf.Sin(phase) * Mathf.Exp(-22 * t)
+                + 0.22f * (float)(noise.NextDouble() * 2 - 1) * Mathf.Exp(-65 * t);
+        }
+        return FromSamples("sfx_fever_slam", samples);
     }
 
     // 사각파+사인 혼합 블립

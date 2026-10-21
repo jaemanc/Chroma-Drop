@@ -238,7 +238,7 @@ cp -n "$JDK/lib/security/cacerts" "$JDK/lib/security/cacerts.backup"
 
 ## 8. 랭킹 서버 (Firebase Firestore)
 
-SDK 없이 REST 만 쓴다 (`Assets/_Project/Scripts/Leaderboard.cs`). 설정 파일이 없으면
+SDK 없이 REST 만 쓴다 (`Assets/_Project/Scripts/Services/Leaderboard.cs`). 설정 파일이 없으면
 랭킹 기능만 꺼지고 게임은 정상 동작한다.
 
 ### 최초 1회 — Firebase 콘솔에서
@@ -275,7 +275,7 @@ export CHROMADROP_FIREBASE_APIKEY="<웹 API 키>"
 ./Tools/make-leaderboard-config.sh
 ```
 
-> 생성물 `Assets/Resources/leaderboard.json` 과 `.env` 는 `.gitignore` 에 있다. **커밋하지 않는다.**
+> 생성물 `Assets/Resources/backend-config.json` 과 `.env` 는 `.gitignore` 에 있다. **커밋하지 않는다.**
 > 값을 채팅·로그·문서에 되출력하지 않는다. 키 **이름**으로만 지칭한다.
 
 ### 데이터 모델
@@ -310,7 +310,7 @@ python3 Tools/seed-dummy-scores.py <서비스계정키.json> --delete    # 더�
 
 ```bash
 git status
-git add Assets/_Project/Editor/Build.cs COMMANDS.md     # 파일을 명시적으로 지정한다
+git add Assets/Editor/MacBuild.cs COMMANDS.md     # 파일을 명시적으로 지정한다
 git commit -m "메시지"
 ```
 

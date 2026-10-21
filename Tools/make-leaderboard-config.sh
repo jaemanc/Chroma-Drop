@@ -8,12 +8,12 @@
 # .env 가 있으면 거기서 projectId/apiKey 를 읽어 쓴다:
 #   ./Tools/make-leaderboard-config.sh .env
 #
-# 생성 위치: Assets/Resources/leaderboard.json (.gitignore 등록됨 — 커밋하지 않는다)
+# 생성 위치: Assets/Resources/backend-config.json (.gitignore 등록됨 — 커밋하지 않는다)
 # 파일이 없으면 게임은 정상 동작하고 랭킹 기능만 꺼진다.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="$ROOT/Assets/Resources/leaderboard.json"
+OUT="$ROOT/Assets/Resources/backend-config.json"
 
 PROJ="${CHROMADROP_FIREBASE_PROJECT:-}"
 KEY="${CHROMADROP_FIREBASE_APIKEY:-}"
@@ -45,5 +45,5 @@ cat > "$OUT" <<JSON
   "apiKey": "$KEY"
 }
 JSON
-echo "생성됨: Assets/Resources/leaderboard.json (projectId=$PROJ, apiKey=<${#KEY}자>)"
+echo "생성됨: Assets/Resources/backend-config.json (projectId=$PROJ, apiKey=<${#KEY}자>)"
 echo "(키 값은 출력하지 않는다. .gitignore 에 등록돼 있으니 커밋되지 않는다.)"
