@@ -572,8 +572,8 @@ public class GameUI : MonoBehaviour
         MoveNightSlot("timerreadout", 814, header + 122, 130, 26);
         for (int i = 0; i < Shop.Items.Length; i++)
         {
-            MoveNightSlot("itemcard" + i, 254 + i * 132, board.yMax + 20, 120, 120);
-            MoveNightSlot("item" + i, 254 + i * 132, board.yMax + 20, 120, 120);
+            MoveNightSlot("itemcard" + i, 260 + i * 132, board.yMax + 36, 108, 108);
+            MoveNightSlot("item" + i, 260 + i * 132, board.yMax + 36, 108, 108);
         }
         PlaceSlot(traySlot, 800, board.yMax + 4, 208, 156);
         MoveNightSlot("goalcard", 48, board.yMax + 172, 928, 64);

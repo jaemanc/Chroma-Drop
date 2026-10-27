@@ -45,8 +45,8 @@ public class MainMenu : MonoBehaviour
         Hit("Btn_Hearts", .782f, .025f, .08f, .05f, ShowHearts);
         Hit("Btn_Settings", .876f, .022f, .094f, .054f, ShowSettings);
         Hit("Btn_Play", .205f, .635f, .605f, .107f, () => Launch(false));
-        var play = Label(art, "PlayLabel", "PLAY", .413f, .660f, .338f, .051f, 66, UiFontRole.Menu);
-        Outline(play, new Color(0.77f, 0.32f, 0.03f), .8f);
+        var play = Label(art, "PlayLabel", "PLAY", .413f, .656f, .338f, .059f, 74, UiFontRole.Menu);
+        Outline(play, new Color(.50f, .20f, .02f), .9f);
         Hit("Btn_Ranking", .11f, .758f, .39f, .076f, () => OpenPanel(1));
         var rank = Label(art, "RankLabel", TestServices.DevelopmentToolsEnabled ? "RANKING" : "RECORDS", .230f, .779f, .193f, .034f, 30, UiFontRole.Menu);
         Outline(rank, new Color(.23f, .08f, .52f), .6f);
@@ -123,7 +123,11 @@ public class MainMenu : MonoBehaviour
             homeLabels[i].resizeTextMaxSize = size;
             homeLabels[i].fontSize = size;
             var outline = homeLabels[i].GetComponent<Outline>();
-            if (outline != null) outline.effectDistance = new Vector2(.6f * scale, -.6f * scale);
+            if (outline != null)
+            {
+                float width = (homeLabels[i].name == "PlayLabel" ? .9f : .6f) * scale;
+                outline.effectDistance = new Vector2(width, -width);
+            }
         }
     }
 

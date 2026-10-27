@@ -576,6 +576,8 @@ public class GameManager : MonoBehaviour
             view.ShowMatchPreview(can ? board.PreviewStamp(current, ax, ay) : null);
         }
 
+        view.ApplyHeldPieceWarning(FeverOn ? 2f : PieceTimeLeftSec);
+
         // 손을 떼면 놓는다.
         if (!up) return;
         dragging = false;

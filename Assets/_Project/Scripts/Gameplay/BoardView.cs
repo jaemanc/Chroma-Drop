@@ -1648,6 +1648,27 @@ public class BoardView : MonoBehaviour
         }
     }
 
+    /// <summary>남은 1초 동안 들고 있는 블록만 붉게 깜빡이며 서서히 흐려진다.</summary>
+    public void ApplyHeldPieceWarning(float secondsLeft)
+    {
+        if (secondsLeft > 1f || ghostCount <= 0) return;
+        float remaining = Mathf.Clamp01(secondsLeft);
+        float alpha = Mathf.Lerp(.2f, 1f, remaining);
+        float red = .5f + .5f * Mathf.Cos((1f - remaining) * Mathf.PI * 6f);
+        for (int i = 0; i < ghostCount; i++)
+        {
+            var color = Color.Lerp(ghost[i].color, new Color(1f, .08f, .06f), red * .85f);
+            color.a = ghost[i].color.a * alpha;
+            ghost[i].color = color;
+            var gloss = ghostGloss[i].color;
+            gloss.a *= alpha;
+            ghostGloss[i].color = gloss;
+            var shadow = carryShadow[i].color;
+            shadow.a *= alpha;
+            carryShadow[i].color = shadow;
+        }
+    }
+
     // ---------- 트레이 ----------
     //
     // 조각은 보드 아래 트레이에 놓인다. 손가락으로 집어 보드로 끌어다 놓는다.
