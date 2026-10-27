@@ -2,4 +2,8 @@
 public static class TestServices
 {
     public static bool Enabled { get { return true; } }
+    public static bool DevelopmentToolsEnabled
+    {
+        get { return UnityEngine.Application.isEditor || UnityEngine.Debug.isDebugBuild; }
+    }
 }

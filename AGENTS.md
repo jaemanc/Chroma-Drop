@@ -21,6 +21,8 @@
 - `ColorMatcherCore.cs`의 게임 규칙은 임의 변경하지 않는다. 오류 수정 요청 범위에서
   결함이 입증되면 최소 수정하고 코어 테스트 전체를 다시 실행한다.
 - 보드 크기는 테마에 따라 달라진다. 고정 16×16이라는 옛 문서를 전제로 삼지 않는다.
+  밤 테마 HUD는 `GameUI.NightBoardRect`에서 안전 영역 비율로 보드 표시 크기를 결정하며,
+  칸 수·보석 에셋은 유지한다. 배경은 한 장만 표시하고 넓은 화면에서는 상단 HUD를 압축한다.
 - 스테이지 원본은 `stages/stages.json`; `Tools/sync-stages.sh`로 StreamingAssets에 복사한다.
 - 현재 랭킹 구현은 **Firebase Auth + Firestore REST**다. Supabase 연동은 구현되어 있지 않다.
   `Core/NationRanking.cs`는 이미 구현되어 있으므로 미구현으로 취급하지 않는다.
@@ -37,10 +39,19 @@
 - `Resources`는 이름으로 읽는 설정 용도다. 아트를 무분별하게 추가하지 않는다.
 - UI 폰트는 `UI/UiTypography.cs`에서 역할별로 지정한다. 타이틀은 Fredoka Bold,
   메뉴·버튼은 Nunito ExtraBold, 설명은 Pretendard Regular, 점수·이동 횟수는 Fredoka SemiBold,
-  콤보·파괴 효과는 Baloo 2 ExtraBold, 한국어 강조는 Jua Regular다. 메인 화면은 기존 이미지 스타일을 유지한다.
+  콤보·파괴 효과는 Baloo 2 ExtraBold, 한국어 강조는 Jua Regular다. 메인 화면은 `MainMenu.cs`와 `UI/Home/home-menu-v2.png`의 광택 아트를 사용한다.
+  `Menu.unity`의 `HomePreview`는 정지 화면용이며, 실행하면 숨기고 실제 잔액·버튼을 연결한 화면을 생성한다.
+  홈의 `home-background-wide.png`는 전체 화면을 덮고 메뉴·클릭 영역은 안전 영역에 맞춘다. `HomeArtEdgeBlend`는 메뉴 이미지 가장자리만 배경과 섞는다.
+  콤보 팝업은 `UI/Combo/combo-atlas.png`의 타이틀·숫자 스프라이트를 실제 연쇄 수로 조합하며, 누락 시 기존 효과 폰트로 표시한다.
   `Resources/ui-theme.asset`에는 `ThirdParty/Fonts` 및 공통 UI 아트의 인스펙터 참조만 둔다.
   폰트 굵기에 가짜 Bold/Italic을 중첩하지 않는다. 참조 설정은 `Editor/UiThemeImport.cs`가 생성한다.
 - `ProjectSettings/*.asset`는 손으로 수정하지 않고 Unity API/Editor 코드로 설정한다.
+- iOS 앱 아이콘 원본은 `Assets/_Project/Sprites/App/app-icon.png`다.
+  `Editor/AppIconImport.cs`가 기기용과 1024 App Store 아이콘을 Unity API로 등록한다.
+
+- 하트는 `Core/HeartClock.cs`와 `Services/Hearts.cs`에서 관리한다. 기본·최대 20개, 600초마다 1개,
+  일반 게임 시작 시 1개 차감한다. 홈의 상점·랭킹과 피버 미리보기는 차감하지 않는다.
+  테스트는 `Tests/HeartClockTests.cs`이며 로컬 UTC 기준이라 서버 시간 검증은 없다.
 
 ## 검증
 
@@ -61,10 +72,23 @@ MONO_BIN="/Applications/Unity/Hub/Editor/$UNITY_VERSION/Unity.app/Contents/Resou
 - 같은 프로젝트를 연 Unity에 배치 프로세스를 중복 실행하지 않는다. 사용 가능한 Editor
   연결에서 검증하거나, 필요하면 프로젝트 사본을 사용한다. 사용자 에디터를 임의 종료하지 않는다.
 - 실패와 실행 불가 원인을 그대로 기록한다. HUD·소리·실기기 조작 품질은 별도 확인이다.
-- 현재 `TestServices.Enabled`가 켜져 있어 광고·결제·랭킹은 오프라인 더미 모드다.
+- `TestServices.Enabled`는 기존 로컬 지갑 저장을 보존하기 위해 유지한다.
+  더미 구매 서비스·테스트 랭킹은 에디터·개발 빌드에서만 허용한다.
+  신규 코인은 100개이며 개발용 초기 10만 코인 지급과 5회 터치 지급은 제거했다.
+  상점은 아이템 네 종류만 판매하고 코인 차감·지급을 한 스냅샷에 저장한다.
+  스킨 판매·코인 구매 화면은 제거하되 기존 보유 스킨·잔액은 보존한다.
+  출시 빌드는 구매 진입점을 숨기고 `Iap.Buy`도 차단하며, 기록 화면에는 기기 내 최고 점수만 표시한다.
+  광고는 `.env`의 `iosAppId`, `scoreSubmitAdUnitId`, `coinRewardAdUnitId`를
+  `Editor/AdMobEnvImport.cs`가 등록한다. iOS·에디터는 Google Mobile Ads SDK를 사용하고,
+  기본값은 테스트 광고다. `.env`의 선택 항목 `useTestAds=false`는 운영 광고를 선택하지만
+  에디터·개발 빌드는 계속 테스트 광고를 사용한다. 설정 없는 플랫폼·배치 검사는 더미 광고를 사용한다.
+  SDK 초기화·로드 실패를 더미 보상 성공으로 처리하지 않는다.
   테스트 결제·코인·아이템·스킨은 하나의 로컬 JSON, 랭킹은 별도 테스트 키에 저장한다.
   상점 차감과 지급은 `Wallet.BuyItem`·`Wallet.BuySkin`으로 함께 저장하고 분리 호출하지 않는다.
   실제 결제 SDK는 아직 스텁이며 심볼만 켰다고 실서비스가 동작한다고 설명하지 않는다.
+
+- `Assets/Resources/app-info.json`의 `privacyPolicyUrl`에 유효한 HTTPS URL을 넣으면
+  홈 설정의 PRIVACY POLICY 버튼이 활성화된다. 공개 전 초안은 `docs/privacy-policy-draft.md`다.
 
 ## 서비스·비밀값·Git
 

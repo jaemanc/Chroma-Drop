@@ -32,6 +32,7 @@ public class GameManager : MonoBehaviour
     /// <summary>메인 화면의 피버 테스트 버튼이 켠다. 판이 시작하자마자 피버가 켜지고,
     /// 꺼지면 바로 다시 켜진다 — 연쇄를 안 만들고도 피버 연출만 본다. 테스트용.</summary>
     public static bool LaunchFeverTest;
+    public static int LaunchHomePanel; // 1 랭킹, 2 상점, 3 코인 구매
 
     [Header("아트 (Game 씬에서 연결)")]
     public BlockTheme[] themes;            // 판 테마. 판마다 이 중 하나를 무작위로 고른다
@@ -91,6 +92,7 @@ public class GameManager : MonoBehaviour
     public bool TimeAttackMode { get { return taRunning; } }
     public float TimeLeftSec { get { return taRunning ? Mathf.Max(0, FeverOn ? taLeftAtFever : taDeadline - Time.time) : 0; } }
     /// <summary>조각 제한시간 남은 비율 (1 → 0). 타임어택에서는 쓰지 않는다.</summary>
+    public float PieceTimeLeftSec { get { return Mathf.Max(0, FeverOn ? pieceLeftAtFever : pieceDeadline - Time.time); } }
     public float PieceTimerFrac { get { return pieceTimeTotal <= 0 ? 1 : Mathf.Clamp01((FeverOn ? pieceLeftAtFever : pieceDeadline - Time.time) / pieceTimeTotal); } }
     public Board BoardRef { get { return board; } }
     public Piece CurrentPiece { get { return current; } }
@@ -184,7 +186,16 @@ public class GameManager : MonoBehaviour
 
         stageLevel = Progress.Selected;   // 지난번에 고른 스테이지에서 이어간다
         FitCamera();
-        if (LaunchTimeAttack.HasValue)
+        if (LaunchHomePanel != 0)
+        {
+            int panel = LaunchHomePanel; LaunchHomePanel = 0;
+            timeAttack = false;
+            stage = StageTable.Get(stageLevel);
+            Phase = GamePhase.Home;
+            view.SetVisible(false);
+            ui.ShowHomeOverlay(panel);
+        }
+        else if (LaunchTimeAttack.HasValue)
         {
             timeAttack = LaunchTimeAttack.Value;
             LaunchTimeAttack = null;
@@ -221,13 +232,13 @@ public class GameManager : MonoBehaviour
             if (shakeCo == null) cam.transform.position = camBase;
         }
 
-        // 트레이: 지금 조각은 왼쪽 큰 칸, 다음 조각은 오른쪽 작은 칸
+        // 다음 조각은 숨기고 현재 던질 조각이 트레이 전체를 사용한다.
         Rect tray;
         if (ui.TraySlotRect(out tray))
         {
-            Vector2 cur = cam.ScreenToWorldPoint(new Vector3(tray.xMin + tray.width * 0.42f, tray.center.y, 10));
+            Vector2 cur = cam.ScreenToWorldPoint(new Vector3(tray.center.x, tray.center.y, 10));
             Vector2 nxt = cam.ScreenToWorldPoint(new Vector3(tray.xMin + tray.width * 0.85f, tray.center.y, 10));
-            var curBox = new Vector2(tray.width * 0.62f, tray.height * 0.84f) / cellPx;
+            var curBox = new Vector2(tray.width * 0.94f, tray.height * 0.90f) / cellPx;
             var nxtBox = new Vector2(tray.width * 0.26f, tray.height * 0.44f) / cellPx;
             if (view.SetTrayLayout(cur, curBox, nxt, nxtBox)) RefreshTray();
         }
@@ -295,6 +306,11 @@ public class GameManager : MonoBehaviour
 
     public void StartGame(string diff, bool ta, int seedOverride)
     {
+        if (!feverTest && Hearts.Count == 0)
+        {
+            Hearts.Notice = "No hearts left.\n+1 heart every 10 minutes.";
+            GoHome(); return;
+        }
         ResumeGame();
         CancelAim();
         StopAllCoroutines();
@@ -356,6 +372,8 @@ public class GameManager : MonoBehaviour
         LayoutHud();        // 패널이 켜진 직후 자리를 맞춘다 — 첫 프레임부터 제자리에 그린다
         RefreshTray();
 
+        // 화면과 보드 초기화가 끝난 뒤 실제 시작할 때만 한 번 차감한다.
+        if (!feverTest && !Hearts.TrySpend()) { GoHome(); return; }
         Phase = GamePhase.Playing;
         if (timeAttack) taDeadline = Time.time + Mathf.Max(10, stage.Seconds);
         StartPieceTimer();
@@ -931,7 +949,7 @@ public class GameManager : MonoBehaviour
 
         // 아무 칸도 안 터진 수에는 벌칙으로 벽돌이 하나 생긴다.
         // 그 자리에 아이템이 있었으면 아이템은 사라진다.
-        if (!fever && result.Destroyed.Count == 0 && stage.PenaltyObstacle)
+        if (!instant && !FeverOn && result.Destroyed.Count == 0 && stage.PenaltyObstacle)
         {
             Point put;
             if (board.PenaltyObstacle(stage.ObstacleHp, out put) >= 0)
@@ -1060,6 +1078,7 @@ public class GameManager : MonoBehaviour
     void CompleteMove()
     {
         movesUsed++;
+        if (FeverOn) return;   // 피버 중에는 수만 기록하고 새 방해 블록은 만들지 않는다.
         int add = stage.ObstaclesAfterMove(movesUsed, totalMoves);
         if (add > 0 && board.SpawnObstacles(add, stage.ObstacleHp) > 0) sfx.PlayItem();
     }

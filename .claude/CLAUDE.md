@@ -27,7 +27,7 @@ Assets/
     Editor/               # ChromaDrop.Editor.asmdef — Build.cs (MacBuild.App·IosBuild.Xcode)
     Sprites/ Prefabs/ Animations/ Design/
   ThirdParty/             # 에셋 스토어 팩
-  Resources/              # leaderboard.json 만 (코드가 이름으로 읽는 설정)
+  Resources/              # backend-config.json 만 (코드가 이름으로 읽는 설정)
   StreamingAssets/        # stages.json
 Tests/CoreTests.cs        # Assets 밖 — 코어 콘솔 테스트 (Unity 무관)
 Tools/                    # 빌드/키스토어 스크립트
@@ -54,7 +54,7 @@ Tools/                    # 빌드/키스토어 스크립트
 직접 만든 그림·프리팹·씬은 `Assets/_Project/` 아래(Sprites/, Prefabs/, Scenes/ …), 에셋 스토어 팩은 `Assets/ThirdParty/` 아래에 둔다.
 
 - 런타임에 쓰는 그림은 `Resources` 에 넣지 않는다 — `Resources` 는 참조 여부와 상관없이 통째로 빌드에 들어간다.
-  Game 씬 `GameManager` 인스펙터(Themes / Flags / Pop Fx)에 연결한다. `Resources` 에는 코드가 이름으로 읽는 설정 파일(`leaderboard.json`)만 둔다.
+  Game 씬 `GameManager` 인스펙터(Themes / Flags / Pop Fx)에 연결한다. `Resources` 에는 코드가 이름으로 읽는 설정 파일(`backend-config.json`)만 둔다.
 - **아트가 연결되지 않았으면 절차 생성으로 돌아가는 길을 남긴다** — 한 장 빠졌다고 판이 안 그려지면 안 된다.
 - `.meta` 는 Unity 가 만든다. 손으로 만들거나 지우지 않는다 (§2 표와 동일).
 

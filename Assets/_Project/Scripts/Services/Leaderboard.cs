@@ -235,7 +235,7 @@ public class Leaderboard : MonoBehaviour
         {
             var demoRows = new List<ScoreEntry>();
             string[] countries = { "KOR", "USA", "JPN", "FRA" };
-            for (int i = 0; i < 12; i++) demoRows.Add(new ScoreEntry {
+            for (int i = 0; TestServices.DevelopmentToolsEnabled && i < 12; i++) demoRows.Add(new ScoreEntry {
                 Uid = "dummy-player-" + i, Name = "Test Player " + (i + 1),
                 Country = countries[i % countries.Length], Score = 12000 - i * 700
             });

@@ -124,46 +124,60 @@ public class TestServicesTests
             Assert.That(rows.Single(r => r.Uid == "dummy-local-player").Score, Is.EqualTo(20000));
             Assert.That(rows[0].Uid, Is.EqualTo("dummy-local-player"));
         });
-        Assert.That(Ads.Ready, Is.False);
+        Assert.That(TestServices.Enabled, Is.True);
     }
 
     [UnityTest]
-    public IEnumerator ShopButtonsCompleteDummyPurchaseRetryAndAdReward()
+    public IEnumerator ShopShowsOnlyItemsAndPurchasesAtomically()
     {
         GameManager.LaunchTimeAttack = false;
+        GameManager.LaunchHomePanel = 2;
         yield return SceneManager.LoadSceneAsync("Game");
         yield return null;
         yield return null;
         var ui = Object.FindAnyObjectByType<GameUI>();
-        Canvas.ForceUpdateCanvases();
-        ScreenCapture.CaptureScreenshot("/private/tmp/chromadrop-test-board.png");
-        yield return null;
         ui.ShowShop();
-        Click(ui, "shopbuycoins");
-        var purchase = ui.GetComponentsInChildren<Button>(true)
-            .Single(b => b.name == "price" && b.transform.parent.parent.name == "pack0");
-        purchase.onClick.Invoke();
-        Assert.That(Wallet.Coins, Is.EqualTo(400));
-        Click(ui, "testpurchase0");
-        purchase.onClick.Invoke();
-        Assert.That(Wallet.Coins, Is.EqualTo(400));
-        Click(ui, "testpurchase1");
-        purchase.onClick.Invoke();
-        Assert.That(Wallet.Coins, Is.EqualTo(400));
-        Assert.That(TestPayments.HasPending, Is.True);
-        Click(ui, "testpurchase2");
-        Assert.That(Wallet.Coins, Is.EqualTo(700));
-        Click(ui, "testpurchase2");
-        Assert.That(Wallet.Coins, Is.EqualTo(700));
-        Assert.That(TestPayments.RecordCount, Is.EqualTo(2));
-        ScreenCapture.CaptureScreenshot("/private/tmp/chromadrop-test-purchase.png");
+        ScreenCapture.CaptureScreenshot("/tmp/chromadrop-items-shop.png");
         yield return null;
-        Click(ui, "coinclose");
-        Click(ui, "shopad");
-        Assert.That(Wallet.Coins, Is.EqualTo(700));
-        yield return new WaitForSecondsRealtime(3.3f);
-        Assert.That(Wallet.Coins, Is.EqualTo(700 + Shop.AdReward));
+        Assert.That(ui.GetComponentsInChildren<Button>(true).Any(b => b.name == "shopbuycoins"), Is.False);
+        Assert.That(ui.GetComponentsInChildren<Text>(true).Any(t => t.text == "TILE SKINS"), Is.False);
+        var buy = ui.GetComponentsInChildren<Button>(true)
+            .Single(b => b.name == "buy" && b.transform.parent.parent.name == "item1");
+        int before = Wallet.Count(ShopItem.Hammer);
+        buy.onClick.Invoke();
+        Assert.That(Wallet.Coins, Is.EqualTo(20));
+        Assert.That(Wallet.Count(ShopItem.Hammer), Is.EqualTo(before + 1));
+        buy.onClick.Invoke();
+        Assert.That(Wallet.Coins, Is.EqualTo(20));
+        Assert.That(Wallet.Count(ShopItem.Hammer), Is.EqualTo(before + 1));
+        var card = ui.transform.Find("shopdim/shopsafe/shopcard").GetComponent<RectTransform>();
+        var corners = new Vector3[4]; card.GetWorldCorners(corners);
+        Assert.That(corners[0].y, Is.GreaterThanOrEqualTo(Screen.safeArea.yMin));
+        Assert.That(corners[2].y, Is.LessThanOrEqualTo(Screen.safeArea.yMax));
         LogAssert.NoUnexpectedReceived();
+    }
+
+    [Test]
+    public void NewWalletStartsAt100AndExistingBalancesArePreserved()
+    {
+        bool hadLegacy = PlayerPrefs.HasKey("wallet_coins");
+        int legacy = PlayerPrefs.GetInt("wallet_coins", 0);
+        try
+        {
+            PlayerPrefs.DeleteKey(TestPayments.StorageKey);
+            PlayerPrefs.DeleteKey("wallet_coins");
+            Assert.That(Wallet.Coins, Is.EqualTo(100));
+            PlayerPrefs.SetInt("wallet_coins", 317);
+            Assert.That(Wallet.Coins, Is.EqualTo(317));
+            TestPayments.Balance = 79;
+            PlayerPrefs.SetInt("wallet_coins", 9999);
+            Assert.That(Wallet.Coins, Is.EqualTo(79));
+        }
+        finally
+        {
+            if (hadLegacy) PlayerPrefs.SetInt("wallet_coins", legacy);
+            else PlayerPrefs.DeleteKey("wallet_coins");
+        }
     }
 
     static void Click(GameUI ui, string name)

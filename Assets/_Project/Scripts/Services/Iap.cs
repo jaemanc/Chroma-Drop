@@ -31,13 +31,15 @@ public static class Iap
     /// <summary>현재 구매 흐름을 사용할 수 있는가. 지금은 더미 모드만 지원한다.</summary>
     public static bool Ready
     {
-        get { return TestServices.Enabled; }
+        get { return TestServices.Enabled && TestServices.DevelopmentToolsEnabled; }
     }
 
     /// <summary>코인을 산다. done(true) 면 결제가 끝나 코인이 들어간 것이다.
     /// 테스트 모드에서는 로컬 주문과 지급을 함께 기록하며 실제 청구는 없다.</summary>
     public static void Buy(CoinPack pack, Action<bool> done)
     {
+        // 실제 스토어 연결 전에는 출시 빌드에서 더미 주문도 만들지 않는다.
+        if (!Ready) { if (done != null) done(false); return; }
         if (TestServices.Enabled)
         {
             bool ok = TestPayments.Buy(pack);

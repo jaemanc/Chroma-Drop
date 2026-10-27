@@ -24,6 +24,7 @@ public class GameUI : MonoBehaviour
     readonly Dictionary<UiButton, UiKind> buttonKinds = new Dictionary<UiButton, UiKind>();
 
     GameObject gamePanel, resultPanel, pausePanel;
+    GameObject homeOverlayPanel;
     TMP_Text scoreText, subText, rightText;   // 플레이보드 HUD 는 TextMeshPro
     Text resultTitle, resultScore, resultBest;
     Image resultDim;
@@ -31,9 +32,10 @@ public class GameUI : MonoBehaviour
     Coroutine resultDropCo;
     RectTransform chainRoot;          // 연쇄 팝업 — 두 줄 글자와 반짝이를 한 덩어리로 움직인다
     TMP_Text chainTop, chainBig;
-    Image chainWord;                  // CHAIN 글자 그림 (없으면 chainTop 글자로 돌아간다)
+    Image chainWord;                  // COMBO 글자 그림 (없으면 chainTop 글자로 돌아간다)
     int chainWordNext;                // 다음에 쓸 글자 그림 번호 — 연쇄마다 한 장씩 돌아간다
     Image[] chainSparks;
+    Image[] chainDigits;
     float chainAngle;
     Coroutine chainCo;
     Image feverTint;              // 피버 동안 배경을 붉게 물들이는 판
@@ -41,6 +43,8 @@ public class GameUI : MonoBehaviour
     Coroutine feverCo;
     bool feverOn;
     Image timerFill;
+    TMP_Text timerText;
+    bool NightHud { get { return UiTypography.Assets != null && UiTypography.Assets.nightBackground != null && UiTypography.Assets.nightCard != null; } }
 
     // 랭킹
     public enum SubmitState { Off, Pending, Sending, Done, Failed }
@@ -59,13 +63,11 @@ public class GameUI : MonoBehaviour
     Text myRowLabel;
     Button adBtn;
     Text adBtnLabel;
-    GameObject adPanel, shopPanel, coinPanel;
-    Text coinPanelNote;
+    GameObject adPanel, shopPanel;
     Text shopCoins;
     Image[] shopBuyFill;
     Text[] shopBuyLabel, shopOwned;
-    Image[] skinBuyFill, skinSwatch;
-    Text[] skinBuyLabel;
+    RectTransform shopRoot, shopSafe;
     TMP_Text[] itemBtnLabel;
     Image[] itemBtnFill;
     Text adCountdown;
@@ -80,10 +82,11 @@ public class GameUI : MonoBehaviour
     //
     // 화면 전체가 테마 그림 한 장이다. 다만 보드는 월드 스프라이트라 Overlay 캔버스 위에
     // 그릴 수 없으므로, 아트는 카메라 캔버스(정렬 -30)에 두어 보드 뒤에 깔고
-    // 버튼·글자·슬롯만 Overlay 캔버스에 얹는다. 두 캔버스 모두 같은 비율 맞춤(contain)이라
-    // 자리가 어긋나지 않는다. 좌표는 전부 테마 그림 원본(1024x1536) 픽셀, y 는 위가 0.
+    // 버튼·글자·슬롯만 Overlay 캔버스에 얹는다. 중앙 풍경과 HUD는 같은 비율 맞춤(contain)을
+    // 사용하고 바깥 배경은 전체 화면을 덮는다. 좌표는 원본(1024x1536) 픽셀, y 는 위가 0.
     const float PlayW = 1024f, PlayH = 1536f;   // ponytail: 테마 그림은 전부 이 크기라고 가정한다. 크기가 다른 테마가 오면 BlockTheme 에 크기를 둔다
     RectTransform playRoot, boardSlot, traySlot;
+    Vector2 lastNightSize = new Vector2(-1, -1);
     GameObject playArtCanvas;
     RectTransform rankBtn, nextBtn, retryBtn, homeBtn;
     bool rankAllowed;   // 결과 화면에서 리더보드를 열어도 되는가 — 스테이지를 깼으면 열지 않는다
@@ -124,7 +127,6 @@ public class GameUI : MonoBehaviour
         BuildCountryPanel();
         BuildAdPanel();
         BuildShopPanel();
-        BuildCoinPanel();
         gamePanel.SetActive(false);
         resultPanel.SetActive(false);
         rankPanel.SetActive(false);
@@ -132,6 +134,24 @@ public class GameUI : MonoBehaviour
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
         FinishButtons();
+    }
+
+    public void ShowHomeOverlay(int panel)
+    {
+        if (UiTypography.Assets != null && UiTypography.Assets.homeMenu != null)
+        {
+            var background = MainMenu.CreateHomeArt(transform);
+            background.parent.parent.SetAsFirstSibling();
+        }
+        homeOverlayPanel = panel == 1 ? rankPanel : shopPanel;
+        if (panel == 1) ShowRanking(false);
+        else ShowShop();
+    }
+
+    void CloseOverlay(GameObject panel)
+    {
+        if (panel == homeOverlayPanel) gm.GoHome();
+        else panel.SetActive(false);
     }
 
     // ---------- 패널 전환 ----------
@@ -147,7 +167,6 @@ public class GameUI : MonoBehaviour
         countryPanel.SetActive(false);
         adPanel.SetActive(false);
         shopPanel.SetActive(false);
-        coinPanel.SetActive(false);
         pausePanel.SetActive(false);
         if (playArtCanvas != null) playArtCanvas.SetActive(true);
         // 방금 켠 패널의 자리를 바로 잰다 — 안 재면 첫 프레임에 보드가 엉뚱한 곳에 한 번 그려진다
@@ -170,10 +189,10 @@ public class GameUI : MonoBehaviour
     static readonly Color TitleInk  = Palette.Hex(0xF4F1FF);   // 밤하늘 카드 위의 밝은 목표 문구
     const float BoardDrop = 125f;
 
-    Image playArtImage;
+    Image playArtImage, playWallpaper;
 
     /// <summary>테마 배경 그림이 깔려 있으면 보드 판·트레이 받침은 그림이 그린다.</summary>
-    public bool HasPlayArt { get { return playArtImage != null && playArtImage.enabled; } }
+    public bool HasPlayArt { get { return (playArtImage != null && playArtImage.enabled) || (playWallpaper != null && playWallpaper.enabled); } }
 
     static readonly Rect DefaultGrid = new Rect(112, 380, 800, 800);   // 테마 그림이 없을 때 보드 자리
 
@@ -182,13 +201,22 @@ public class GameUI : MonoBehaviour
     public void SetTheme(BlockTheme theme)
     {
         var tex = theme.Board;
-        playArtImage.sprite = tex != null ? Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f) : null;
-        playArtImage.enabled = tex != null;
+        playArtImage.sprite = NightHud ? UiTypography.Assets.nightBackground : tex != null ? Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 100f) : null;
+        playArtImage.enabled = !NightHud && tex != null;
+        playWallpaper.sprite = playArtImage.sprite;
+        playWallpaper.enabled = NightHud;
+        if (NightHud) playWallpaper.GetComponent<AspectRatioFitter>().aspectRatio = playArtImage.sprite.rect.width / playArtImage.sprite.rect.height;
         var g = tex != null ? theme.Grid : DefaultGrid;
-        var size = g.size * BlockTheme.BoardZoom;
+        var size = g.size * BlockTheme.BoardZoom * (NightHud ? 1.10f : 1f);
         g = new Rect(g.center - size * 0.5f, size);
-        g.y += BoardDrop;
+        g.y += BoardDrop + (NightHud ? 40f : 0f);
         PlaceSlot(boardSlot, g.x, g.y, g.width, g.height);
+        if (NightHud)
+        {
+            Canvas.ForceUpdateCanvases();
+            LayoutNightHud(true);
+            return;
+        }
         // 배경에 그려진 판도 함께 이동한다. 하늘 여백은 확대해 빈 가장자리를 막는다.
         const float backgroundZoom = 1.14f;
         var art = playArtImage.rectTransform;
@@ -233,27 +261,36 @@ public class GameUI : MonoBehaviour
         cv.worldCamera = Camera.main;
         cv.planeDistance = 100f;
         cv.sortingOrder = -30;
+        var sky = NewImage("sky", playArtCanvas.transform, Palette.Hex(0x101C58));
+        sky.raycastTarget = false;
+        Stretch(sky.rectTransform);
+        playWallpaper = NewImage("wallpaper", playArtCanvas.transform, Color.white);
+        playWallpaper.raycastTarget = false; playWallpaper.enabled = false;
+        Stretch(playWallpaper.rectTransform);
+        playWallpaper.gameObject.AddComponent<AspectRatioFitter>().aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
         var artSafe = NewRT("safe", playArtCanvas.transform);
         Stretch(artSafe);
         artSafe.gameObject.AddComponent<SafeAreaFitter>();
-        var sky = NewImage("sky", artSafe, Palette.Hex(0x101C58));
-        sky.raycastTarget = false;
-        Stretch(sky.rectTransform);
         playArtImage = NewImage("art", ContainRoot("fit", artSafe), Color.white);
         playArtImage.raycastTarget = false;
         playArtImage.enabled = false;
         Stretch(playArtImage.rectTransform);
-        feverTint = NewImage("fevertint", artSafe, new Color(1f, 0.3f, 0.15f, 0f));   // 테마 그림 위, 보드 뒤
+        feverTint = NewImage("fevertint", playArtCanvas.transform, new Color(1f, 0.3f, 0.15f, 0f));   // 테마 그림 위, 보드 뒤
         feverTint.raycastTarget = false;
         Stretch(feverTint.rectTransform);
         feverTint.enabled = false;
 
-        playRoot = ContainRoot("playroot", safe);
+        playRoot = NightHud ? NewRT("playroot", safe) : ContainRoot("playroot", safe);
+        if (NightHud)
+        {
+            playRoot.anchorMin = playRoot.anchorMax = playRoot.pivot = new Vector2(.5f, .5f);
+            playRoot.sizeDelta = new Vector2(PlayW, PlayH);
+        }
         curRoot = playRoot; curW = PlayW; curH = PlayH;
 
         // ---- 상단: 테마 그림의 하늘 자리 ----
-        HudButton("pausebtn", gm.hudPause, 40, 44, 120, 120);   // 일시정지 표시는 그림에 들어 있다
-        ArtButton("pause", 40, 44, 120, 120, () => gm.PauseGame());
+        HudButton("pausebtn", gm.hudPause, NightHud ? 70 : 40, NightHud ? 100 : 44, NightHud ? 108 : 120, NightHud ? 110 : 120);   // 일시정지 표시는 그림에 들어 있다
+        ArtButton("pause", NightHud ? 70 : 40, NightHud ? 100 : 44, NightHud ? 108 : 120, NightHud ? 110 : 120, () => gm.PauseGame());
 
         // 목표는 작은 분류 라벨과 본문으로 나눠 읽는다. 복수 조건만 여러 줄로 배치한다.
         var titleBg = HudCard("eyebrowcard", 190, 44, 784, 138);
@@ -272,24 +309,31 @@ public class GameUI : MonoBehaviour
         gameEyebrow.textWrappingMode = TextWrappingModes.Normal;
         gameEyebrow.overflowMode = TextOverflowModes.Truncate;
 
-        if (gm.missionBanner != null)
+        if (gm.missionBanner != null || NightHud)
         {
             titleBg.gameObject.SetActive(false);
-            missionBanner = ArtSlot("missionbanner", 170, -24, 814, 325.6f).gameObject.AddComponent<MissionBanner>();
-            missionBanner.Build(gm.missionBanner);
+            missionBanner = ArtSlot("missionbanner", NightHud ? 185 : 170, NightHud ? 280 : -24, NightHud ? 330 : 814, NightHud ? 110 : 325.6f).gameObject.AddComponent<MissionBanner>();
+            missionBanner.Build(gm.missionBanner, NightHud ? UiTypography.Assets.nightTarget : null);
         }
 
         // 점수 / 남은 수(시간) — 라벨은 위, 값은 아래. 둘 다 배경 버튼의 자식이다
-        var scoreBg = HudButton("scorecard", gm.hudScore, 70, 282, 400, 110);
-        HudLabel(scoreBg, "scorelabel", Muted, 26, 0.10f, 0.44f, 30).text = "SCORE";
-        scoreText = Outlined(HudLabel(scoreBg, "scoreval", ScoreInk, 54, 0.40f, 0.94f, 30, UiFontRole.Numbers));
-        var timeBg = HudButton("timecard", gm.hudMoves, 554, 282, 400, 110);
-        subText = HudLabel(timeBg, "timelabel", Muted, 26, 0.10f, 0.44f, 30);
-        rightText = Outlined(HudLabel(timeBg, "timeval", TimeInk, 54, 0.40f, 0.94f, 30, UiFontRole.Numbers));
+        var scoreBg = HudButton("scorecard", gm.hudScore, NightHud ? 675 : 70, NightHud ? 280 : 282, NightHud ? 160 : 400, 110);
+        HudLabel(scoreBg, "scorelabel", NightHud ? Color.white : Muted, 26, .10f, .40f, NightHud ? 4 : 30).text = "SCORE";
+        scoreText = Outlined(HudLabel(scoreBg, "scoreval", NightHud ? Color.white : ScoreInk, NightHud ? 42 : 54, .40f, .92f, NightHud ? 3 : 30, UiFontRole.Numbers));
+        var timeBg = HudButton("timecard", gm.hudMoves, NightHud ? 525 : 554, NightHud ? 280 : 282, NightHud ? 140 : 400, 110);
+        subText = HudLabel(timeBg, "timelabel", NightHud ? Color.white : Muted, NightHud ? 23 : 26, .10f, .40f, NightHud ? 3 : 30);
+        rightText = Outlined(HudLabel(timeBg, "timeval", NightHud ? Color.white : TimeInk, NightHud ? 58 : 54, .40f, .92f, NightHud ? 2 : 30, UiFontRole.Numbers));
 
         // 진행바 — 이 조각을 놓을 남은 시간
-        HudCard("timertrack", 144, 414, 736, 14).color = new Color(1, 1, 1, 0.30f);
-        var bar = ArtSlot("timerbar", 144, 414, 736, 14);
+        if (NightHud)
+        {
+            HudSkin("timertrack", UiTypography.Assets.nightTimer, 215, 402, 620, 54, 22);
+            HudSkin("clock", UiTypography.Assets.nightClock, 160, 392, 74, 74, 37);
+            var readout = HudCard("timerreadout", 710, 413, 100, 30); readout.color = Palette.Hex(0x0D255D);
+            timerText = HudLabel(readout, "timerseconds", Color.white, 25, 0, 1, 0, UiFontRole.Numbers);
+        }
+        else HudCard("timertrack", 144, 414, 736, 14).color = new Color(1, 1, 1, .30f);
+        var bar = ArtSlot("timerbar", NightHud ? 235 : 144, NightHud ? 415 : 414, NightHud ? 460 : 736, NightHud ? 26 : 14);
         timerFill = NewImage("fill", bar, BarOrange);
         timerFill.sprite = UiTheme.RoundedSprite(10); timerFill.type = Image.Type.Sliced; timerFill.raycastTarget = false;
         Stretch(timerFill.rectTransform);
@@ -297,7 +341,7 @@ public class GameUI : MonoBehaviour
 
         // ---- 보드 / 트레이 자리 (그리는 건 월드 쪽, 여기선 자리만 잰다). 보드 자리는 SetTheme 이 격자에 맞춘다 ----
         boardSlot = ArtSlot("boardslot", DefaultGrid.x, DefaultGrid.y, DefaultGrid.width, DefaultGrid.height);
-        traySlot = ArtSlot("trayslot", 624, 1310, 360, 180);
+        traySlot = ArtSlot("trayslot", 624, NightHud ? 1340 : 1310, 360, NightHud ? 150 : 180);
 
         // ---- 아이템 4종: 판 아래 ----
         int ni = Shop.Items.Length;
@@ -306,21 +350,29 @@ public class GameUI : MonoBehaviour
         for (int i = 0; i < ni; i++)
         {
             var e = Shop.Items[i];
-            float px = 40f + i * 244.3f;
-            var itemBg = HudButton("itemcard" + i, gm.hudItems != null && i < gm.hudItems.Length ? gm.hudItems[i] : null, px, 1150, 211, 134);
-            var btn = ArtButton("item" + i, px, 1150, 211, 134, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
+            float px = NightHud ? 230f + i * 150f : 40f + i * 244.3f;
+            float itemY = NightHud ? 1220 : 1150, itemW = NightHud ? 130 : 211, itemH = NightHud ? 130 : 134;
+            var itemBg = HudButton("itemcard" + i, gm.hudItems != null && i < gm.hudItems.Length ? gm.hudItems[i] : null, px, itemY, itemW, itemH);
+            var btn = ArtButton("item" + i, px, itemY, itemW, itemH, () => { if (gm.UseItem(e.Item)) RefreshItemButtons(); });
             // 못 쓰는 상태면 흰 반투명 판으로 흐리게
             var dim = NewImage("dim", btn, new Color(1, 1, 1, 0));
             dim.sprite = UiTheme.RoundedSprite(40); dim.type = Image.Type.Sliced; dim.raycastTarget = false;
             Stretch(dim.rectTransform);
             itemBtnFill[i] = dim;
-            HudLabel(itemBg, "itemname" + i, Ink, 26, 0.08f, 0.46f, 14).text = e.Name;
-            itemBtnLabel[i] = Outlined(HudLabel(itemBg, "itemcnt" + i, Ink, 44, 0.42f, 0.94f, 14, UiFontRole.Numbers));
+            if (!NightHud) HudLabel(itemBg, "itemname" + i, Ink, 26, .08f, .46f, 14).text = e.Name;
+            itemBtnLabel[i] = Outlined(HudLabel(itemBg, "itemcnt" + i, NightHud ? Color.white : Ink, NightHud ? 27 : 44, .42f, .94f, NightHud ? 0 : 14, UiFontRole.Numbers));
+            if (NightHud)
+            {
+                var count = itemBtnLabel[i].rectTransform;
+                count.anchorMin = new Vector2(.69f, .08f); count.anchorMax = new Vector2(.95f, .34f);
+                count.offsetMin = count.offsetMax = Vector2.zero;
+            }
         }
 
         // ---- GOAL 카드 ----
-        var goalBg = HudButton("goalcard", gm.hudGoal, 40, 1316, 560, 124);
-        goalSub = Outlined(HudLabel(goalBg, "goalsub", GoalInk, 30, 0.14f, 0.86f, 40, UiFontRole.Numbers));
+        var goalBg = HudButton("goalcard", gm.hudGoal, NightHud ? 185 : 40, NightHud ? 1370 : 1316, NightHud ? 414 : 560, NightHud ? 80 : 124);
+        goalSub = Outlined(HudLabel(goalBg, "goalsub", NightHud ? Color.white : GoalInk, NightHud ? 25 : 30, .14f, .86f, NightHud ? 10 : 40, UiFontRole.Numbers));
+        if (NightHud) { goalSub.rectTransform.offsetMin = new Vector2(95, 0); goalSub.rectTransform.offsetMax = new Vector2(-25, 0); }
 
         // 연쇄 팝업 — 위에서 쾅 떨어지는 두 줄 글자에 반짝이가 사방으로 퍼진다
         chainRoot = NewRT("chainpop", safe);
@@ -358,6 +410,15 @@ public class GameUI : MonoBehaviour
         chainWord.rectTransform.sizeDelta = new Vector2(820, 300);
         chainWord.rectTransform.anchoredPosition = new Vector2(0, 118);
         chainWord.enabled = false;
+        chainDigits = new Image[11];
+        for (int i = 0; i < chainDigits.Length; i++)
+        {
+            var digit = NewImage("combodigit" + i, chainRoot, Color.white);
+            digit.raycastTarget = false; digit.preserveAspect = true;
+            digit.rectTransform.anchorMin = digit.rectTransform.anchorMax = digit.rectTransform.pivot = new Vector2(.5f, .5f);
+            digit.enabled = false;
+            chainDigits[i] = digit;
+        }
         chainRoot.gameObject.SetActive(false);
 
         feverPopup = NewText("feverpop", safe, "FEVER TIME!", 150, TextAnchor.MiddleCenter, new Color(1f, 0.32f, 0.18f), UiFontRole.Effects);
@@ -372,12 +433,36 @@ public class GameUI : MonoBehaviour
     /// 그림이 연결되지 않았으면 예전처럼 흰 둥근 카드로 돌아간다 — 한 장 빠졌다고 HUD 가 사라지면 안 된다.</summary>
     Image HudButton(string name, Sprite sp, float x, float y, float w, float h)
     {
+        if (NightHud)
+        {
+            var set = UiTypography.Assets;
+            Sprite skin = name == "pausebtn" ? set.nightPause : name == "goalcard" ? set.nightStage : set.nightCard;
+            if (name.StartsWith("itemcard"))
+            {
+                int index;
+                if (int.TryParse(name.Substring(8), out index) && set.nightBoosters != null && index < set.nightBoosters.Length)
+                    skin = set.nightBoosters[index];
+            }
+            if (skin != null) return HudSkin(name, skin, x, y, w, h, name == "pausebtn" ? 54 : 24);
+        }
         if (sp == null) return HudCard(name, x, y, w, h);
         var img = ArtSlot(name, x, y, w, h).gameObject.AddComponent<Image>();
         img.sprite = sp;
         img.type = Image.Type.Sliced;
         img.raycastTarget = false;
         return img;
+    }
+
+    Image HudSkin(string name, Sprite sprite, float x, float y, float w, float h, float radius)
+    {
+        if (sprite == null) return HudCard(name, x, y, w, h);
+        var mask = HudCard(name, x, y, w, h);
+        mask.sprite = UiTheme.RoundedSprite(radius);
+        mask.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+        var image = NewImage("skin", mask.transform, Color.white);
+        image.sprite = sprite; image.type = sprite.border == Vector4.zero ? Image.Type.Simple : Image.Type.Sliced;
+        image.raycastTarget = false; Stretch(image.rectTransform);
+        return image;
     }
 
     /// <summary>버튼 그림 안에 얹는 HUD 글자. 배경의 자식이라 배경만 옮기면 글자가 따라온다.
@@ -398,15 +483,15 @@ public class GameUI : MonoBehaviour
         t.alignment = TextAlignmentOptions.Center;
         t.color = ink;
         t.raycastTarget = false;
-        t.overflowMode = TextOverflowModes.Ellipsis;
+        t.overflowMode = NightHud ? TextOverflowModes.Overflow : TextOverflowModes.Ellipsis;
         return t;
     }
 
-    /// <summary>밝고 알록달록한 알약 위에서도 읽히게 글자에 흰 테두리를 두른다 (글자가 어둡다).</summary>
-    static TMP_Text Outlined(TMP_Text t)
+    /// <summary>카드 배경과 대비되는 테두리로 숫자를 읽기 쉽게 한다.</summary>
+    TMP_Text Outlined(TMP_Text t)
     {
-        t.outlineColor = new Color32(255, 255, 255, 230);
-        t.outlineWidth = 0.14f;
+        t.outlineColor = NightHud ? new Color32(9, 36, 89, 255) : new Color32(255, 255, 255, 230);
+        t.outlineWidth = NightHud ? 0.08f : 0.14f;
         return t;
     }
 
@@ -440,11 +525,78 @@ public class GameUI : MonoBehaviour
         return img;
     }
 
+    static float NightScale(Vector2 safeSize)
+    {
+        return Mathf.Min(safeSize.x / PlayW, safeSize.y / 1150f);
+    }
+
+    // 보드 테두리 여백과 HUD·아이템·다음 조각 자리를 먼저 확보한다.
+    public static Rect NightBoardRect(Vector2 safeSize)
+    {
+        float scale = Mathf.Max(.001f, NightScale(safeSize));
+        float height = safeSize.y / scale;
+        float header = safeSize.x / Mathf.Max(1, safeSize.y) > .62f ? 190f : 314f;
+        float side = Mathf.Min(PlayW - 96f, height - header - 260f);
+        float top = Mathf.Max(0, (height - side - header - 260f) * .5f) + header;
+        return new Rect((PlayW - side) * .5f, top, side, side);
+    }
+
+    void MoveNightSlot(string name, float x, float y, float width, float height)
+    {
+        var slot = playRoot.Find(name) as RectTransform;
+        if (slot != null) PlaceSlot(slot, x, y, width, height);
+    }
+
+    void LayoutNightHud(bool force)
+    {
+        if (playRoot == null || boardSlot == null) return;
+        var safeSize = ((RectTransform)playRoot.parent).rect.size;
+        if (safeSize.x < 1 || safeSize.y < 1) return;
+        if (!force && safeSize == lastNightSize) return;
+        lastNightSize = safeSize;
+        float scale = NightScale(safeSize);
+        playRoot.sizeDelta = new Vector2(PlayW, safeSize.y / scale);
+        playRoot.localScale = new Vector3(scale, scale, 1);
+        var board = NightBoardRect(safeSize);
+        PlaceSlot(boardSlot, board.x, board.y, board.width, board.height);
+        float header = board.y - 174f;
+        bool compact = safeSize.x / safeSize.y > .62f;
+        MoveNightSlot("pausebtn", 32, 16, 120, 120);
+        MoveNightSlot("pause", 32, 16, 120, 120);
+        MoveNightSlot("missionbanner", compact ? 176 : 48, header, compact ? 368 : 496, 100);
+        MoveNightSlot("timecard", 560, header, 192, 100);
+        MoveNightSlot("scorecard", 768, header, 208, 100);
+        MoveNightSlot("timertrack", 104, header + 112, 872, 46);
+        MoveNightSlot("clock", 48, header + 102, 72, 66);
+        MoveNightSlot("timerbar", 128, header + 124, 660, 22);
+        MoveNightSlot("timerreadout", 814, header + 122, 130, 26);
+        for (int i = 0; i < Shop.Items.Length; i++)
+        {
+            MoveNightSlot("itemcard" + i, 254 + i * 132, board.yMax + 20, 120, 120);
+            MoveNightSlot("item" + i, 254 + i * 132, board.yMax + 20, 120, 120);
+        }
+        PlaceSlot(traySlot, 800, board.yMax + 4, 208, 156);
+        MoveNightSlot("goalcard", 48, board.yMax + 172, 928, 64);
+
+        // 배경은 한 장만 덮고, 가로가 넓어도 기린 머리가 잘리지 않게 위를 맞춘다.
+        var background = playWallpaper.rectTransform;
+        playWallpaper.GetComponent<AspectRatioFitter>().enabled = false;
+        var viewport = ((RectTransform)background.parent).rect.size;
+        float ratio = playWallpaper.sprite.rect.width / playWallpaper.sprite.rect.height;
+        float backdropHeight = Mathf.Max(viewport.y, viewport.x / ratio);
+        background.anchorMin = background.anchorMax = background.pivot = new Vector2(.5f, 1);
+        background.anchoredPosition = Vector2.zero;
+        background.sizeDelta = new Vector2(backdropHeight * ratio, backdropHeight);
+    }
+
     void LateUpdate()
     {
         // 아트 캔버스는 별도 루트라 게임 패널의 켜짐을 따라가게 한다
         if (playArtCanvas != null && gamePanel != null && playArtCanvas.activeSelf != gamePanel.activeInHierarchy)
             playArtCanvas.SetActive(gamePanel.activeInHierarchy);
+
+        if (NightHud && gamePanel.activeInHierarchy) LayoutNightHud(false);
+        if (shopPanel != null && shopPanel.activeInHierarchy) FitShopPanel();
 
         if (feverOn)
         {
@@ -498,8 +650,8 @@ public class GameUI : MonoBehaviour
             int n = Wallet.Count(e.Item);
             bool usable = n > 0 && !(e.MovesOnly && gm.timeAttack);
             itemBtnLabel[i].text = n.ToString();
-            itemBtnFill[i].color = new Color(1, 1, 1, usable ? 0f : 0.55f);   // 못 쓰면 흰 판으로 흐리게
-            itemBtnLabel[i].color = usable ? Ink : Muted;
+            itemBtnFill[i].color = NightHud ? new Color(.03f, .12f, .32f, usable ? 0 : .52f) : new Color(1, 1, 1, usable ? 0 : .55f);   // 못 쓰면 흰 판으로 흐리게
+            itemBtnLabel[i].color = NightHud ? (usable ? Color.white : Palette.Hex(0x99BDDF)) : usable ? Ink : Muted;
         }
     }
 
@@ -563,13 +715,36 @@ public class GameUI : MonoBehaviour
         else chainBig.colorGradient = ChainGold;
         if (words != null && words.Length > 0) chainWordNext = (chainWordNext + 1) % words.Length;
 
-        chainWord.enabled = false;
-        chainTop.enabled = true;
-        chainTop.text = isChain ? "CHAIN" : "BONUS";
+        bool comboArt = SetComboArt(chain);
+        chainWord.enabled = comboArt;
+        chainTop.enabled = chainBig.enabled = !comboArt;
+        chainTop.text = isChain ? "COMBO" : "BONUS";
         chainBig.text = isChain ? ("x" + chain + "!!") : ("+" + scoreGained.ToString("N0"));
         chainAngle = Random.Range(0f, 360f);   // 반짝이가 매번 같은 자리로 튀지 않게
         if (chainCo != null) StopCoroutine(chainCo);
         chainCo = StartCoroutine(ChainPopupCo());
+    }
+
+    bool SetComboArt(int chain)
+    {
+        foreach (var digit in chainDigits) digit.enabled = false;
+        var assets = UiTypography.Assets;
+        if (chain < 2 || assets == null || assets.comboTitle == null || assets.comboGlyphs == null || assets.comboGlyphs.Length != 11) return false;
+        foreach (var glyph in assets.comboGlyphs) if (glyph == null) return false;
+        chainWord.sprite = assets.comboTitle;
+        chainWord.rectTransform.sizeDelta = new Vector2(820, 440);
+        chainWord.rectTransform.anchoredPosition = new Vector2(0, 130);
+        string value = "x" + chain;
+        float width = Mathf.Min(210, 820f / value.Length);
+        for (int i = 0; i < value.Length; i++)
+        {
+            var digit = chainDigits[i];
+            digit.sprite = assets.comboGlyphs[value[i] == 'x' ? 10 : value[i] - '0'];
+            digit.rectTransform.sizeDelta = new Vector2(width, width * 1.67f);
+            digit.rectTransform.anchoredPosition = new Vector2((i - (value.Length - 1) * .5f) * width, -165);
+            digit.enabled = true;
+        }
+        return true;
     }
 
     /// <summary>위에서 가속해 떨어져 쾅 하고 박히고, 납작해졌다 튕겨 제자리로 온다.
@@ -622,6 +797,7 @@ public class GameUI : MonoBehaviour
         chainRoot.localScale = new Vector3(sx, sy, 1f);
         chainTop.alpha = chainBig.alpha = alpha;
         if (chainWord != null) chainWord.color = new Color(1f, 1f, 1f, alpha);
+        foreach (var digit in chainDigits) digit.color = new Color(1f, 1f, 1f, alpha);
         for (int i = 0; i < chainSparks.Length; i++)
         {
             float ang = chainAngle + i * (360f / chainSparks.Length);
@@ -700,13 +876,18 @@ public class GameUI : MonoBehaviour
         }
         else
         {
-            subText.text = g.PieceLimited ? "PIECES LEFT" : "MOVES LEFT";
+            subText.text = NightHud ? (g.PieceLimited ? "PIECES" : "MOVES") : g.PieceLimited ? "PIECES LEFT" : "MOVES LEFT";
             rightText.text = g.MovesLeft.ToString();
             frac = g.PieceTimerFrac;   // 다 지나가면 조각이 버려진다
         }
         // 피버 중에는 이 막대가 피버 남은 시간을 그린다 — 조각 제한시간은 어차피 멈춰 있다
         if (g.FeverOn) frac = g.FeverFrac;
-        timerFill.color = g.FeverOn ? FeverBar : BarOrange;
+        timerFill.color = g.FeverOn ? FeverBar : NightHud ? Palette.Hex(0x4CE1FF) : BarOrange;
+        if (timerText != null)
+        {
+            int seconds = Mathf.CeilToInt(g.FeverOn ? g.FeverLeftSec : g.PieceTimeLeftSec);
+            timerText.text = seconds / 60 + ":" + (seconds % 60).ToString("00");
+        }
         timerFill.rectTransform.localScale = new Vector3(Mathf.Clamp01(frac), 1, 1);
     }
 
@@ -813,6 +994,13 @@ public class GameUI : MonoBehaviour
 
     void PlaceSlot(RectTransform rt, float x, float y, float w, float h)
     {
+        if (NightHud && rt.parent == playRoot)
+        {
+            rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0, 1);
+            rt.anchoredPosition = new Vector2(x, -y);
+            rt.sizeDelta = new Vector2(w, h);
+            return;
+        }
         rt.anchorMin = new Vector2(x / curW, 1f - (y + h) / curH);
         rt.anchorMax = new Vector2((x + w) / curW, 1f - y / curH);
         rt.offsetMin = rt.offsetMax = Vector2.zero;
@@ -926,7 +1114,7 @@ public class GameUI : MonoBehaviour
         Anchor(submitText.transform, 0.5f, 1, 0, -235, 270, 24);
 
         HookButton(Card(card.transform, "rrank", 22, 244, 286, 46, Color.white, 16),
-                   () => ShowRanking(false), "LEADERBOARD", 14);
+                   () => ShowRanking(false), TestServices.DevelopmentToolsEnabled ? "LEADERBOARD" : "MY RECORDS", 14);
         // 클리어했을 때만 NEXT 가 함께 뜬다. 자리 계산은 ShowResult 가 한다.
         HookButton(Card(card.transform, "rnext", 22, 302, 136, 52, Teal, 18),
                    () => gm.StartNextStage(), "NEXT", 16);
@@ -1133,7 +1321,7 @@ public class GameUI : MonoBehaviour
         }
 
         var closeFill = Card(card.transform, "rkclose", 0, 0, 62, 34, Color.white, 12);
-        HookButton(closeFill, () => rankPanel.SetActive(false), "X", 13);
+        HookButton(closeFill, () => CloseOverlay(rankPanel), "X", 13);
         SkinCard(closeFill, sk.Close, false, true);
         var clr = (RectTransform)card.transform.Find("rkclose");
         clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(1, 1);
@@ -1242,8 +1430,38 @@ public class GameUI : MonoBehaviour
         RefreshRank();
     }
 
+    void ShowLocalRecords()
+    {
+        if (rankCo != null) { StopCoroutine(rankCo); rankCo = null; }
+        rankTitle.text = "MY RECORDS";
+        rankSubTitle.enabled = true;
+        rankSubTitle.text = "BEST SCORES · ON THIS DEVICE";
+        rankTabMe.transform.parent.gameObject.SetActive(false);
+        rankTabNation.transform.parent.gameObject.SetActive(false);
+        myRow.SetActive(false);
+        myRowLabel.gameObject.SetActive(false);
+        adBtn.gameObject.SetActive(false);
+        rankEmpty.text = "";
+        foreach (var row in rankRows) row.SetActive(false);
+        string[] modes = { "easy", "normal", "hard", "time" };
+        for (int i = 0; i < modes.Length; i++)
+        {
+            var row = rankRows[i];
+            int best = PlayerPrefs.GetInt(GameManager.BestKey(i == 3, modes[i]), 0);
+            FillRow(row, 0, "ZZZ", i == 3 ? "TIME ATTACK" : modes[i].ToUpperInvariant(), best, false);
+            row.Bg.sprite = gm.hudScore != null ? gm.hudScore : UiTheme.RoundedSprite(12);
+            row.Bg.type = Image.Type.Sliced;
+            Anchor(row.Name.transform, 0, 0.5f, 20, 0, 180, 22);
+            row.Rank.text = "";
+            row.Badge.gameObject.SetActive(false);
+            row.Flag.gameObject.SetActive(false);
+            row.Code.gameObject.SetActive(false);
+        }
+    }
+
     void RefreshRank()
     {
+        if (!TestServices.DevelopmentToolsEnabled) { ShowLocalRecords(); return; }
         bool skin = gm.leaderboard.TabPlayers != null;
         rankTabMe.color = skin ? (rankNationTab ? TabOff : Color.white) : (rankNationTab ? Color.white : Teal);
         rankTabNation.color = skin ? (rankNationTab ? Color.white : TabOff) : (rankNationTab ? Teal : Color.white);
@@ -1311,6 +1529,7 @@ public class GameUI : MonoBehaviour
 
     void RefreshAdButton()
     {
+        if (!TestServices.DevelopmentToolsEnabled) { adBtn.gameObject.SetActive(false); return; }
         bool canSubmit = gm.CanSubmit;
         adBtnLabel.text = canSubmit ? "SUBMIT MY SCORE  ·  AD" : "WATCH AD  ·  REFRESH";
         adBtn.gameObject.SetActive(Leaderboard.I != null && Leaderboard.I.Configured);
@@ -1329,12 +1548,13 @@ public class GameUI : MonoBehaviour
     /// <summary>광고를 보고 나면 점수를 올리거나 목록을 새로고침한다.</summary>
     void OnAdButton()
     {
+        if (!TestServices.DevelopmentToolsEnabled) return;
         bool submit = gm.CanSubmit;
         ShowAd(() =>
         {
             if (submit) gm.SubmitPending(ok => RefreshRank());
             else RefreshRank();
-        });
+        }, AdPlacement.ScoreSubmit);
     }
 
     static string Trim(string s, int n)
@@ -1346,6 +1566,7 @@ public class GameUI : MonoBehaviour
     public void SetSubmitState(SubmitState st)
     {
         if (submitText == null) return;
+        if (!TestServices.DevelopmentToolsEnabled) { submitText.text = "Best scores are saved on this device"; return; }
         switch (st)
         {
             case SubmitState.Pending: submitText.text = "Watch an ad to submit your score"; break;
@@ -1360,150 +1581,82 @@ public class GameUI : MonoBehaviour
 
     void BuildShopPanel()
     {
-        shopPanel = NewImage("shopdim", transform, new Color(0.06f, 0.08f, 0.10f, 0.82f)).gameObject;
+        shopPanel = NewImage("shopdim", transform, new Color(.025f, .06f, .19f, .82f)).gameObject;
         Stretch((RectTransform)shopPanel.transform);
+        shopSafe = NewRT("shopsafe", shopPanel.transform);
+        Stretch(shopSafe); shopSafe.gameObject.AddComponent<SafeAreaFitter>();
+        var art = UiTypography.Assets;
+        var card = Card(shopSafe, "shopcard", 0, 0, 350, 600, Palette.Hex(0x104BA4), 24);
+        shopRoot = (RectTransform)card.transform.parent;
+        shopRoot.anchorMin = shopRoot.anchorMax = shopRoot.pivot = new Vector2(.5f, .5f);
+        shopRoot.anchoredPosition = Vector2.zero;
+        SkinCard(card, art != null ? art.pausePanel : null, true, false);
 
-        var card = Card(shopPanel.transform, "shopcard", 20, 50, 350, 744, ScreenBg, 24);
-        var cr = (RectTransform)card.transform.parent;
-        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
-        cr.anchoredPosition = Vector2.zero;
-
-        var title = NewText("t", card.transform, "SHOP", Mathf.RoundToInt(24 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Title);
-
-        Anchor(title.transform, 0, 1, 20, -18, 200, 36);
-
-        // 코인 칩 — 카드 오른쪽 위
-        shopCoins = CoinChip(card.transform, "coinchip", 1, 1, -16, -14, 124, 38);
-        var chipRoot = shopCoins.transform.parent.parent.gameObject;   // 칩 바깥(테두리)
-        var cb = chipRoot.AddComponent<Button>();
-        cb.targetGraphic = chipRoot.GetComponent<Image>();
-        cb.transition = Selectable.Transition.None;
-        cb.onClick.AddListener(TapCoins);
-
-        var itemsLabel = NewText("il", card.transform, Spaced("ITEMS"), Mathf.RoundToInt(10 * PS),
-                                 TextAnchor.UpperLeft, Muted, UiFontRole.Menu);
-        Anchor(itemsLabel.transform, 0, 1, 20, -88, 200, 16);
+        var title = NewText("t", card.transform, "ITEM SHOP", Mathf.RoundToInt(23 * PS), TextAnchor.MiddleLeft, Color.white, UiFontRole.Title);
+        Anchor(title.transform, 0, 1, 24, -38, 178, 34);
+        var balance = Card(card.transform, "balance", 0, 0, 104, 38, Yellow, 16);
+        var balanceRoot = (RectTransform)balance.transform.parent;
+        balanceRoot.anchorMin = balanceRoot.anchorMax = balanceRoot.pivot = new Vector2(1, 1);
+        balanceRoot.anchoredPosition = new Vector2(-22 * PS, -38 * PS);
+        SkinCard(balance, art != null ? art.primaryButton : null, true, false);
+        shopCoins = NewText("coins", balance.transform, "", Mathf.RoundToInt(17 * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Numbers);
+        Stretch(shopCoins.rectTransform);
+        var caption = NewText("caption", card.transform, "BOOSTERS", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleLeft, Palette.Hex(0xBEECFF), UiFontRole.Menu);
+        Anchor(caption.transform, 0, 1, 24, -78, 280, 18);
 
         int n = Shop.Items.Length;
         shopBuyFill = new Image[n]; shopBuyLabel = new Text[n]; shopOwned = new Text[n];
         for (int i = 0; i < n; i++)
         {
-            var e = Shop.Items[i];
-            int idx = i;
-            float rowY = 108 + i * 78;
-
-            var row = Card(card.transform, "item" + i, 0, 0, 314, 70, Color.white, 18);
+            var entry = Shop.Items[i]; int index = i;
+            var row = Card(card.transform, "item" + i, 0, 0, 314, 78, Palette.Hex(0x123E83), 18);
             var rr = (RectTransform)row.transform.parent;
-            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 70); rr.anchoredPosition = new Vector2(0, -rowY * PS);
+            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(.5f, 1);
+            rr.anchoredPosition = new Vector2(0, -(108 + i * 86) * PS);
+            SkinCard(row, art != null ? art.nightCard : null, true, false);
+            var icon = NewImage("icon", row.transform, Color.white);
+            icon.sprite = art != null && art.nightBoosters != null && i < art.nightBoosters.Length ? art.nightBoosters[i] : null;
+            icon.preserveAspect = true; icon.raycastTarget = false;
+            if (icon.sprite == null) { icon.sprite = Rounded(12); icon.color = entry.Tint; }
+            Anchor(icon.transform, 0, 1, 12, -11, 56, 56);
+            var name = NewText("n", row.transform, entry.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Color.white, UiFontRole.Menu);
+            Anchor(name.transform, 0, 1, 78, -12, 142, 20);
+            var description = NewText("d", row.transform, entry.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Palette.Hex(0xD6EEFF));
+            Anchor(description.transform, 0, 1, 78, -36, 142, 32);
+            description.horizontalOverflow = HorizontalWrapMode.Wrap;
+            description.verticalOverflow = VerticalWrapMode.Truncate;
 
-            var swatch = NewImage("sw", row.transform, e.Tint);
-            swatch.sprite = Rounded(10); swatch.type = Image.Type.Sliced; swatch.raycastTarget = false;
-            Anchor(swatch.transform, 0, 1, 12, -10, 48, 48);
-
-            var nm = NewText("n", row.transform, e.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Menu);
-
-            Anchor(nm.transform, 0, 1, 70, -11, 150, 20);
-
-            var ds = NewText("d", row.transform, e.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Muted);
-            Anchor(ds.transform, 0, 1, 70, -32, 165, 30);
-
-            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Muted, UiFontRole.Numbers);
-            Anchor(shopOwned[i].transform, 1, 0, -12, 8, 120, 16);
-
-            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 78, 36, Teal, 12);
+            shopBuyFill[i] = Card(row.transform, "buy", 0, 0, 72, 36, Yellow, 12);
             var br = (RectTransform)shopBuyFill[i].transform.parent;
             br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 1);
-            br.sizeDelta = Sz(78, 36); br.anchoredPosition = new Vector2(-12 * PS, -10 * PS);
-            var bb = br.gameObject.AddComponent<Button>();
-            bb.targetGraphic = br.GetComponent<Image>();
-            bb.transition = Selectable.Transition.None;
-            bb.onClick.AddListener(() => Buy(idx));
-            br.gameObject.AddComponent<UiPressImage>().target = br;
-            shopBuyLabel[i] = NewText("l", shopBuyFill[i].transform, "", Mathf.RoundToInt(13 * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Menu);
-
-            Stretch(shopBuyLabel[i].rectTransform);
+            br.anchoredPosition = new Vector2(-12 * PS, -12 * PS);
+            SkinCard(shopBuyFill[i], art != null ? art.primaryButton : null, true, false);
+            HookButton(shopBuyFill[i], () => Buy(index), "", 13);
+            shopBuyLabel[i] = shopBuyFill[i].GetComponentInChildren<Text>();
+            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Color.white, UiFontRole.Numbers);
+            Anchor(shopOwned[i].transform, 1, 0, -12, 7, 90, 16);
         }
+        var ad = Card(card.transform, "shopad", 18, 464, 314, 48, Yellow, 18);
+        SkinCard(ad, art != null ? art.primaryButton : null, true, false);
+        HookButton(ad, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }), "WATCH AD  ·  +" + Shop.AdReward + " COINS", 14);
+        var close = Card(card.transform, "shopclose", 35, 528, 280, 46, Palette.Hex(0xA5F1FF), 18);
+        SkinCard(close, art != null ? art.secondaryButton : null, true, false);
+        HookButton(close, () => CloseOverlay(shopPanel), "CLOSE", 15);
+    }
 
-        // ---- 타일 스킨 ----
-        float skinTop = 108 + n * 78 + 14;
-        var skinLabel = NewText("sl", card.transform, Spaced("TILE SKINS"), Mathf.RoundToInt(10 * PS),
-                                TextAnchor.UpperLeft, Muted, UiFontRole.Menu);
-        Anchor(skinLabel.transform, 0, 1, 20, -skinTop, 200, 16);
-
-        int m = Shop.Skins.Length;
-        skinBuyFill = new Image[m]; skinBuyLabel = new Text[m]; skinSwatch = new Image[m];
-        for (int i = 0; i < m; i++)
-        {
-            var sk = Shop.Skins[i];
-            int idx = i;
-            var row = Card(card.transform, "skin" + i, 0, 0, 314, 56, Color.white, 16);
-            var rr = (RectTransform)row.transform.parent;
-            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 56);
-            rr.anchoredPosition = new Vector2(0, -(skinTop + 20 + i * 64) * PS);
-
-            // 실제 타일 스프라이트를 팔레트 색 3가지로 보여준다 — 사기 전에 재질이 보여야 한다.
-            // 게임과 똑같이 광택·표정 오버레이까지 얹어야 미리보기가 실제와 같다.
-            var sp = BoardView.MakeTileSprite(sk.Skin);
-            var ovSp = BoardView.MakeTileOverlaySprite();
-            var demo = Palette.Generate(4, gm.themes != null && gm.themes.Length > 0 ? gm.themes[0].Colors : null);
-            for (int k = 0; k < 3; k++)
-            {
-                var sw = NewImage("sw" + k, row.transform, demo[k]);
-                sw.sprite = sp; sw.raycastTarget = false;
-                Anchor(sw.transform, 0, 0.5f, 12 + k * 40, 0, 36, 36);
-                var swo = NewImage("ov" + k, sw.transform, Color.white);
-                swo.sprite = ovSp; swo.raycastTarget = false;
-                Stretch(swo.rectTransform);
-                if (k == 0) skinSwatch[i] = sw;
-            }
-
-            var nm = NewText("n", row.transform, sk.Name, Mathf.RoundToInt(13 * PS), TextAnchor.MiddleLeft, Ink, UiFontRole.Menu);
-
-            Anchor(nm.transform, 0, 0.5f, 136, 0, 90, 22);
-
-            skinBuyFill[i] = Card(row.transform, "buy", 0, 0, 82, 34, Teal, 12);
-            var br = (RectTransform)skinBuyFill[i].transform.parent;
-            br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 0.5f);
-            br.sizeDelta = Sz(82, 34); br.anchoredPosition = new Vector2(-10 * PS, 0);
-            var bb = br.gameObject.AddComponent<Button>();
-            bb.targetGraphic = br.GetComponent<Image>();
-            bb.transition = Selectable.Transition.None;
-            bb.onClick.AddListener(() => SkinTap(idx));
-            br.gameObject.AddComponent<UiPressImage>().target = br;
-            skinBuyLabel[i] = NewText("l", skinBuyFill[i].transform, "", Mathf.RoundToInt(12 * PS),
-                                      TextAnchor.MiddleCenter, Ink, UiFontRole.Menu);
-
-            Stretch(skinBuyLabel[i].rectTransform);
-        }
-
-        float adY = skinTop + 20 + m * 64 + 12;
-        var adRow = Card(card.transform, "shopad", 0, 0, 314, 62, Coral, 18);
-        var ar = (RectTransform)adRow.transform.parent;
-        ar.anchorMin = ar.anchorMax = ar.pivot = new Vector2(0.5f, 1);
-        ar.sizeDelta = Sz(314, 62); ar.anchoredPosition = new Vector2(0, -adY * PS);
-        HookButton(adRow, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }),
-                   "WATCH AD  ·  +" + Shop.AdReward, 15);
-
-        // 코인이 모자랄 때 바로 살 수 있는 길. 실제 결제는 Services/Iap.cs 가 맡는다
-        var buyCoins = Card(card.transform, "shopbuycoins", 0, 0, 314, 54, Yellow, 18);
-        var bcr = (RectTransform)buyCoins.transform.parent;
-        bcr.anchorMin = bcr.anchorMax = bcr.pivot = new Vector2(0.5f, 0);
-        bcr.sizeDelta = Sz(314, 54); bcr.anchoredPosition = new Vector2(0, 80 * PS);
-        HookButton(buyCoins, ShowCoinShop, "BUY COINS", 15);
-
-        var close = Card(card.transform, "shopclose", 0, 0, 314, 54, Cream, 18);
-        var clr = (RectTransform)close.transform.parent;
-        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(0.5f, 0);
-        clr.sizeDelta = Sz(314, 54); clr.anchoredPosition = new Vector2(0, 18 * PS);
-        HookButton(close, () => shopPanel.SetActive(false), "CLOSE", 15);
+    void FitShopPanel()
+    {
+        if (shopRoot == null || shopSafe == null) return;
+        var size = shopSafe.rect.size;
+        float scale = Mathf.Min(size.x * .94f / (350 * PS), size.y * .94f / (600 * PS));
+        if (scale > 0) shopRoot.localScale = new Vector3(scale, scale, 1);
     }
 
     public void ShowShop()
     {
         shopPanel.SetActive(true);
         shopPanel.transform.SetAsLastSibling();
+        Canvas.ForceUpdateCanvases(); FitShopPanel();
         RefreshShop();
     }
 
@@ -1514,151 +1667,25 @@ public class GameUI : MonoBehaviour
         RefreshShop();
     }
 
-    /// <summary>안 샀으면 사고, 샀으면 착용한다.</summary>
-    void SkinTap(int i)
-    {
-        var sk = Shop.Skins[i];
-        if (!Wallet.OwnsSkin(sk.Skin))
-        {
-            if (!Wallet.BuySkin(sk.Skin)) { RefreshShop(); return; }
-        }
-        Wallet.Skin = sk.Skin;
-        RefreshShop();
-    }
-
-    int coinTaps;
-
-    /// <summary>⚠ 개발용. 코인 칩을 5번 두드리면 코인을 넉넉히 넣는다.
-    /// 실제로 사면서 테스트하기 위한 것이라 무한 모드가 아니라 지급이다.
-    /// 스토어 배포 전에 이 메서드와 Wallet.DevGrant 를 제거할 것.</summary>
-    void TapCoins()
-    {
-        if (++coinTaps < 5) return;
-        coinTaps = 0;
-        Wallet.AddCoins(Wallet.DevGrant);
-        RefreshShop();
-        RefreshItemButtons();
-    }
-
     void RefreshShop()
     {
         shopCoins.text = Wallet.Coins.ToString("N0");
-        for (int i = 0; i < Shop.Skins.Length; i++)
-        {
-            var sk = Shop.Skins[i];
-            bool owned = Wallet.OwnsSkin(sk.Skin);
-            bool on = Wallet.Skin == sk.Skin;
-            bool afford = Wallet.Coins >= sk.Price;
-            skinBuyLabel[i].text = on ? "EQUIPPED" : owned ? "EQUIP" : sk.Price.ToString();
-            skinBuyFill[i].color = on ? Yellow : (owned || afford) ? Teal : new Color(0.85f, 0.86f, 0.88f);
-            skinBuyLabel[i].color = (on || owned || afford) ? Ink : Muted;
-        }
         for (int i = 0; i < Shop.Items.Length; i++)
         {
             var e = Shop.Items[i];
             bool afford = Wallet.Coins >= e.Price;
             shopBuyLabel[i].text = e.Price.ToString();
-            shopBuyFill[i].color = afford ? Teal : new Color(0.85f, 0.86f, 0.88f);
-            shopBuyLabel[i].color = afford ? Ink : Muted;
-            shopOwned[i].text = "owned " + Wallet.Count(e.Item);
+            shopBuyFill[i].transform.parent.GetComponent<Image>().color = afford ? Color.white : new Color(.58f, .65f, .76f);
+            shopBuyLabel[i].color = Ink;
+            shopBuyFill[i].transform.parent.GetComponent<Button>().interactable = afford;
+            shopOwned[i].text = "OWNED " + Wallet.Count(e.Item);
         }
         RefreshItemButtons();
     }
 
-    // ---------- 코인 구매 (인앱 결제) ----------
-    //
-    // 테스트 모드는 기기에서도 더미 구매·취소·지급 재시도를 확인할 수 있다.
-
-    void BuildCoinPanel()
-    {
-        coinPanel = NewImage("coindim", transform, new Color(0.06f, 0.08f, 0.10f, 0.86f)).gameObject;
-        Stretch((RectTransform)coinPanel.transform);
-
-        var card = Card(coinPanel.transform, "coincard", 20, 50, 350, 500, ScreenBg, 24);
-        var cr = (RectTransform)card.transform.parent;
-        cr.anchorMin = cr.anchorMax = cr.pivot = new Vector2(0.5f, 0.5f);
-        cr.anchoredPosition = Vector2.zero;
-
-        var title = NewText("t", card.transform, TestServices.Enabled ? "TEST COINS" : "BUY COINS", Mathf.RoundToInt(22 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Title);
-
-        Anchor(title.transform, 0, 1, 20, -18, 240, 34);
-
-        for (int i = 0; i < Iap.Packs.Length; i++)
-        {
-            var pack = Iap.Packs[i];
-            var row = Card(card.transform, "pack" + i, 0, 0, 314, 70, Color.white, 18);
-            var rr = (RectTransform)row.transform.parent;
-            rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(0.5f, 1);
-            rr.sizeDelta = Sz(314, 70); rr.anchoredPosition = new Vector2(0, -(72 + i * 78) * PS);
-
-            var amount = NewText("n", row.transform, "+" + pack.Coins.ToString("N0") + " COINS",
-                                 Mathf.RoundToInt(15 * PS), TextAnchor.MiddleLeft, Ink, UiFontRole.Numbers);
-
-            Anchor(amount.transform, 0, 0.5f, 20, 0, 180, 24);
-
-            var price = Card(row.transform, "price", 0, 0, 96, 38, Teal, 12);
-            var pr = (RectTransform)price.transform.parent;
-            pr.anchorMin = pr.anchorMax = pr.pivot = new Vector2(1, 0.5f);
-            pr.sizeDelta = Sz(96, 38); pr.anchoredPosition = new Vector2(-12 * PS, 0);
-            HookButton(price, () => BuyCoins(pack), "\u20A9" + pack.Won.ToString("N0"), 13);
-        }
-
-        coinPanelNote = NewText("note", card.transform, "", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, Muted);
-        Anchor(coinPanelNote.transform, 0.5f, 0, 0, 144, 300, 50);
-
-        if (TestServices.Enabled)
-        {
-            string[] labels = { "취소 테스트", "실패 테스트", "주문 재시도" };
-            for (int i = 0; i < labels.Length; i++)
-            {
-                int action = i;
-                var control = Card(card.transform, "testpurchase" + i, 0, 0, 98, 38, Cream, 12);
-                var rt = (RectTransform)control.transform.parent;
-                rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0);
-                rt.sizeDelta = Sz(98, 38); rt.anchoredPosition = new Vector2((i - 1) * 106 * PS, 86 * PS);
-                HookButton(control, () => {
-                    if (action == 2) { TestPayments.Retry(); coinPanelNote.text = TestPayments.Message; RefreshShop(); }
-                    else {
-                        TestPayments.NextResult = action == 0 ? TestPurchaseResult.Cancelled : TestPurchaseResult.Failed;
-                        coinPanelNote.text = "다음 상품 구매에 " + (action == 0 ? "취소" : "지급 실패") + " 적용";
-                    }
-                }, labels[i], 10);
-            }
-        }
-
-        var close = Card(card.transform, "coinclose", 0, 0, 314, 54, Cream, 18);
-        var clr = (RectTransform)close.transform.parent;
-        clr.anchorMin = clr.anchorMax = clr.pivot = new Vector2(0.5f, 0);
-        clr.sizeDelta = Sz(314, 54); clr.anchoredPosition = new Vector2(0, 18 * PS);
-        HookButton(close, () => coinPanel.SetActive(false), "CLOSE", 15);
-
-        coinPanel.SetActive(false);
-    }
-
-    void ShowCoinShop()
-    {
-        coinPanel.SetActive(true);
-        coinPanel.transform.SetAsLastSibling();
-        coinPanelNote.text = TestServices.Enabled
-            ? "테스트 구매 · 실제 청구 없음\n결제 기록 " + TestPayments.RecordCount + "건"
-            : "store not connected yet";
-    }
-
-    void BuyCoins(CoinPack pack)
-    {
-        Iap.Buy(pack, ok =>
-        {
-            coinPanelNote.text = TestServices.Enabled ? TestPayments.Message
-                : ok ? "+" + pack.Coins.ToString("N0") + " coins added" : "purchase failed";
-            RefreshShop();
-        });
-    }
-
     // ---------- 광고 (자리표시) ----------
     //
-    // ⚠ 실제 광고 SDK 는 붙어 있지 않다. 보상형 광고의 '흐름'만 만들어 둔 것이다.
-    //   광고 ID 와 실제 호출은 Services/Ads.cs 한 곳에 있다 (지금은 구글 테스트 ID).
-    //   SDK 를 붙이고 Define Symbols 에 ChromaDrop_AdMob 을 넣으면 이 패널 대신 진짜 광고가 나간다.
+    // iOS는 Google SDK, 광고 설정이 없는 플랫폼과 배치 검사는 더미 패널을 사용한다.
 
     const float AdSeconds = 3f;
 
@@ -1679,14 +1706,19 @@ public class GameUI : MonoBehaviour
     }
 
     /// <summary>보상형 광고를 보여주고 끝나면 보상을 준다.
-    /// 구글 AdMob 이 붙어 있으면(Ads.Ready) 그쪽으로 가고, 없으면 아래 자리표시 패널로 때운다.</summary>
-    void ShowAd(System.Action onReward)
+    /// SDK 로드 실패를 더미 성공으로 바꾸지 않는다.</summary>
+    void ShowAd(System.Action onReward, AdPlacement placement = AdPlacement.CoinReward)
     {
-        if (Ads.Ready)
+        if (!Ads.UseOfflineTest)
         {
-            Ads.ShowRewarded(ok => { if (ok && onReward != null) onReward(); });
+            Ads.ShowRewarded(placement, ok =>
+            {
+                if (ok && onReward != null) onReward();
+                else if (!ok && placement == AdPlacement.ScoreSubmit && rankSubTitle != null) rankSubTitle.text = Ads.Message;
+            });
             return;
         }
+        if (adPanel.activeSelf) return;
         adPanel.SetActive(true);
         adPanel.transform.SetAsLastSibling();
         StartCoroutine(AdCo(onReward));

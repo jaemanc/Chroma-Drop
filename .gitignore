@@ -77,6 +77,12 @@ GoogleService-Info.plist
 .env
 .env.*
 !.env.example
+/Assets/Resources/admob-config.json
+/Assets/Resources/admob-config.json.meta
+/Assets/ThirdParty/GoogleMobileAds/Resources/GoogleMobileAdsSettings.asset
+/Assets/ThirdParty/GoogleMobileAds/Resources/GoogleMobileAdsSettings.asset.meta
+/Assets/GoogleMobileAds/Resources/GoogleMobileAdsSettings.asset
+/Assets/GoogleMobileAds/Resources/GoogleMobileAdsSettings.asset.meta
 
 # 국가 코드 이전 백업 (Tools/migrate-country-codes.py 가 만든다)
 /Tools/country-backup-*.json

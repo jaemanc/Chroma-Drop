@@ -22,3 +22,31 @@ MonoBehaviour:
   menuBackground: {fileID: 21300000, guid: f15c6daf9a5c94a01a5e2bb083fd0646, type: 3}
   primaryButton: {fileID: 21300000, guid: a77102faaa06d481c80b1e53d055a9e8, type: 3}
   secondaryButton: {fileID: 21300000, guid: b1eb413e8c4e449b296ad3263fa750ca, type: 3}
+  homeMenu: {fileID: 21300000, guid: 931be138a3f9e470cafb2f7dd29b8196, type: 3}
+  homeBackground: {fileID: 21300000, guid: 3911557b9b29f48509b267785a00f2c1, type: 3}
+  bonusReward: {fileID: 21300000, guid: cf2189233f1e7447ab054868ca8b591d, type: 3}
+  comboTitle: {fileID: 21300000, guid: 55ab5efb3ef4e46bf85329d975d8cffa, type: 2}
+  comboGlyphs:
+  - {fileID: 21300000, guid: 9615cc1082d194f8491cb055e781b616, type: 2}
+  - {fileID: 21300000, guid: 45d160b1e96934e12946267decdb3a50, type: 2}
+  - {fileID: 21300000, guid: fc158df9e583745548f12d51b4966d2d, type: 2}
+  - {fileID: 21300000, guid: 62e522ee013bf479e99f74abe68257a3, type: 2}
+  - {fileID: 21300000, guid: c8c03788ae5be471f8fc23619ecf8391, type: 2}
+  - {fileID: 21300000, guid: 57f55efa117ff4c76a5b3988ffb29e11, type: 2}
+  - {fileID: 21300000, guid: 29e5676bbfc0a49e994717a9ed66c898, type: 2}
+  - {fileID: 21300000, guid: 5e0b7bf00248940d487bb50630e20677, type: 2}
+  - {fileID: 21300000, guid: 1951686e60cb949b9bea058c6b3a59b0, type: 2}
+  - {fileID: 21300000, guid: 42863793061d04a16a27e60c90ec3cbc, type: 2}
+  - {fileID: 21300000, guid: 12720ea6e26a648d7a2b5eaaa51a58d7, type: 2}
+  nightBackground: {fileID: 21300000, guid: 229f598910664490786ec2ac0bd61ef2, type: 3}
+  nightTarget: {fileID: 21300000, guid: 24f859314011d4284973dec0c9721098, type: 2}
+  nightCard: {fileID: 21300000, guid: 708935ed182924cf699df71482cfad43, type: 2}
+  nightTimer: {fileID: 21300000, guid: e20a35ff6e9a540d89e451c241ce2111, type: 2}
+  nightClock: {fileID: 21300000, guid: 5ae4e32bce9c74995a14a2fd371ad292, type: 2}
+  nightPause: {fileID: 21300000, guid: edf1e9ccef38e4d76915c4b9322b95ed, type: 2}
+  nightStage: {fileID: 21300000, guid: 0691d4eead5eb4c0daad0a0f418d59d0, type: 2}
+  nightBoosters:
+  - {fileID: 21300000, guid: dadf05a62c2c24c39b4cf13b63abddf7, type: 2}
+  - {fileID: 21300000, guid: 5aaf7b34d783346c4b3ef15250f7efab, type: 2}
+  - {fileID: 21300000, guid: b5891ae25116e437b9efec0b0dedfe53, type: 2}
+  - {fileID: 21300000, guid: b9932a2cdfedb44d7b3185565ea4e155, type: 2}

@@ -5,4 +5,11 @@ public class UiThemeAssets : ScriptableObject
 {
     public Font titleFont, menuFont, bodyFont, numberFont, effectFont, koreanAccentFont;
     public Sprite pausePanel, menuBackground, primaryButton, secondaryButton;
+    public Sprite homeMenu;
+    public Sprite homeBackground;
+    public Sprite bonusReward;
+    public Sprite comboTitle;
+    public Sprite[] comboGlyphs; // 0~9, x 순서
+    public Sprite nightBackground, nightTarget, nightCard, nightTimer, nightClock, nightPause, nightStage;
+    public Sprite[] nightBoosters;
 }

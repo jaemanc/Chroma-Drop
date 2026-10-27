@@ -20,7 +20,7 @@ static class BuildCommon
     public static void Run(BuildPlayerOptions opts, string output)
     {
         var report = BuildPipeline.BuildPlayer(opts);
-        if (report.summary.result != BuildResult.Succeeded)
+        if (report.summary.result != BuildResult.Succeeded || report.summary.totalErrors > 0 || !System.IO.Directory.Exists(output))
         {
             Debug.LogError("빌드 실패: " + report.summary.result + " (에러 " + report.summary.totalErrors + "개)");
             EditorApplication.Exit(1);
@@ -55,7 +55,7 @@ public static class IosBuild
         const string output = "Builds/iOS";
         PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.iOS, "com.jaemanc.chromadrop");
         PlayerSettings.iOS.targetDevice = iOSTargetDevice.iPhoneAndiPad;
-        PlayerSettings.iOS.targetOSVersionString = "13.0";
+        PlayerSettings.iOS.targetOSVersionString = "15.0";
         BuildCommon.Run(new BuildPlayerOptions
         {
             scenes = BuildCommon.Scenes(),

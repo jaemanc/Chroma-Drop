@@ -53,7 +53,7 @@ public class BoardView : MonoBehaviour
 
     // 목표 칸에서 피어오르는 별빛 가루. 파괴 버스트와 풀을 나눠 쓴다 —
     // 버스트가 풀을 가득 채운 순간에 반짝임이 통째로 멈추면 안 된다.
-    const int MaxSparks = 600;
+    const int MaxSparks = 900;
     Sprite star;
     Transform[] kTr;
     SpriteRenderer[] kSr;
@@ -820,8 +820,7 @@ public class BoardView : MonoBehaviour
         }
     }
 
-    /// <summary>남은 목표 칸에서 별빛 가루가 피어오른다. 한 번에 하나씩만 띄워
-    /// 칸이 많아도 화면이 번잡해지지 않게 한다.</summary>
+    /// <summary>남은 목표 칸에서 흰색·금색 별빛 가루가 모여 피어오른다.</summary>
     void UpdateSparkles(float dt)
     {
         if (kSr == null || (liveSparks <= 0 && markList.Count == 0)) return;
@@ -868,7 +867,7 @@ public class BoardView : MonoBehaviour
 
         // 한 자리에서 여러 개가 같이 튀어야 '가루' 로 보인다. 하나씩이면 점이 하나 뜨는 것뿐이다.
         var at = markList[Random.Range(0, spots)];
-        int n = Random.Range(13, 20);
+        int n = Random.Range(20, 29);
         for (int i = 0; i < n; i++) SpawnSparkle(at);
     }
 
@@ -1744,7 +1743,9 @@ public class BoardView : MonoBehaviour
         var cells = trayCells[i];
         var gloss = trayGloss[i];
         bool isNext = i != CurrentSlot;
-        if (piece == null)
+        // 다음 조각은 내부 큐에만 남기고 미리보기 스프라이트는 표시하지 않는다.
+        if (isNext) trayPad[i].enabled = false;
+        if (piece == null || isNext)
         {
             foreach (var sr in cells) sr.enabled = false;
             foreach (var sr in gloss) sr.enabled = false;

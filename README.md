@@ -155,3 +155,42 @@ Unity iOS Build Support 모듈, 전체 Xcode(Command Line Tools 만으로는 안
 - iOS 빌드 파이프라인 — Unity 쪽(Xcode 프로젝트 생성)만 있고, Xcode 아카이브·서명은 수동
 - Android 빌드 진입점(`AndroidBuild`) 복구
 - 밸런스 실측 조정
+
+### 홈 메뉴와 하트
+
+홈 메뉴는 `UI/Home/home-menu-v2.png` 아트와 실제 숫자·버튼 텍스트를 함께 사용한다.
+PLAY는 일반 게임, RANKING·SHOP은 기존 화면, 코인 +는 기존 코인 구매 화면을 연다.
+설정에서 사운드와 타임어택을 선택할 수 있으며 개발 빌드에는 피버 미리보기가 있다.
+
+하트는 처음 20개, 최대 20개이며 UTC 기준 10분마다 1개 충전한다. 앱 종료 중에도
+충전하고 일반 게임 시작·재시작·다음 스테이지 진입 시 1개 소비한다. 랭킹·상점 열기와
+피버 미리보기는 소비하지 않는다. 충전과 저장은 로컬이며 서버 시간 검증은 없다.
+홈 광고 보상은 코인 100개, 하트 + 메뉴에서는 광고로 하트 1개를 받을 수 있다.
+iOS 광고는 Google Mobile Ads Unity 11.6.0을 사용한다. `.env`에 `iosAppId`,
+`scoreSubmitAdUnitId`, `coinRewardAdUnitId`를 지정하면 에디터 로드와 iOS 빌드 때 자동 반영한다.
+수동 재적용은 Unity 메뉴 `Chroma Drop > Apply AdMob .env`를 사용한다.
+생성된 `Assets/Resources/admob-config.json`과 SDK 설정은 Git에서 제외한다.
+점수 등록과 코인 보상은 별도 광고 슬롯이며, 시청 완료 콜백에서만 한 번 처리한다.
+기본값 `useTestAds=true` 및 에디터·개발 빌드에서는 Google 테스트 광고를 사용한다.
+iOS에서 UMP 동의를 확인하고, 필요한 경우 설정의 AD PRIVACY에서 변경할 수 있다.
+설정이 없는 플랫폼과 배치 검사는 기존 더미 광고를 사용한다.
+`.env`에 `useTestAds=false`를 지정하면 일반 출시 빌드는 운영 광고를 사용하며,
+생략하면 계속 테스트 광고를 사용한다. 에디터·개발 빌드는 항상 테스트 광고다.
+출시 빌드에서는 미구현 코인 결제와 개발용 지급을 차단하고, 기록은 기기 내 최고 점수만 표시한다.
+에디터·개발 빌드에서는 기존 더미 구매와 테스트 랭킹을 유지한다.
+공개한 개인정보처리방침 HTTPS URL을 `Assets/Resources/app-info.json`의
+`privacyPolicyUrl`에 넣으면 홈 설정에 PRIVACY POLICY 버튼이 표시된다.
+공개 전 준비 사항은 `docs/app-store-readiness.md`와 `docs/privacy-policy-draft.md`를 확인한다.
+컴파일 및 설정·보상 콜백 테스트만 확인했으며 iPhone 광고 수신·시청은 별도 확인이 필요하다.
+
+하트 계산만 검사하려면 프로젝트 Unity 버전의 Mono `mcs`로
+`Assets/_Project/Scripts/Core/HeartClock.cs`와 `Tests/HeartClockTests.cs`를 함께 컴파일한다.
+
+상점은 게임 코인으로 아이템 네 종류만 판매한다. 신규 지갑은 100코인으로 시작하며
+기존 저장 잔액은 초기화하지 않는다. 기존 21~30개 하트 기록은 최대 20개로 전환한다.
+스킨 판매·현금 코인 구매 화면과 개발용 코인 자동 지급은 제거했다.
+실제 App Store 인앱결제 SDK는 여전히 미연동이다.
+
+홈 버튼 문구는 메뉴 아트 높이에 비례해 크기를 맞추고 버튼 안에서 축소한다.
+플레이 화면 아이템 네 개는 하단 중앙에 정렬하고 현재 던질 조각만 오른쪽에 표시한다.
+다음 조각은 표시하지 않지만 게임 내부 조각 생성·순서는 유지한다.

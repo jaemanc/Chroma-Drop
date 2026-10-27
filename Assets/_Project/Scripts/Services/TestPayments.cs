@@ -34,7 +34,7 @@ public static class TestPayments
     static State Load()
     {
         var json = PlayerPrefs.GetString(WalletKey, "");
-        var state = json.Length == 0 ? new State { coins = PlayerPrefs.GetInt("wallet_coins", 0) } : JsonUtility.FromJson<State>(json);
+        var state = json.Length == 0 ? new State { coins = PlayerPrefs.GetInt("wallet_coins", 100) } : JsonUtility.FromJson<State>(json);
         if (state == null || state.coins < 0 || state.pay == null || state.pending == null)
             throw new InvalidOperationException("테스트 지갑 기록이 손상됐습니다.");
         // 기존 보유량은 최초 저장 시 함께 옮기고 이후에는 이 스냅샷만 읽는다.

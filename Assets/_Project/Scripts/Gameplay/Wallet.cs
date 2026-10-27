@@ -11,18 +11,6 @@ public enum TileSkin { Glossy, Gem, Crayon, Crystal, Jewel }
 
 public static class Wallet
 {
-    const string KeySeeded = "dev_seeded";
-
-    // ⚠ 개발용. 처음 한 번 코인을 넉넉히 넣어 사면서 테스트할 수 있게 한다.
-    //    스토어에 올리기 전에 이 정적 생성자와 DevGrant, GameUI.TapCoins 를 제거할 것.
-    static Wallet()
-    {
-        if (PlayerPrefs.GetInt(KeySeeded, 0) != 0) return;
-        PlayerPrefs.SetInt(KeySeeded, 1);
-        Coins = checked(Coins + DevGrant);
-        PlayerPrefs.Save();
-    }
-
     public static int Coins
     {
         get { return TestPayments.Balance; }
@@ -31,11 +19,6 @@ public static class Wallet
             TestPayments.Balance = value;
         }
     }
-
-    /// <summary>⚠ 개발용. 상점 코인 칩을 5번 두드리면 호출된다.
-    /// 실제로 사면서 테스트할 수 있도록 코인을 넉넉히 넣는다.
-    /// 스토어에 올리기 전에 이 메서드와 호출부(GameUI.TapCoins)를 제거할 것.</summary>
-    public const int DevGrant = 100000;
 
     public static void AddCoins(int n)
     {

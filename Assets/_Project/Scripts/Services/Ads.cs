@@ -1,59 +1,134 @@
-// Ads.cs — 보상형 광고 한 곳. 지금은 SDK 가 없어 자리만 잡아 둔다.
-//
-// 광고 ID 를 바꾸는 곳은 이 파일 하나다. 구글 AdMob SDK(GoogleMobileAds)를 넣은 뒤
-// 아래 ChromaDrop_AdMob 심볼을 Player Settings > Scripting Define Symbols 에 추가하면
-// 실제 광고가 나가고, 없으면 GameUI 의 가짜 광고 패널로 돌아간다.
-//
-// 넣는 순서:
-//   1) Google Mobile Ads Unity 플러그인 임포트
-//   2) 아래 상수를 내 계정의 실제 ID 로 교체 (지금 값은 구글이 공개한 테스트 ID 다)
-//   3) Define Symbols 에 ChromaDrop_AdMob 추가
-
 using System;
+using GoogleMobileAds.Api;
+using GoogleMobileAds.Common;
+using GoogleMobileAds.Ump.Api;
 using UnityEngine;
+
+public enum AdPlacement { ScoreSubmit, CoinReward }
 
 public static class Ads
 {
-    // ⚠ 구글 공식 테스트 ID. 실제 수익이 나지 않고, 실제 ID 대신 쓰면 계정이 안전하다.
-    public const string AndroidAppId = "ca-app-pub-3940256099942544~3347511713";
-    public const string IosAppId     = "ca-app-pub-3940256099942544~1458002511";
-    public const string AndroidRewardedId = "ca-app-pub-3940256099942544/5224354917";
-    public const string IosRewardedId     = "ca-app-pub-3940256099942544/1712485313";
-
-    /// <summary>이 기기에서 쓸 보상형 광고 단위 ID.</summary>
-    public static string RewardedId
+    sealed class Slot { public RewardedAd Ad; public bool Loading; }
+    static AdMobConfig config;
+    static Slot[] slots = { new Slot(), new Slot() };
+    static bool starting, initialized, showing;
+    public static string Message { get; private set; }
+    public static bool Ready { get { return initialized; } }
+    public static bool UseOfflineTest { get { return !UsesSdk && TestServices.Enabled; } }
+    public static bool UsesSdk
+    {
+        get { return !Application.isBatchMode && Config != null && Config.Valid && (Application.isEditor || Application.platform == RuntimePlatform.IPhonePlayer); }
+    }
+    static AdMobConfig Config
     {
         get
         {
-#if UNITY_IOS
-            return IosRewardedId;
-#else
-            return AndroidRewardedId;
-#endif
+            if (config == null)
+            {
+                var file = Resources.Load<TextAsset>("admob-config");
+                if (file != null) config = JsonUtility.FromJson<AdMobConfig>(file.text);
+            }
+            return config;
         }
     }
-
-    /// <summary>SDK 가 붙어 있는가. false 면 호출부가 가짜 광고로 대신한다.</summary>
-    public static bool Ready
+    public static bool PrivacyOptionsRequired
     {
-#if ChromaDrop_AdMob
-        get { return !TestServices.Enabled; }
-#else
-        get { return false; }
-#endif
+        get { return UsesSdk && ConsentInformation.PrivacyOptionsRequirementStatus == PrivacyOptionsRequirementStatus.Required; }
     }
-
-    /// <summary>보상형 광고를 띄운다. done(true) 면 보상을 줘도 되는 상태로 끝난 것이다.
-    /// SDK 가 없으면 아무것도 하지 않고 done(false) — 호출부가 가짜 광고로 메운다.</summary>
-    public static void ShowRewarded(Action<bool> done)
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void Reset()
     {
-#if ChromaDrop_AdMob
-        // TODO: GoogleMobileAds 로 RewardedAd.Load(RewardedId, ...) 후 Show.
-        //       보상 콜백에서 done(true), 실패·취소면 done(false).
-        Debug.LogWarning("[ads] ChromaDrop_AdMob 가 켜져 있지만 SDK 연결 코드가 비어 있다.");
-        if (done != null) done(false);
-#else
-        if (done != null) done(false);
-#endif
+        foreach (var slot in slots) if (slot.Ad != null) slot.Ad.Destroy();
+        slots = new[] { new Slot(), new Slot() };
+        config = null; starting = initialized = showing = false; Message = null;
+    }
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    public static void Initialize()
+    {
+        if (!UsesSdk || starting || initialized) return;
+        starting = true; Message = "광고 준비 중입니다.";
+        if (Application.isEditor) { Connect(); return; }
+        ConsentInformation.Update(new ConsentRequestParameters(), error => Main(() =>
+        {
+            ConsentForm.LoadAndShowConsentFormIfRequired(formError => Main(() =>
+            {
+                if (ConsentInformation.CanRequestAds()) Connect();
+                else { starting = false; Message = "개인정보 동의 상태를 확인해 주세요."; }
+            }));
+        }));
+    }
+    static void Connect()
+    {
+        MobileAds.Initialize(status => Main(() =>
+        {
+            initialized = status != null; starting = false;
+            Message = initialized ? "광고를 불러오는 중입니다." : "광고 초기화에 실패했습니다.";
+            if (initialized) { Load(AdPlacement.ScoreSubmit); Load(AdPlacement.CoinReward); }
+        }));
+    }
+    static void Main(Action action) { MobileAdsEventExecutor.ExecuteInUpdate(action); }
+    public static string UnitId(AdPlacement placement)
+    {
+        return Config == null ? null : Config.UnitId(placement, Application.isEditor || Debug.isDebugBuild);
+    }
+    static void Load(AdPlacement placement)
+    {
+        var slot = slots[(int)placement];
+        if (!initialized || slot.Loading || slot.Ad != null) return;
+        slot.Loading = true;
+        RewardedAd.Load(UnitId(placement), new AdRequest(), (ad, error) => Main(() =>
+        {
+            slot.Loading = false;
+            if (error != null || ad == null)
+            {
+                if (ad != null) ad.Destroy();
+                Message = "광고를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.";
+                return;
+            }
+            slot.Ad = ad; Message = "광고 준비 완료";
+        }));
+    }
+    public static void ShowRewarded(AdPlacement placement, Action<bool> done)
+    {
+        Initialize();
+        if (!UsesSdk || !initialized || showing)
+        {
+            Message = showing ? "광고가 이미 진행 중입니다." : "광고 준비 중입니다. 잠시 후 다시 시도해 주세요.";
+            if (done != null) done(false);
+            return;
+        }
+        var slot = slots[(int)placement];
+        if (slot.Ad == null || !slot.Ad.CanShowAd())
+        {
+            if (slot.Ad != null) { slot.Ad.Destroy(); slot.Ad = null; }
+            Load(placement); Message = "광고 준비 중입니다. 잠시 후 다시 시도해 주세요.";
+            if (done != null) done(false);
+            return;
+        }
+        var ad = slot.Ad; slot.Ad = null; showing = true;
+        var completion = new AdRewardCompletion(done);
+        var game = UnityEngine.Object.FindAnyObjectByType<GameManager>();
+        bool resume = game != null && game.Phase == GamePhase.Playing && !game.Paused;
+        if (resume) game.PauseGame();
+        bool closed = false;
+        Action finish = () =>
+        {
+            if (closed) return;
+            closed = true; showing = false;
+            try
+            {
+                if (resume && game != null) game.ResumeGame();
+                completion.Complete(false);
+            }
+            finally { ad.Destroy(); Load(placement); }
+        };
+        ad.OnAdFullScreenContentClosed += () => Main(finish);
+        ad.OnAdFullScreenContentFailed += error => Main(finish);
+        try { ad.Show(reward => Main(() => completion.Complete(true))); }
+        catch (Exception) { finish(); }
+    }
+    public static void ShowPrivacyOptions(Action done)
+    {
+        ConsentForm.ShowPrivacyOptionsForm(error => Main(() => { if (done != null) done(); }));
     }
 }

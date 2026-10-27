@@ -6,7 +6,8 @@ using UnityEngine.UI;
 public class MissionBanner : MonoBehaviour
 {
     readonly TMP_Text[] rows = new TMP_Text[3];
-    TMP_Text progress;
+    TMP_Text progress, caption;
+    bool compact;
 
     static RectTransform Box(string name, Transform parent, float x, float top, float w, float h)
     {
@@ -34,16 +35,30 @@ public class MissionBanner : MonoBehaviour
         return text;
     }
 
-    public void Build(Texture2D banner)
+    public void Build(Texture2D banner, Sprite skin = null)
     {
-        var picture = Box("decoration", transform, 0, 0, 1, 1).gameObject.AddComponent<RawImage>();
-        picture.texture = banner;
-        picture.raycastTarget = false;
-        var panel = Box("missionpanel", transform, 0.285f, 0.47f, 0.425f, 0.265f);
+        compact = skin != null;
+        if (compact)
+        {
+            var clip = Box("decoration", transform, 0, 0, 1, 1).gameObject.AddComponent<Image>();
+            clip.sprite = UiTheme.RoundedSprite(24); clip.type = Image.Type.Sliced; clip.raycastTarget = false;
+            clip.gameObject.AddComponent<Mask>().showMaskGraphic = false;
+            var frame = Box("skin", clip.transform, 0, 0, 1, 1).gameObject.AddComponent<Image>();
+            frame.sprite = skin; frame.type = Image.Type.Sliced; frame.raycastTarget = false;
+            caption = Label("caption", Box("captionbox", transform, .09f, .08f, .82f, .21f), UiFontRole.Menu);
+            caption.fontSizeMax = 26; caption.text = "OBJECTIVE";
+        }
+        else
+        {
+            var picture = Box("decoration", transform, 0, 0, 1, 1).gameObject.AddComponent<RawImage>();
+            picture.texture = banner; picture.raycastTarget = false;
+        }
+        var panel = compact ? Box("missionpanel", transform, .06f, .31f, .88f, .43f)
+            : Box("missionpanel", transform, .285f, .47f, .425f, .265f);
         for (int i = 0; i < rows.Length; i++) rows[i] = Label("missionrow" + i, panel, UiFontRole.Body);
-        var chip = Box("liveprogress", transform, 0.727f, 0.55f, 0.15f, 0.17f);
+        var chip = compact ? Box("liveprogress", transform, .20f, .74f, .60f, .19f) : Box("liveprogress", transform, .727f, .55f, .15f, .17f);
         progress = Label("progress", chip, UiFontRole.Numbers);
-        progress.color = new Color32(26, 39, 121, 255);
+        progress.color = compact ? Color.white : new Color32(26, 39, 121, 255);
         progress.outlineWidth = 0;
         progress.fontSizeMax = 44;
     }
@@ -62,6 +77,7 @@ public class MissionBanner : MonoBehaviour
     public void Refresh(GameManager game)
     {
         for (int i = 0; i < rows.Length; i++) rows[i].gameObject.SetActive(false);
+        if (caption != null) caption.text = game.FeverOn ? "FEVER TIME" : game.TimeAttackMode ? "TIME ATTACK" : "OBJECTIVE";
         if (game.FeverOn)
         {
             SetRow(0, 1, "Fever time " + game.FeverLeftSec.ToString("0.0"));

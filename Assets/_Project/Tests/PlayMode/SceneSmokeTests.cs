@@ -9,9 +9,14 @@ using UnityEngine.UI;
 
 public class SceneSmokeTests
 {
+    string savedHearts;
+    bool hadHearts;
     [SetUp]
     public void DisableLiveLeaderboard()
     {
+        hadHearts = PlayerPrefs.HasKey(Hearts.StorageKey);
+        savedHearts = PlayerPrefs.GetString(Hearts.StorageKey, "");
+        PlayerPrefs.SetString(Hearts.StorageKey, "{\"count\":" + ColorMatcher.Core.HeartClock.Capacity + ",\"nextUtc\":0}");
         // 씬 검증 중 운영 서버에 게스트 계정을 만들지 않는다.
         if (Leaderboard.I != null) Object.DestroyImmediate(Leaderboard.I.gameObject);
         var offline = new GameObject("OfflineLeaderboard").AddComponent<Leaderboard>();
@@ -22,7 +27,7 @@ public class SceneSmokeTests
     [UnityTest]
     public IEnumerator ClassicButtonStartsPlayableBoard()
     {
-        yield return Launch("Btn_Classic", false);
+        yield return Launch("Btn_Play", false);
     }
 
     [Test]
@@ -57,6 +62,25 @@ public class SceneSmokeTests
             Assert.That(label.font, Is.SameAs(UiTypography.FontFor(UiFontRole.KoreanAccent)));
         }
         finally { Object.DestroyImmediate(label.gameObject); }
+    }
+
+    [UnityTest]
+    public IEnumerator HomeShopOpensWithoutSpendingAHeart()
+    {
+        GameManager.LaunchHomePanel = 0;
+        yield return SceneManager.LoadSceneAsync("Menu");
+        yield return null;
+        int before = Hearts.Count;
+        Object.FindObjectsByType<Button>().Single(b => b.name == "Btn_Shop").onClick.Invoke();
+        yield return null;
+        yield return null;
+        var game = Object.FindAnyObjectByType<GameManager>();
+        Assert.That(game.Phase, Is.EqualTo(GamePhase.Home));
+        Assert.That(Hearts.Count, Is.EqualTo(before));
+        Assert.That(GameObject.Find("shopdim"), Is.Not.Null);
+        game.GoHome();
+        yield return null;
+        Assert.That(Object.FindAnyObjectByType<MainMenu>(), Is.Not.Null);
     }
 
     [UnityTest]
@@ -118,6 +142,7 @@ public class SceneSmokeTests
         yield return new WaitForSecondsRealtime(0.08f);
         Assert.That(game.Paused, Is.True);
         Assert.That(game.Phase, Is.EqualTo(GamePhase.Playing));
+        Assert.That(Hearts.Count, Is.EqualTo(19));
         Assert.That(game.TimeLeftSec, Is.EqualTo(timeLeft).Within(0.001f));
         Assert.That(game.PieceTimerFrac, Is.EqualTo(pieceLeft).Within(0.001f));
         Assert.That(game.TryStamp(0, 0), Is.False);
@@ -181,6 +206,20 @@ public class SceneSmokeTests
     {
         yield return SceneManager.LoadSceneAsync("Menu");
         yield return null;
+        if (buttonName == "Btn_Rush" && Object.FindObjectsByType<Button>().Any(b => b.name == "Btn_Settings"))
+        {
+            Object.FindObjectsByType<Button>().Single(b => b.name == "Btn_Settings").onClick.Invoke();
+            yield return null;
+        }
+        if (buttonName == "Btn_Play")
+        {
+            Canvas.ForceUpdateCanvases();
+            var playText = Object.FindObjectsByType<Text>().Single(t => t.name == "PlayLabel");
+            Assert.That(playText.horizontalOverflow, Is.EqualTo(HorizontalWrapMode.Wrap));
+            Assert.That(playText.fontSize, Is.LessThan(playText.rectTransform.rect.height));
+            ScreenCapture.CaptureScreenshot("/tmp/chromadrop-home-text.png");
+            yield return null;
+        }
         var button = Object.FindObjectsByType<Button>()
             .Single(b => b.name == buttonName);
         button.onClick.Invoke();
@@ -198,18 +237,41 @@ public class SceneSmokeTests
         Canvas.ForceUpdateCanvases();
         Rect boardRect;
         Assert.That(ui.BoardSlotRect(out boardRect), Is.True);
+        if (buttonName == "Btn_Play" && UiTypography.Assets.nightBackground != null)
+        {
+            var first = ui.transform.Find("game/safe/playroot/item0").GetComponent<RectTransform>();
+            var last = ui.transform.Find("game/safe/playroot/item3").GetComponent<RectTransform>();
+            var a = new Vector3[4]; var b = new Vector3[4]; first.GetWorldCorners(a); last.GetWorldCorners(b);
+            Assert.That((a[0].x + b[2].x) * .5f, Is.EqualTo(boardRect.center.x).Within(1f));
+            Rect tray; Assert.That(ui.TraySlotRect(out tray), Is.True);
+            Assert.That(b[2].x, Is.LessThan(tray.xMin));
+            var view = Object.FindAnyObjectByType<BoardView>();
+            var cells = (SpriteRenderer[][])typeof(BoardView).GetField("trayCells", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(view);
+            Assert.That(cells[1].All(cell => !cell.enabled), Is.True);
+            ScreenCapture.CaptureScreenshot("/tmp/chromadrop-centered-items.png");
+            yield return null;
+        }
         var slot = GameObject.Find("boardslot").GetComponent<RectTransform>();
-        // 슬롯은 부모 아트의 비율로 배치된다. 화면 배율과 무관하게 원본 대비 크기를 검사한다.
-        Assert.That(slot.anchorMax.x - slot.anchorMin.x,
-            Is.EqualTo(theme.Grid.width * 1.10f / 1024f).Within(0.00001f));
-        Assert.That(slot.anchorMax.y - slot.anchorMin.y,
-            Is.EqualTo(theme.Grid.height * 1.10f / 1536f).Within(0.00001f));
+        if (UiTypography.Assets != null && UiTypography.Assets.nightBackground != null)
+        {
+            Assert.That(boardRect.width, Is.EqualTo(boardRect.height).Within(1f));
+            Assert.That(boardRect.xMin, Is.GreaterThanOrEqualTo(Screen.safeArea.xMin));
+            Assert.That(boardRect.xMax, Is.LessThanOrEqualTo(Screen.safeArea.xMax));
+            if (Screen.safeArea.height >= Screen.safeArea.width)
+                Assert.That(boardRect.width, Is.GreaterThan(Screen.safeArea.width * .70f));
+        }
+        else
+        {
+            Assert.That(slot.anchorMax.x - slot.anchorMin.x,
+                Is.EqualTo(theme.Grid.width * BlockTheme.BoardZoom / 1024f).Within(0.00001f));
+        }
         var tile = GameObject.Find("t_0_0");
         // 숨쉬기 애니메이션을 기본 자세로 돌린 같은 프레임에서 표시 크기를 검사한다.
         Object.FindAnyObjectByType<BoardView>().SetIdle(false);
         Assert.That(tile.transform.localScale.x, Is.EqualTo(theme.BlockScale * (theme.Size + 1f) / theme.Size).Within(0.001f));
         var timer = GameObject.Find("timerbar").GetComponent<RectTransform>();
-        Assert.That(timer.anchorMin.y - slot.anchorMax.y, Is.GreaterThan(0.02f));
+        var timerCorners = new Vector3[4]; timer.GetWorldCorners(timerCorners);
+        Assert.That(timerCorners[0].y - boardRect.yMax, Is.GreaterThan(1f));
         Assert.That(game.objectiveFont, Is.Not.Null);
         Assert.That(game.missionWords, Has.Length.EqualTo(6));
         Assert.That(Object.FindAnyObjectByType<MissionBanner>(), Is.Not.Null);
@@ -222,6 +284,10 @@ public class SceneSmokeTests
     [UnityTearDown]
     public IEnumerator Cleanup()
     {
+        if (hadHearts) PlayerPrefs.SetString(Hearts.StorageKey, savedHearts);
+        else PlayerPrefs.DeleteKey(Hearts.StorageKey);
+        PlayerPrefs.Save();
+        GameManager.LaunchHomePanel = 0;
         yield return SceneManager.LoadSceneAsync("Menu");
         if (Leaderboard.I != null) Object.Destroy(Leaderboard.I.gameObject);
         GameManager.LaunchTimeAttack = null;
