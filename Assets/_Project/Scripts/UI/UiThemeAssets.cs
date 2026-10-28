@@ -12,4 +12,5 @@ public class UiThemeAssets : ScriptableObject
     public Sprite[] comboGlyphs; // 0~9, x 순서
     public Sprite nightBackground, nightTarget, nightCard, nightTimer, nightClock, nightPause, nightStage;
     public Sprite[] nightBoosters;
+    public Sprite[] boosterIcons;
 }

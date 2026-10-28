@@ -19,7 +19,20 @@ class StageTableTests
             CheckFallback("손상된 JSON");
             File.WriteAllText(Path.Combine(root, "stages.json"), "{}");
             CheckFallback("stages 필드 없음");
-            Console.WriteLine("StageTable: 3 통과 / 0 실패");
+            File.Delete(Path.Combine(root, "stages.json"));
+            UnityEngine.Application.streamingAssetsPath = Path.GetFullPath("Assets/StreamingAssets");
+            typeof(StageTable).GetField("stages", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, null);
+            typeof(StageTable).GetField("timeAttack", BindingFlags.Static | BindingFlags.NonPublic).SetValue(null, null);
+            if (File.ReadAllText("stages/stages.json") != File.ReadAllText(StageTable.BuiltInPath))
+                throw new Exception("스테이지 원본과 빌드 사본 불일치");
+            if (StageTable.Count != 100 || StageTable.Get(1).MoveBudget != 20 ||
+                StageTable.Get(2).MoveBudget != 16 || StageTable.Get(100).MoveBudget != 18)
+                throw new Exception("강화된 이동·피스 제한이 런타임 설정에 반영되지 않음");
+            if (StageTable.Get(1).ClearBlocks != 7 || StageTable.Get(1).PieceTimeMaxMs != 16800 ||
+                StageTable.TimeAttack.Seconds != 120 || StageTable.TimeAttack.PieceTimeMaxMs != 4000)
+                throw new Exception("목표·제한시간 또는 타임어택이 변경됨");
+            Console.WriteLine("[PASS] 강화된 스테이지 예산과 기존 목표·제한시간 보존");
+            Console.WriteLine("StageTable: 4 통과 / 0 실패");
         }
         finally { Directory.Delete(root, true); }
     }

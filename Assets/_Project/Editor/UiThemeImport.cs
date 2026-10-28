@@ -9,6 +9,7 @@ public class UiThemeImport : AssetPostprocessor
     const string FontRoot = "Assets/ThirdParty/Fonts/";
     const string FramePath = "Assets/_Project/Sprites/UI/Buttons/LeaderBoard/pause_panel_no_top_gem.png";
     const string NightRoot = "Assets/_Project/Sprites/UI/NightPlay/";
+    const string BoosterRoot = "Assets/_Project/Sprites/UI/Boosters/";
     const string ComboRoot = "Assets/_Project/Sprites/UI/Combo/";
     const string HomePath = "Assets/_Project/Sprites/UI/Home/home-menu-v2.png";
     const string HomeBackgroundPath = "Assets/_Project/Sprites/UI/Home/home-background-wide.png";
@@ -20,7 +21,7 @@ public class UiThemeImport : AssetPostprocessor
     static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
     {
         foreach (var path in imported)
-            if (path.StartsWith(FontRoot) || path == FramePath || path == MenuPath || path == HomePath || path == HomeBackgroundPath || path == RewardPath || path.StartsWith(NightRoot) || path.StartsWith(ComboRoot))
+            if (path.StartsWith(FontRoot) || path == FramePath || path == MenuPath || path == HomePath || path == HomeBackgroundPath || path == RewardPath || path.StartsWith(NightRoot) || path.StartsWith(ComboRoot) || path.StartsWith(BoosterRoot))
             { EditorApplication.delayCall += Configure; break; }
     }
 
@@ -62,6 +63,14 @@ public class UiThemeImport : AssetPostprocessor
             Slice("bomb", 195, 1160, 153, 153, 0), Slice("hammer", 355, 1160, 151, 153, 0),
             Slice("rainbow", 515, 1160, 151, 153, 0), Slice("shuffle", 675, 1160, 153, 153, 0)
         };
+        var boosters = SpriteAt(BoosterRoot + "booster-icons.png", false);
+        if (boosters != null)
+        {
+            float w = boosters.texture.width / 2f, h = boosters.texture.height / 2f;
+            set.boosterIcons = new Sprite[4];
+            for (int i = 0; i < 4; i++)
+                set.boosterIcons[i] = Slice("icon-" + i, i % 2 * w, i / 2 * h, w, h, 0, BoosterRoot, "booster-icons.png");
+        }
         var combo = SpriteAt(ComboRoot + "combo-atlas.png", false);
         if (combo != null)
         {

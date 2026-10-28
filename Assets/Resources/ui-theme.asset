@@ -50,3 +50,8 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 5aaf7b34d783346c4b3ef15250f7efab, type: 2}
   - {fileID: 21300000, guid: b5891ae25116e437b9efec0b0dedfe53, type: 2}
   - {fileID: 21300000, guid: b9932a2cdfedb44d7b3185565ea4e155, type: 2}
+  boosterIcons:
+  - {fileID: 21300000, guid: a3f23e65dca7e44768512b54cf0f8988, type: 2}
+  - {fileID: 21300000, guid: 6ede239d896f644ed91ba824eb866023, type: 2}
+  - {fileID: 21300000, guid: 2f2c3c56a1b2a4298ad791dfb8c29078, type: 2}
+  - {fileID: 21300000, guid: 5f47309fbdedc465a8248f7d5dada761, type: 2}

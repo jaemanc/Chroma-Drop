@@ -68,6 +68,7 @@ public class GameUI : MonoBehaviour
     Image[] shopBuyFill;
     Text[] shopBuyLabel, shopOwned;
     RectTransform shopRoot, shopSafe;
+    RectTransform pauseRoot, pauseSafe;
     TMP_Text[] itemBtnLabel;
     Image[] itemBtnFill;
     Text adCountdown;
@@ -440,6 +441,15 @@ public class GameUI : MonoBehaviour
             if (name.StartsWith("itemcard"))
             {
                 int index;
+                if (int.TryParse(name.Substring(8), out index) && set.boosterIcons != null && index < set.boosterIcons.Length && set.boosterIcons[index] != null)
+                {
+                    var tile = HudCard(name, x, y, w, h);
+                    tile.color = Palette.Hex(0xB8E9FF);
+                    var icon = NewImage("boostericon", tile.transform, Color.white);
+                    icon.sprite = set.boosterIcons[index]; icon.preserveAspect = true; icon.raycastTarget = false;
+                    Stretch(icon.rectTransform);
+                    return tile;
+                }
                 if (int.TryParse(name.Substring(8), out index) && set.nightBoosters != null && index < set.nightBoosters.Length)
                     skin = set.nightBoosters[index];
             }
@@ -597,6 +607,7 @@ public class GameUI : MonoBehaviour
 
         if (NightHud && gamePanel.activeInHierarchy) LayoutNightHud(false);
         if (shopPanel != null && shopPanel.activeInHierarchy) FitShopPanel();
+        if (pausePanel != null && pausePanel.activeInHierarchy) FitPausePanel();
 
         if (feverOn)
         {
@@ -1038,42 +1049,51 @@ public class GameUI : MonoBehaviour
     {
         pausePanel = NewImage("pausedim", transform, new Color(0.055f, 0.075f, 0.19f, 0.72f)).gameObject;
         Stretch((RectTransform)pausePanel.transform);
-        var safe = NewRT("pausesafe", pausePanel.transform);
-        Stretch(safe);
-        safe.gameObject.AddComponent<SafeAreaFitter>();
-        var card = Card(safe, "pausecard", 0, 0, 330, 360, Cream, 24);
-        var rt = (RectTransform)card.transform.parent;
-        rt.anchorMin = rt.anchorMax = rt.pivot = new Vector2(0.5f, 0.5f);
-        rt.anchoredPosition = Vector2.zero;
-        var frame = UiTypography.Assets != null ? UiTypography.Assets.pausePanel : null;
-        SkinCard(card, frame, true, false);
-        Color heading = frame != null ? Color.white : Ink;
-        Color caption = frame != null ? Palette.Hex(0xC5E6FF) : Body;
+        pauseSafe = NewRT("pausesafe", pausePanel.transform);
+        Stretch(pauseSafe);
+        pauseSafe.gameObject.AddComponent<SafeAreaFitter>();
+        var card = Card(pauseSafe, "pausecard", 0, 0, 330, 310, Palette.Hex(0x124EA8), 29);
+        pauseRoot = (RectTransform)card.transform.parent;
+        pauseRoot.anchorMin = pauseRoot.anchorMax = pauseRoot.pivot = new Vector2(.5f, .5f);
+        pauseRoot.anchoredPosition = Vector2.zero;
+        pauseRoot.GetComponent<Image>().color = Palette.Hex(0x56C7FF);
+        card.rectTransform.offsetMin = Vector2.one * (1.8f * PS);
+        card.rectTransform.offsetMax = -card.rectTransform.offsetMin;
 
-        var kicker = NewText("caption", card.transform, "CHROMA DROP", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleCenter, caption, UiFontRole.Title);
-        Anchor(kicker.transform, 0.5f, 1, 0, -40, 260, 18);
-        var title = NewText("title", card.transform, "PAUSED", Mathf.RoundToInt(27 * PS), TextAnchor.MiddleCenter, heading, UiFontRole.Title);
-        Anchor(title.transform, 0.5f, 1, 0, -66, 260, 44);
-        var note = NewText("note", card.transform, "Ready when you are.", Mathf.RoundToInt(11 * PS), TextAnchor.MiddleCenter, caption);
-        note.fontStyle = FontStyle.Normal;
-        Anchor(note.transform, 0.5f, 1, 0, -116, 260, 22);
+        var kicker = NewText("caption", card.transform, "CHROMA DROP", Mathf.RoundToInt(11 * PS), TextAnchor.MiddleCenter, Palette.Hex(0xB7E1FF), UiFontRole.Menu);
+        Anchor(kicker.transform, .5f, 1, 0, -20, 280, 20);
+        var title = NewText("title", card.transform, "PAUSED", Mathf.RoundToInt(36 * PS), TextAnchor.MiddleCenter, Color.white, UiFontRole.Title);
+        Anchor(title.transform, .5f, 1, 0, -52, 280, 46);
+        var note = NewText("note", card.transform, "Ready when you are.", Mathf.RoundToInt(16 * PS), TextAnchor.MiddleCenter, Palette.Hex(0xB7E1FF));
+        Anchor(note.transform, .5f, 1, 0, -101, 280, 26);
 
-        // 카드 자식은 카드 중앙을 기준으로 둔다. 화면용 P 좌표를 쓰면 왼쪽으로 밀린다.
-        var resume = Card(card.transform, "resume", 0, 0, 260, 62, Yellow, 22);
-        Anchor(resume.transform.parent, 0.5f, 1, 0, -166, 260, 62);
-        HookButton(resume, () => gm.ResumeGame(), "RESUME", 18);
-        SkinCard(resume, gm.hudMoves, true, false);
-        var home = Card(card.transform, "pausehome", 0, 0, 260, 56, ScreenBg, 22);
-        Anchor(home.transform.parent, 0.5f, 1, 0, -242, 260, 56);
-        HookButton(home, () => gm.GoHome(), "HOME", 15);
-        SkinCard(home, gm.hudScore, true, false);
+        var resume = Card(card.transform, "resume", 0, 0, 264, 52, Palette.Hex(0xFFDC55), 26);
+        Anchor(resume.transform.parent, .5f, 1, 0, -146, 264, 52);
+        resume.transform.parent.GetComponent<Image>().color = resume.color;
+        HookButton(resume, () => gm.ResumeGame(), "RESUME", 21);
+        var home = Card(card.transform, "pausehome", 0, 0, 264, 52, Palette.Hex(0xB8E9FF), 26);
+        Anchor(home.transform.parent, .5f, 1, 0, -216, 264, 52);
+        home.transform.parent.GetComponent<Image>().color = home.color;
+        HookButton(home, () => gm.GoHome(), "HOME", 21);
         pausePanel.SetActive(false);
+    }
+
+    void FitPausePanel()
+    {
+        var size = pauseSafe.rect.size;
+        float scale = Mathf.Min(1f, size.x * .92f / (330 * PS), size.y * .92f / (310 * PS));
+        if (scale > 0) pauseRoot.localScale = Vector3.one * scale;
     }
 
     public void ShowPause(bool show)
     {
         pausePanel.SetActive(show);
-        if (show) pausePanel.transform.SetAsLastSibling();
+        if (show)
+        {
+            pausePanel.transform.SetAsLastSibling();
+            Canvas.ForceUpdateCanvases();
+            FitPausePanel();
+        }
     }
 
     void BuildResultPanel()
@@ -1586,43 +1606,51 @@ public class GameUI : MonoBehaviour
         shopSafe = NewRT("shopsafe", shopPanel.transform);
         Stretch(shopSafe); shopSafe.gameObject.AddComponent<SafeAreaFitter>();
         var art = UiTypography.Assets;
-        var card = Card(shopSafe, "shopcard", 0, 0, 350, 600, Palette.Hex(0x104BA4), 24);
+        var card = Card(shopSafe, "shopcard", 0, 0, 350, 540, Palette.Hex(0xECF9FF), 24);
         shopRoot = (RectTransform)card.transform.parent;
         shopRoot.anchorMin = shopRoot.anchorMax = shopRoot.pivot = new Vector2(.5f, .5f);
         shopRoot.anchoredPosition = Vector2.zero;
-        SkinCard(card, art != null ? art.pausePanel : null, true, false);
+        shopRoot.GetComponent<Image>().color = Palette.Hex(0x289FFF);
+        card.rectTransform.offsetMin = Vector2.one * (3 * PS);
+        card.rectTransform.offsetMax = -card.rectTransform.offsetMin;
 
-        var title = NewText("t", card.transform, "ITEM SHOP", Mathf.RoundToInt(23 * PS), TextAnchor.MiddleLeft, Color.white, UiFontRole.Title);
-        Anchor(title.transform, 0, 1, 24, -38, 178, 34);
+        var title = NewText("t", card.transform, "ITEM SHOP", Mathf.RoundToInt(23 * PS), TextAnchor.MiddleLeft, Ink, UiFontRole.Title);
+        Anchor(title.transform, 0, 1, 18, -16, 178, 34);
         var balance = Card(card.transform, "balance", 0, 0, 104, 38, Yellow, 16);
         var balanceRoot = (RectTransform)balance.transform.parent;
         balanceRoot.anchorMin = balanceRoot.anchorMax = balanceRoot.pivot = new Vector2(1, 1);
-        balanceRoot.anchoredPosition = new Vector2(-22 * PS, -38 * PS);
-        SkinCard(balance, art != null ? art.primaryButton : null, true, false);
+        balanceRoot.anchoredPosition = new Vector2(-16 * PS, -16 * PS);
+        FlatShopButton(balance, Palette.Hex(0xF4A42B));
         shopCoins = NewText("coins", balance.transform, "", Mathf.RoundToInt(17 * PS), TextAnchor.MiddleCenter, Ink, UiFontRole.Numbers);
         Stretch(shopCoins.rectTransform);
-        var caption = NewText("caption", card.transform, "BOOSTERS", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleLeft, Palette.Hex(0xBEECFF), UiFontRole.Menu);
-        Anchor(caption.transform, 0, 1, 24, -78, 280, 18);
+        AddShopCoin(balance, shopCoins);
+        var caption = NewText("caption", card.transform, "BOOSTERS", Mathf.RoundToInt(10 * PS), TextAnchor.MiddleLeft, Palette.Hex(0x2D73C1), UiFontRole.Menu);
+        Anchor(caption.transform, 0, 1, 18, -57, 280, 18);
 
         int n = Shop.Items.Length;
         shopBuyFill = new Image[n]; shopBuyLabel = new Text[n]; shopOwned = new Text[n];
         for (int i = 0; i < n; i++)
         {
             var entry = Shop.Items[i]; int index = i;
-            var row = Card(card.transform, "item" + i, 0, 0, 314, 78, Palette.Hex(0x123E83), 18);
+            var row = Card(card.transform, "item" + i, 0, 0, 322, 78, Palette.Hex(0xE4F5FF), 12);
             var rr = (RectTransform)row.transform.parent;
             rr.anchorMin = rr.anchorMax = rr.pivot = new Vector2(.5f, 1);
-            rr.anchoredPosition = new Vector2(0, -(108 + i * 86) * PS);
-            SkinCard(row, art != null ? art.nightCard : null, true, false);
+            rr.anchoredPosition = new Vector2(0, -(81 + i * 86) * PS);
+            rr.GetComponent<Image>().color = Palette.Hex(0xA0DBFF);
+            row.rectTransform.offsetMin = Vector2.one * PS;
+            row.rectTransform.offsetMax = -row.rectTransform.offsetMin;
+            var iconBg = NewImage("iconbg", row.transform, Palette.Hex(0xB2E6FA));
+            iconBg.sprite = Rounded(10); iconBg.type = Image.Type.Sliced; iconBg.raycastTarget = false;
+            Anchor(iconBg.transform, 0, 1, 8, -8, 62, 62);
             var icon = NewImage("icon", row.transform, Color.white);
-            icon.sprite = art != null && art.nightBoosters != null && i < art.nightBoosters.Length ? art.nightBoosters[i] : null;
+            icon.sprite = art != null && art.boosterIcons != null && i < art.boosterIcons.Length ? art.boosterIcons[i] : null;
             icon.preserveAspect = true; icon.raycastTarget = false;
             if (icon.sprite == null) { icon.sprite = Rounded(12); icon.color = entry.Tint; }
-            Anchor(icon.transform, 0, 1, 12, -11, 56, 56);
-            var name = NewText("n", row.transform, entry.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Color.white, UiFontRole.Menu);
-            Anchor(name.transform, 0, 1, 78, -12, 142, 20);
-            var description = NewText("d", row.transform, entry.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Palette.Hex(0xD6EEFF));
-            Anchor(description.transform, 0, 1, 78, -36, 142, 32);
+            Anchor(icon.transform, 0, 1, 8, -8, 62, 62);
+            var name = NewText("n", row.transform, entry.Name, Mathf.RoundToInt(14 * PS), TextAnchor.UpperLeft, Ink, UiFontRole.Menu);
+            Anchor(name.transform, 0, 1, 78, -9, 142, 20);
+            var description = NewText("d", row.transform, entry.Desc, Mathf.RoundToInt(9 * PS), TextAnchor.UpperLeft, Palette.Hex(0x234D87));
+            Anchor(description.transform, 0, 1, 78, -32, 150, 40);
             description.horizontalOverflow = HorizontalWrapMode.Wrap;
             description.verticalOverflow = VerticalWrapMode.Truncate;
 
@@ -1630,25 +1658,45 @@ public class GameUI : MonoBehaviour
             var br = (RectTransform)shopBuyFill[i].transform.parent;
             br.anchorMin = br.anchorMax = br.pivot = new Vector2(1, 1);
             br.anchoredPosition = new Vector2(-12 * PS, -12 * PS);
-            SkinCard(shopBuyFill[i], art != null ? art.primaryButton : null, true, false);
+            FlatShopButton(shopBuyFill[i], Palette.Hex(0xF4A42B));
             HookButton(shopBuyFill[i], () => Buy(index), "", 13);
             shopBuyLabel[i] = shopBuyFill[i].GetComponentInChildren<Text>();
-            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Color.white, UiFontRole.Numbers);
+            AddShopCoin(shopBuyFill[i], shopBuyLabel[i]);
+            shopOwned[i] = NewText("own", row.transform, "", Mathf.RoundToInt(9 * PS), TextAnchor.LowerRight, Palette.Hex(0x477DB5), UiFontRole.Numbers);
             Anchor(shopOwned[i].transform, 1, 0, -12, 7, 90, 16);
         }
-        var ad = Card(card.transform, "shopad", 18, 464, 314, 48, Yellow, 18);
-        SkinCard(ad, art != null ? art.primaryButton : null, true, false);
+        var ad = Card(card.transform, "shopad", 14, 430, 322, 40, Yellow, 18);
+        Anchor(ad.transform.parent, .5f, 1, 0, -430, 322, 40);
+        FlatShopButton(ad, Palette.Hex(0xF4A42B));
         HookButton(ad, () => ShowAd(() => { Wallet.AddCoins(Shop.AdReward); RefreshShop(); }), "WATCH AD  ·  +" + Shop.AdReward + " COINS", 14);
-        var close = Card(card.transform, "shopclose", 35, 528, 280, 46, Palette.Hex(0xA5F1FF), 18);
-        SkinCard(close, art != null ? art.secondaryButton : null, true, false);
+        var close = Card(card.transform, "shopclose", 14, 478, 322, 42, Palette.Hex(0xA5F1FF), 18);
+        Anchor(close.transform.parent, .5f, 1, 0, -478, 322, 42);
+        FlatShopButton(close, Palette.Hex(0x28AAFF));
         HookButton(close, () => CloseOverlay(shopPanel), "CLOSE", 15);
+    }
+
+    void FlatShopButton(Image fill, Color border)
+    {
+        fill.transform.parent.GetComponent<Image>().color = border;
+        fill.rectTransform.offsetMin = Vector2.one * PS;
+        fill.rectTransform.offsetMax = -fill.rectTransform.offsetMin;
+    }
+
+    void AddShopCoin(Image fill, Text label)
+    {
+        var coin = NewImage("coin", fill.transform, Palette.Hex(0xFFBB2F));
+        coin.sprite = Rounded(12); coin.type = Image.Type.Sliced; coin.raycastTarget = false;
+        Anchor(coin.transform, 0, .5f, 5, 0, 23, 23);
+        var star = NewText("star", coin.transform, "★", Mathf.RoundToInt(16 * PS), TextAnchor.MiddleCenter, Palette.Hex(0xD8870F), UiFontRole.Body);
+        Stretch(star.rectTransform);
+        label.rectTransform.offsetMin = new Vector2(27 * PS, 0);
     }
 
     void FitShopPanel()
     {
         if (shopRoot == null || shopSafe == null) return;
         var size = shopSafe.rect.size;
-        float scale = Mathf.Min(size.x * .94f / (350 * PS), size.y * .94f / (600 * PS));
+        float scale = Mathf.Min(size.x * .94f / (350 * PS), size.y * .94f / (540 * PS));
         if (scale > 0) shopRoot.localScale = new Vector3(scale, scale, 1);
     }
 

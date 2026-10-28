@@ -127,6 +127,10 @@ public class SceneSmokeTests
         pause.onClick.Invoke();
         Canvas.ForceUpdateCanvases();
         var card = (RectTransform)ui.transform.Find("pausedim/pausesafe/pausecard/fill");
+        Assert.That(card.GetComponent<Image>().color.b, Is.GreaterThan(card.GetComponent<Image>().color.r));
+        Assert.That(card.Find("title").GetComponent<Text>().text, Is.EqualTo("PAUSED"));
+        Assert.That(card.Find("resume/fill").GetComponent<Image>().color, Is.EqualTo(Palette.Hex(0xFFDC55)));
+        Assert.That(card.Find("pausehome/fill").GetComponent<Image>().color, Is.EqualTo(Palette.Hex(0xB8E9FF)));
         foreach (var name in new[] { "resume", "pausehome" })
         {
             var button = (RectTransform)card.Find(name);

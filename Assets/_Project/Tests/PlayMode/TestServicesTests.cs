@@ -141,6 +141,13 @@ public class TestServicesTests
         yield return null;
         Assert.That(ui.GetComponentsInChildren<Button>(true).Any(b => b.name == "shopbuycoins"), Is.False);
         Assert.That(ui.GetComponentsInChildren<Text>(true).Any(t => t.text == "TILE SKINS"), Is.False);
+        for (int i = 0; i < 4; i++)
+        {
+            var icon = ui.transform.Find("shopdim/shopsafe/shopcard/fill/item" + i + "/fill/icon").GetComponent<Image>();
+            Assert.That(icon.sprite, Is.SameAs(UiTypography.Assets.boosterIcons[i]));
+            var hudIcon = ui.GetComponentsInChildren<Image>(true).Single(x => x.name == "boostericon" && x.transform.parent.name == "itemcard" + i);
+            Assert.That(hudIcon.sprite, Is.SameAs(icon.sprite));
+        }
         var buy = ui.GetComponentsInChildren<Button>(true)
             .Single(b => b.name == "buy" && b.transform.parent.parent.name == "item1");
         int before = Wallet.Count(ShopItem.Hammer);
